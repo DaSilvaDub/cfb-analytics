@@ -23,15 +23,14 @@ dev = [
 cfb-analytics = "cfb_analytics.cli:main"
 
 [tool.setuptools]
+# Only packages that actually exist. Git does not commit empty directories, so
+# declaring a package before writing its first module breaks `pip install -e .`
+# on a fresh clone with "package directory ... does not exist". Add each of
+# features / models / parlay / report / backtest here as its first module lands.
 packages = [
     "cfb_analytics",
     "cfb_analytics.sources",
     "cfb_analytics.ingest",
-    "cfb_analytics.features",
-    "cfb_analytics.models",
-    "cfb_analytics.parlay",
-    "cfb_analytics.report",
-    "cfb_analytics.backtest",
 ]
 
 [tool.pytest.ini_options]
