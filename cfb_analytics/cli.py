@@ -9,6 +9,7 @@ never advertises something that does not run.
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 
 from cfb_analytics import config, db, paths
@@ -202,6 +203,67 @@ def _cmd_coverage(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_market(args: argparse.Namespace) -> int:
+    """Compute vig-free market consensus from stored odds."""
+    from cfb_analytics.features.build_market import build_market_for_slate
+
+    with db.open_db() as conn:
+        summary = build_market_for_slate(conn, args.date)
+    print(summary.as_text())
+    if summary.games == 0:
+        print("\nNo games stored for that slate. Run: cfb-analytics ingest --date "
+              f"{args.date}")
+    return 0
+
+
+def _cmd_board(args: argparse.Namespace) -> int:
+    """Moneyline board for a slate: the M model's output, ranked."""
+    if not paths.database_path().exists():
+        print("No database yet. Run: cfb-analytics init-db")
+        return 1
+    with db.open_db() as conn:
+        rows = conn.execute(
+            """SELECT g.game_id, g.kickoff_utc,
+                      ht.alias AS home, at.alias AS away,
+                      c.side, c.consensus_price, c.best_price, c.best_book,
+                      c.prob_shin, c.prob_multiplicative, c.prob_power,
+                      c.prob_spread, c.hold, c.n_books, c.anchor, c.flags
+               FROM market_consensus c
+               JOIN games g ON g.game_id = c.game_id
+               JOIN teams ht ON ht.team_id = g.home_team_id
+               JOIN teams at ON at.team_id = g.away_team_id
+               WHERE g.football_date = ? AND c.market = 'ML'
+               ORDER BY c.prob_shin DESC""",
+            (args.date,),
+        ).fetchall()
+    if not rows:
+        print(f"No moneyline consensus for {args.date}. Run: cfb-analytics market "
+              f"--date {args.date}")
+        return 0
+
+    print(f"MONEYLINE BOARD - {args.date}   [{config.SHADOW_STAMP}]"
+          if config.is_shadow_mode() else f"MONEYLINE BOARD - {args.date}")
+    print(f"\n{'team':<7} {'opp':<7} {'price':>7} {'best':>7} {'book':<11} "
+          f"{'fair%':>7} {'spread':>7} {'hold':>6} {'bk':>3}  flags")
+    for row in rows:
+        prob = row["prob_shin"] or row["prob_multiplicative"]
+        if prob is None or prob < args.min_prob:
+            continue
+        team = row["home"] if row["side"] == "HOME" else row["away"]
+        opp = row["away"] if row["side"] == "HOME" else row["home"]
+        flags = ",".join(json.loads(row["flags"] or "[]"))
+        print(f"{team or '?':<7} {opp or '?':<7} {row['consensus_price']:>7} "
+              f"{row['best_price']:>7} {(row['best_book'] or ''):<11} "
+              f"{prob * 100:>6.1f}% {(row['prob_spread'] or 0) * 100:>6.2f}pp "
+              f"{(row['hold'] or 0) * 100:>5.1f}% {row['n_books']:>3}  {flags}")
+    print("\nfair% is the vig-free market probability (Shin). spread is the "
+          "disagreement\nbetween devig methods - wide means the fair number is "
+          "method-dependent.")
+    if config.is_shadow_mode():
+        print("This is the MARKET's view only. No model probability or edge exists yet.")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="cfb-analytics", description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
@@ -223,6 +285,16 @@ def build_parser() -> argparse.ArgumentParser:
     ingest.add_argument("--no-injuries", action="store_true", help="skip the injury feed")
     ingest.add_argument("--limit", type=int, default=None, help="cap events (for smoke tests)")
     ingest.set_defaults(func=_cmd_ingest)
+
+    market_cmd = sub.add_parser("market", help="compute vig-free consensus from stored odds")
+    market_cmd.add_argument("--date", required=True, help="slate date, YYYY-MM-DD")
+    market_cmd.set_defaults(func=_cmd_market)
+
+    board = sub.add_parser("board", help="moneyline board for a slate")
+    board.add_argument("--date", required=True, help="slate date, YYYY-MM-DD")
+    board.add_argument("--min-prob", type=float, default=0.0,
+                       help="only show sides at or above this fair probability")
+    board.set_defaults(func=_cmd_board)
 
     return parser
 

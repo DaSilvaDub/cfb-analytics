@@ -34,7 +34,7 @@ class TestMigrations:
 
     def test_records_applied_version(self, conn):
         versions = {r["version"] for r in conn.execute("SELECT version FROM schema_migrations")}
-        assert versions == {1, 2}
+        assert versions == {1, 2, 3}
 
     def test_foreign_keys_are_enforced(self, conn):
         import sqlite3
@@ -147,7 +147,7 @@ class TestMigration002Backfill:
         )
         conn.commit()
 
-        assert migrate(conn) == [2]
+        assert migrate(conn) == [2, 3]
 
         row = conn.execute(
             "SELECT football_date FROM games WHERE game_id = 'late'").fetchone()

@@ -21,7 +21,8 @@ Design of record: `docs/plans/2026-08-31-ncaaf-analytics-pipeline.md` in the
 | 0 | Scaffold, config, SQLite migrations, CI | **done** |
 | 1 | Outlier ingestion (schedule, gameline odds, injuries) | **done** |
 | 1 | CFBD backfill 2014–2025 | **blocked** — needs `CFBD_API_KEY` |
-| 2–9 | Features, models, backtest, totals, parlay, reporting | not started |
+| 2a | Leakage guard, devig (3 methods), market consensus, line movement | **done** |
+| 2b–9 | Fundamentals features, models, backtest, totals, parlay, reporting | blocked on CFBD |
 
 ## Setup
 
@@ -74,7 +75,19 @@ Each is verified against the live feed and covered by a regression test.
 4. **Book coverage varies over time.** A 2026-08-31 probe saw 20 books including
    Pinnacle and Circa; hours later the same games returned 11 with no sharp
    books. Run `coverage` across ingests before relying on any book being there.
-5. **An injury feed is not a depth chart.** Outlier gives real designations
+5. **The two sides of a spread carry opposite signs** — HOME −13.5 against
+   AWAY +13.5 — so keying a market group on the raw line leaves them unpaired.
+   That produced 694 phantom negative-hold rows out of 1594 spreads while ML
+   and totals showed zero, because those already share a line value across
+   sides. Spreads group on the absolute line.
+   (`market.group_key`, `tests/test_market.py::TestSpreadSidesPairUp`)
+6. **Devig each book against itself, then aggregate.** Median-each-side-then-
+   devig mixes different book sets: on BALL@OSU the home side had 2 books and
+   the away side 4, and the mixed devig produced a −18249 "consensus" on a
+   market whose best real price was −10000.
+7. **`-100000` means "no action", not "99.9%".** Placeholder quotes are dropped
+   and flagged rather than averaged into a consensus.
+8. **An injury feed is not a depth chart.** Outlier gives real designations
    (Out / Doubtful / Questionable / Probable / Out for Season) and covers QBs,
    but absence from it does not confirm a healthy starter — so unknown QB status
    is a hard CORE blocker, and there is **no OL coverage at all**.

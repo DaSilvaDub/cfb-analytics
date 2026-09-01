@@ -55,3 +55,7 @@ class LeakageError(CfbAnalyticsError):
     backtest that leaks looks excellent and is worthless, so the failure mode
     must be a crash rather than an optimistic number.
     """
+
+
+class DevigError(CfbAnalyticsError):
+    """A set of quoted prices could not be converted to fair probabilities."""

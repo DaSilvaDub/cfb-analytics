@@ -168,12 +168,58 @@ def _backfill_football_date(conn: sqlite3.Connection) -> None:
     )
 
 
+MIGRATION_003 = """
+-- Vig-free market view, one row per (game, market, line, side, capture).
+-- Append-only like odds_snapshots: a later capture is a new row, so the
+-- backtest can reconstruct what the market said at any point before kickoff.
+CREATE TABLE IF NOT EXISTS market_consensus (
+    game_id        TEXT NOT NULL REFERENCES games(game_id),
+    market         TEXT NOT NULL,
+    line           REAL,
+    side           TEXT NOT NULL,
+    as_of_utc      TEXT NOT NULL,
+    n_books        INTEGER NOT NULL,
+    consensus_price INTEGER,
+    best_price     INTEGER,
+    best_book      TEXT,
+    hold           REAL,
+    anchor         TEXT NOT NULL,          -- sharp | all_books | none
+    prob_multiplicative REAL,
+    prob_shin      REAL,
+    prob_power     REAL,
+    prob_spread    REAL,                   -- max-min across methods
+    flags          TEXT,
+    PRIMARY KEY (game_id, market, line, side, as_of_utc)
+);
+CREATE INDEX IF NOT EXISTS idx_consensus_game ON market_consensus(game_id, market);
+
+CREATE TABLE IF NOT EXISTS line_movement (
+    game_id     TEXT NOT NULL REFERENCES games(game_id),
+    market      TEXT NOT NULL,
+    side        TEXT NOT NULL,
+    as_of_utc   TEXT NOT NULL,
+    open_line   REAL,
+    open_price  INTEGER,
+    current_line REAL,
+    current_price INTEGER,
+    move_magnitude REAL,
+    move_direction TEXT,
+    rlm_flag    INTEGER NOT NULL DEFAULT 0,
+    -- Always 'line_only'. True RLM needs ticket/money percentages, which no
+    -- free source provides; the weaker inference is labelled, never dressed up.
+    rlm_basis   TEXT NOT NULL DEFAULT 'line_only',
+    PRIMARY KEY (game_id, market, side, as_of_utc)
+);
+"""
+
+
 # (version, name, SQL, optional Python step run after the SQL in the same transaction).
 # The Python hook exists because some backfills need the IANA time-zone database,
 # which SQLite does not have.
 MIGRATIONS: tuple[tuple[int, str, str, Callable[[sqlite3.Connection], None] | None], ...] = (
     (1, "outlier_ingestion_core", MIGRATION_001, None),
     (2, "games_football_date", MIGRATION_002, _backfill_football_date),
+    (3, "market_consensus_and_movement", MIGRATION_003, None),
 )
 
 
