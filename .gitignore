@@ -1,0 +1,23 @@
+# Secrets — never commit. CFBD_API_KEY and OUTLIER_* live here or in the environment.
+.env
+*.env
+!.env.example
+
+# Local data store and HTTP cache
+data/
+artifacts/*
+!artifacts/.gitkeep
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+build/
+dist/
+.venv/
+venv/

@@ -1,0 +1,67 @@
+{
+  "schema_version": 1,
+  "tiers": {
+    "core": {
+      "min_blend_prob": 0.90,
+      "min_confidence": 85,
+      "require_qb_confirmed": true,
+      "min_edge": 0.0
+    },
+    "supporting": {
+      "min_blend_prob": 0.85,
+      "min_confidence": 78
+    },
+    "avoid_edge_floor": -0.02
+  },
+  "blend": {
+    "market_weight_floor": 0.75,
+    "_comment": "Model side is capped at 1 - floor = 0.25 until a segment shows out-of-sample Brier improvement."
+  },
+  "parlay": {
+    "min_legs": 3,
+    "max_legs": 10,
+    "beam_width": 50,
+    "probability_decay_budget_pp": 2.0,
+    "weakest_leg_floor": 0.85,
+    "correlation_penalty_cap": 0.15,
+    "alt_parlay_weakest_gap": 0.04
+  },
+  "correlation": {
+    "rho_base": 0.08,
+    "rho_conference": 0.04,
+    "rho_weather": 0.06,
+    "rho_qb_unresolved": 0.05,
+    "rho_public_favorite": 0.03,
+    "_comment": "Seed values only. rho_base is fitted from historical parlay survival in Phase 7 and these are replaced."
+  },
+  "confidence_deductions": {
+    "qb_status_unknown": 18,
+    "qb_status_questionable": 10,
+    "availability_stale_48h": 8,
+    "fewer_than_4_games": 15,
+    "fewer_than_2_games": 25,
+    "first_year_head_coach": 8,
+    "new_coordinator": 4,
+    "high_portal_turnover": 5,
+    "unstable_weather_forecast": 6,
+    "odds_stale_6h": 7,
+    "single_book_only": 10,
+    "null_rate_multiplier": 40
+  },
+  "market": {
+    "devig_method": "multiplicative",
+    "devig_methods_stored": ["multiplicative", "shin", "power"],
+    "min_books_for_consensus": 3,
+    "odds_stale_after_minutes": 360
+  },
+  "model": {
+    "margin_sigma_base": 16.5,
+    "total_sigma_base": 10.75,
+    "ridge_lambda": 25.0,
+    "recency_tau_days": 45,
+    "preseason_prior_games": 4,
+    "elo_k": 25.0,
+    "elo_home_field": 60.0,
+    "elo_preseason_regression": 0.25
+  }
+}

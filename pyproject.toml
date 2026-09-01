@@ -1,0 +1,56 @@
+[project]
+name = "cfb-analytics"
+version = "0.1.0"
+description = "NCAA FBS football analytics pipeline: moneyline safety/value and game totals."
+requires-python = ">=3.11"
+# Deliberately stdlib-only for all modelling math. No numpy/scipy/sklearn/pandas.
+# See docs/plans/2026-08-31-ncaaf-analytics-pipeline.md, decision 3.
+# tzdata is a pure-data package, not a maths library: Windows ships no IANA
+# database, and slate dates are US Eastern calendar dates (see utils.football_date).
+dependencies = [
+    "tzdata>=2024.1; sys_platform == 'win32'",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-cov>=4.1.0",
+    "ruff>=0.5.0",
+    "mypy>=1.0.0",
+]
+
+[project.scripts]
+cfb-analytics = "cfb_analytics.cli:main"
+
+[tool.setuptools]
+packages = [
+    "cfb_analytics",
+    "cfb_analytics.sources",
+    "cfb_analytics.ingest",
+    "cfb_analytics.features",
+    "cfb_analytics.models",
+    "cfb_analytics.parlay",
+    "cfb_analytics.report",
+    "cfb_analytics.backtest",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-q"
+markers = [
+    "network: tests that require live network access (deselected by default in CI)",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.mypy]
+python_version = "3.11"
+ignore_missing_imports = true
+warn_unused_configs = true
+check_untyped_defs = true

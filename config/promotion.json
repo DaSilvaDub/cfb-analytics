@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "status": "shadow",
+  "changed_utc": null,
+  "min_settled_games": 1500,
+  "min_seasons_backtested": 3,
+  "max_abs_calibration_gap": 0.03,
+  "min_bucket_n_for_gap_test": 100,
+  "require_oos_logloss_beat_market": true,
+  "require_median_clv_non_negative": true,
+  "evidence": null,
+  "_comment": "Two-key gate: BOTH a sample-size floor AND demonstrated out-of-sample skill. While status is 'shadow', no CORE tier is emitted and every artifact is stamped UNPROMOTED. Never hand-edit status to 'promoted' - it is set by `cfb-analytics backtest --promote` on passing evidence."
+}

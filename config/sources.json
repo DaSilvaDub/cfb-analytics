@@ -1,0 +1,39 @@
+{
+  "outlier": {
+    "base_url": "https://api.outlier.bet",
+    "league_token": "NCAAFB",
+    "app_origin": "https://app.outlier.bet",
+    "timeout_seconds": 30,
+    "max_retries": 3,
+    "cache_ttl_seconds": 300,
+    "_comment": "League token verified 2026-08-31: NCAAF/CFB/FBS/CFP all return HTTP 502. NCAAFB returns the FBS+FCS schedule.",
+    "sharp_books": ["PS3838", "CIRCA", "BETONLINE", "BOOKMAKER"],
+    "exchange_books": ["KALSHI", "NOVIG", "PROPHETX", "BETFAIR", "MIDNITE"],
+    "known_books": [
+      "BETFAIR", "BETONLINE", "BETRIVERS", "BETUS", "BOOKMAKER", "BOVADA",
+      "CAESARS", "CIRCA", "DRAFTKINGS", "FANATICS", "FANDUEL", "FLIFF",
+      "HARDROCK", "HARDROCK_R", "KALSHI", "MIDNITE", "MYBOOKIE", "NOVIG",
+      "PROPHETX", "PS3838"
+    ]
+  },
+  "cfbd": {
+    "base_url": "https://api.collegefootballdata.com",
+    "env_var": "CFBD_API_KEY",
+    "timeout_seconds": 30,
+    "max_retries": 3,
+    "cache_ttl_seconds": 86400,
+    "_status": "BLOCKED: no key configured as of 2026-08-31"
+  },
+  "weather": {
+    "base_url": "https://api.open-meteo.com/v1/forecast",
+    "archive_url": "https://archive-api.open-meteo.com/v1/era5",
+    "timeout_seconds": 30,
+    "cache_ttl_seconds": 3600
+  },
+  "espn": {
+    "base_url": "https://site.api.espn.com/apis/site/v2/sports/football/college-football",
+    "timeout_seconds": 30,
+    "cache_ttl_seconds": 1800,
+    "_comment": "Unofficial and brittle. Used only for starting-QB confirmation, which the Outlier injury feed cannot provide."
+  }
+}
