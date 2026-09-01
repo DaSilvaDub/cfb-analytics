@@ -98,7 +98,7 @@ class TestCliCommands:
     def test_init_db_creates_the_store_and_reports_what_it_applied(self, capsys):
         assert cli.main(["init-db"]) == 0
         assert paths.database_path().exists()
-        assert "applied migrations [1]" in capsys.readouterr().out
+        assert "applied migrations [1, 2]" in capsys.readouterr().out
 
     def test_init_db_is_idempotent(self, capsys):
         cli.main(["init-db"])
@@ -131,7 +131,8 @@ class TestCliCommands:
             store.upsert_team(conn, {"team_id": "a", "school": "A", "alias": "A", "market": "A"})
             store.upsert_game(conn, {
                 "game_id": "evt-1", "season": 2026,
-                "kickoff_utc": "2026-09-05T23:30:00+00:00", "day_of_week": 5,
+                "kickoff_utc": "2026-09-05T23:30:00+00:00",
+                "football_date": "2026-09-05", "day_of_week": 5,
                 "home_team_id": "h", "away_team_id": "a", "venue_name": None,
                 "network": None, "status": "pregame"})
             store.insert_odds(

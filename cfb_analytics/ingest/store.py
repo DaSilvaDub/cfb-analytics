@@ -81,12 +81,15 @@ def upsert_team(conn: sqlite3.Connection, team: dict[str, Any]) -> None:
 
 def upsert_game(conn: sqlite3.Connection, game: dict[str, Any]) -> None:
     conn.execute(
-        """INSERT INTO games (game_id, season, kickoff_utc, day_of_week, home_team_id,
-                              away_team_id, venue_name, network, status, source, ingested_utc)
-           VALUES (:game_id, :season, :kickoff_utc, :day_of_week, :home_team_id,
-                   :away_team_id, :venue_name, :network, :status, 'outlier', :ingested_utc)
+        """INSERT INTO games (game_id, season, kickoff_utc, football_date, day_of_week,
+                              home_team_id, away_team_id, venue_name, network, status,
+                              source, ingested_utc)
+           VALUES (:game_id, :season, :kickoff_utc, :football_date, :day_of_week,
+                   :home_team_id, :away_team_id, :venue_name, :network, :status,
+                   'outlier', :ingested_utc)
            ON CONFLICT(game_id) DO UPDATE SET
              kickoff_utc = COALESCE(excluded.kickoff_utc, games.kickoff_utc),
+             football_date = COALESCE(excluded.football_date, games.football_date),
              status      = COALESCE(excluded.status, games.status),
              network     = COALESCE(excluded.network, games.network),
              venue_name  = COALESCE(excluded.venue_name, games.venue_name),

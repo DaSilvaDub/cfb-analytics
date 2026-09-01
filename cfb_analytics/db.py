@@ -14,7 +14,7 @@ Design rules that the rest of the package depends on:
 from __future__ import annotations
 
 import sqlite3
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -146,8 +146,34 @@ CREATE TABLE IF NOT EXISTS source_health (
 );
 """
 
-MIGRATIONS: tuple[tuple[int, str, str], ...] = (
-    (1, "outlier_ingestion_core", MIGRATION_001),
+MIGRATION_002 = """
+-- The slate a game belongs to: its US Eastern calendar date, NOT kickoff_utc[:10].
+-- Stored rather than derived because SQLite has no time-zone database, so every
+-- slate query would otherwise have to round-trip through Python.
+ALTER TABLE games ADD COLUMN football_date TEXT;
+CREATE INDEX IF NOT EXISTS idx_games_football_date ON games(football_date);
+"""
+
+
+def _backfill_football_date(conn: sqlite3.Connection) -> None:
+    """Populate games.football_date for rows written before migration 002."""
+    from cfb_analytics.utils import football_date
+
+    rows = conn.execute(
+        "SELECT game_id, kickoff_utc FROM games WHERE football_date IS NULL"
+    ).fetchall()
+    conn.executemany(
+        "UPDATE games SET football_date = ? WHERE game_id = ?",
+        [(football_date(row["kickoff_utc"]), row["game_id"]) for row in rows],
+    )
+
+
+# (version, name, SQL, optional Python step run after the SQL in the same transaction).
+# The Python hook exists because some backfills need the IANA time-zone database,
+# which SQLite does not have.
+MIGRATIONS: tuple[tuple[int, str, str, Callable[[sqlite3.Connection], None] | None], ...] = (
+    (1, "outlier_ingestion_core", MIGRATION_001, None),
+    (2, "games_football_date", MIGRATION_002, _backfill_football_date),
 )
 
 
@@ -172,10 +198,12 @@ def migrate(conn: sqlite3.Connection) -> list[int]:
 
     done = applied_versions(conn)
     applied: list[int] = []
-    for version, name, sql in MIGRATIONS:
+    for version, name, sql, hook in MIGRATIONS:
         if version in done:
             continue
         conn.executescript(sql)
+        if hook is not None:
+            hook(conn)
         conn.execute(
             "INSERT INTO schema_migrations (version, name, applied_utc) VALUES (?, ?, ?)",
             (version, name, utc_now_iso()),

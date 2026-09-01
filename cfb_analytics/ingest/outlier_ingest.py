@@ -111,6 +111,7 @@ def ingest_slate(
                     "game_id": record["game_id"],
                     "season": record["season"],
                     "kickoff_utc": record["kickoff_utc"],
+                    "football_date": record["football_date"],
                     "day_of_week": record["day_of_week"],
                     "home_team_id": record["home"]["team_id"],
                     "away_team_id": record["away"]["team_id"],

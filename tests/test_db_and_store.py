@@ -16,7 +16,8 @@ def _seed_game(conn):
         conn, {"team_id": "t-away", "school": "Okla St", "alias": "OKST", "market": "OKC"})
     store.upsert_game(conn, {
         "game_id": "evt-1", "season": 2026, "kickoff_utc": "2026-09-06T02:30:00+00:00",
-        "day_of_week": "Saturday", "home_team_id": "t-home", "away_team_id": "t-away",
+        "football_date": "2026-09-05", "day_of_week": 5,
+        "home_team_id": "t-home", "away_team_id": "t-away",
         "venue_name": "Stadium", "network": "ESPN", "status": "pregame",
     })
 
@@ -33,7 +34,7 @@ class TestMigrations:
 
     def test_records_applied_version(self, conn):
         versions = {r["version"] for r in conn.execute("SELECT version FROM schema_migrations")}
-        assert versions == {1}
+        assert versions == {1, 2}
 
     def test_foreign_keys_are_enforced(self, conn):
         import sqlite3
@@ -115,3 +116,41 @@ class TestRunRecorder:
             run.record_health("outlier", "schedule", ok=True, rows=137)
         row = conn.execute("SELECT ok, rows FROM source_health").fetchone()
         assert row["ok"] == 1 and row["rows"] == 137
+
+
+class TestMigration002Backfill:
+    """Migration 002 adds games.football_date and backfills existing rows.
+
+    The backfill needs the IANA time-zone database, which SQLite lacks, so it
+    runs as a Python hook rather than SQL.
+    """
+
+    def test_backfills_rows_written_before_the_migration(self, tmp_path):
+        from cfb_analytics.db import MIGRATIONS, _connect, applied_versions, migrate
+
+        path = tmp_path / "old.sqlite3"
+        conn = _connect(path)
+        # Apply only migration 001, simulating a store created before 002.
+        version, name, sql, _hook = MIGRATIONS[0]
+        applied_versions(conn)
+        conn.executescript(sql)
+        conn.execute(
+            "INSERT INTO schema_migrations (version, name, applied_utc) VALUES (?, ?, 'x')",
+            (version, name),
+        )
+        store.upsert_team(conn, {"team_id": "h", "school": "H", "alias": "H", "market": "H"})
+        store.upsert_team(conn, {"team_id": "a", "school": "A", "alias": "A", "market": "A"})
+        conn.execute(
+            """INSERT INTO games (game_id, kickoff_utc, home_team_id, away_team_id,
+               source, ingested_utc)
+               VALUES ('late', '2026-09-06T02:30:00+00:00', 'h', 'a', 'outlier', 'x')"""
+        )
+        conn.commit()
+
+        assert migrate(conn) == [2]
+
+        row = conn.execute(
+            "SELECT football_date FROM games WHERE game_id = 'late'").fetchone()
+        # 02:30Z Sunday is 10:30pm ET Saturday: it belongs to the Saturday slate.
+        assert row["football_date"] == "2026-09-05"
+        conn.close()

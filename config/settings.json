@@ -52,7 +52,9 @@
     "devig_method": "multiplicative",
     "devig_methods_stored": ["multiplicative", "shin", "power"],
     "min_books_for_consensus": 3,
-    "odds_stale_after_minutes": 360
+    "odds_stale_after_minutes": 360,
+    "max_days_to_kickoff_for_report": 5,
+    "_comment": "Measured 2026-09-01 across 7 slates: within 5 days of kickoff every game carries 11-12 moneyline books; at 11 days out the MEDIAN game carries 1 and 36 of 42 games fall below min_books_for_consensus. A single far-out book is not a market consensus and must never be devigged as one. Run `cfb-analytics coverage` to re-measure."
   },
   "model": {
     "margin_sigma_base": 16.5,

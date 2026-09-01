@@ -150,28 +150,55 @@ def _cmd_coverage(args: argparse.Namespace) -> int:
     only viable if sharp books are reliably present, so coverage is measured
     across captures rather than asserted from one snapshot.
     """
+    from datetime import datetime
+
     sharp = set(config.sources()["outlier"]["sharp_books"])
     if not paths.database_path().exists():
         print("No database yet. Run: cfb-analytics init-db")
         return 1
     with db.open_db() as conn:
         rows = conn.execute(
-            """SELECT captured_utc, market, COUNT(DISTINCT book) AS books,
-                      COUNT(*) AS prices, GROUP_CONCAT(DISTINCT book) AS book_list
-               FROM odds_snapshots GROUP BY captured_utc, market
-               ORDER BY captured_utc DESC, market"""
+            """SELECT g.football_date          AS slate,
+                      o.captured_utc           AS captured,
+                      MIN(g.kickoff_utc)       AS first_kick,
+                      COUNT(DISTINCT g.game_id) AS games,
+                      COUNT(DISTINCT o.book)   AS books,
+                      COUNT(*)                 AS prices,
+                      GROUP_CONCAT(DISTINCT o.book) AS book_list
+               FROM odds_snapshots o JOIN games g ON g.game_id = o.game_id
+               GROUP BY g.football_date, o.captured_utc
+               ORDER BY g.football_date, o.captured_utc"""
         ).fetchall()
         if not rows:
             print("No odds captured yet. Run: cfb-analytics ingest --date <YYYY-MM-DD>")
             return 0
-        print(f"{'captured':<26} {'mkt':<6} {'books':>5} {'prices':>7}  sharp books present")
+
+        print(f"{'slate':<12} {'captured (UTC)':<21} {'d-to-kick':>9} {'games':>5} "
+              f"{'books':>5} {'prices':>7} {'px/game':>8}  sharp")
+        any_sharp = False
         for row in rows:
             present = sorted(sharp & set((row["book_list"] or "").split(",")))
-            print(f"  {row['captured_utc']:<24} {row['market']:<6} {row['books']:>5} "
-                  f"{row['prices']:>7}  {', '.join(present) if present else 'NONE'}")
-        print(f"\n  sharp set tracked: {', '.join(sorted(sharp))}")
-        print("  If 'NONE' persists across captures, the sharp-anchor devig in the plan "
-              "is not supported by this feed and consensus must fall back to all books.")
+            any_sharp = any_sharp or bool(present)
+            lead = (
+                datetime.fromisoformat(row["first_kick"])
+                - datetime.fromisoformat(row["captured"])
+            ).days
+            print(f"{row['slate']:<12} {row['captured'][:19]:<21} {lead:>9} "
+                  f"{row['games']:>5} {row['books']:>5} {row['prices']:>7} "
+                  f"{row['prices'] // max(row['games'], 1):>8}  "
+                  f"{', '.join(present) if present else 'NONE'}")
+
+        all_books = conn.execute(
+            "SELECT DISTINCT book FROM odds_snapshots ORDER BY book").fetchall()
+        print(f"\n  books ever seen ({len(all_books)}): "
+              f"{', '.join(r['book'] for r in all_books)}")
+        print(f"  sharp set tracked: {', '.join(sorted(sharp))}")
+        if not any_sharp:
+            print("\n  No sharp book has appeared in ANY capture. The sharp-anchor devig is "
+                  "not currently supported by this feed:\n"
+                  "  consensus must fall back to all books, rows carry `no_sharp_anchor`, "
+                  "and CLV must be measured\n  against best-available price rather than a "
+                  "Pinnacle close.")
     return 0
 
 
