@@ -11,6 +11,7 @@ Insert semantics are chosen per table for a reason:
 
 from __future__ import annotations
 
+import json
 import sqlite3
 import uuid
 from collections.abc import Iterable
@@ -18,7 +19,7 @@ from dataclasses import dataclass
 from typing import Any, Literal
 
 from cfb_analytics.sources.outlier import OddsRow
-from cfb_analytics.utils import utc_now_iso
+from cfb_analytics.utils import stable_id, utc_now_iso
 
 
 @dataclass
@@ -190,6 +191,75 @@ def insert_team_aliases(conn: sqlite3.Connection, rows: Iterable[dict[str, Any]]
         payload,
     )
     return cursor.rowcount if cursor.rowcount and cursor.rowcount > 0 else 0
+
+
+def _snapshot_id(kind: str, row: dict[str, Any]) -> str:
+    stable = {key: value for key, value in row.items() if key != "ingested_utc"}
+    return stable_id(kind, json.dumps(stable, sort_keys=True, separators=(",", ":")))
+
+
+def _insert_snapshots(
+    conn: sqlite3.Connection,
+    table: str,
+    columns: tuple[str, ...],
+    rows: Iterable[dict[str, Any]],
+) -> int:
+    now = utc_now_iso()
+    payload = []
+    for raw in rows:
+        row = {**raw, "ingested_utc": now}
+        row["snapshot_id"] = _snapshot_id(table, row)
+        payload.append(tuple(row.get(column) for column in columns))
+    if not payload:
+        return 0
+    placeholders = ", ".join("?" for _ in columns)
+    cursor = conn.executemany(
+        f"INSERT OR IGNORE INTO {table} ({', '.join(columns)}) VALUES ({placeholders})",
+        payload,
+    )
+    return cursor.rowcount if cursor.rowcount and cursor.rowcount > 0 else 0
+
+
+def insert_team_ratings(conn: sqlite3.Connection, rows: Iterable[dict[str, Any]]) -> int:
+    columns = (
+        "snapshot_id", "season", "period", "week", "team_id", "source",
+        "snapshot_scope", "provenance_mode", "as_of_utc", "ingested_utc",
+        "rating", "ranking", "off_rating", "def_rating", "st_rating", "sos",
+        "second_order_wins",
+    )
+    return _insert_snapshots(conn, "team_ratings", columns, rows)
+
+
+def insert_team_advanced(conn: sqlite3.Connection, rows: Iterable[dict[str, Any]]) -> int:
+    columns = (
+        "snapshot_id", "season", "week", "team_id", "side", "as_of_utc",
+        "ingested_utc", "provenance_mode", "garbage_excluded", "plays", "drives",
+        "ppa", "total_ppa", "success_rate", "explosiveness",
+        "points_per_opportunity", "havoc", "line_yards", "stuff_rate",
+        "passing_ppa", "rushing_ppa", "passing_success_rate",
+        "rushing_success_rate",
+    )
+    return _insert_snapshots(conn, "team_season_advanced", columns, rows)
+
+
+def insert_returning_production(
+    conn: sqlite3.Connection, rows: Iterable[dict[str, Any]]
+) -> int:
+    columns = (
+        "snapshot_id", "season", "team_id", "availability_class", "ingested_utc",
+        "total_ppa", "passing_ppa", "receiving_ppa", "rushing_ppa", "percent_ppa",
+        "percent_passing_ppa", "percent_receiving_ppa", "percent_rushing_ppa",
+        "usage", "passing_usage", "receiving_usage", "rushing_usage",
+    )
+    return _insert_snapshots(conn, "returning_production", columns, rows)
+
+
+def insert_team_talent(conn: sqlite3.Connection, rows: Iterable[dict[str, Any]]) -> int:
+    columns = (
+        "snapshot_id", "season", "team_id", "availability_class", "ingested_utc",
+        "talent_composite",
+    )
+    return _insert_snapshots(conn, "team_talent", columns, rows)
 
 
 def insert_odds(conn: sqlite3.Connection, rows: Iterable[OddsRow]) -> int:

@@ -63,6 +63,33 @@ def _float_or_none(value: Any) -> float | None:
     return result if result == result else None
 
 
+def _as_float(value: Any, field: str) -> float:
+    if isinstance(value, bool):
+        value = None
+    try:
+        result = float(value)
+    except (TypeError, ValueError) as exc:
+        raise SchemaError(f"CFBD field {field!r} was not a number: {value!r}") from exc
+    if result != result:
+        raise SchemaError(f"CFBD field {field!r} was NaN")
+    return result
+
+
+def _optional_float(value: Any, field: str) -> float | None:
+    return None if value is None else _as_float(value, field)
+
+
+def _optional_int(value: Any, field: str) -> int | None:
+    return None if value is None else _as_int(value, field)
+
+
+def _object(row: dict[str, Any], field: str) -> dict[str, Any]:
+    value = row.get(field)
+    if not isinstance(value, dict):
+        raise SchemaError(f"CFBD field {field!r} was not an object")
+    return value
+
+
 @dataclass(frozen=True)
 class CFBDBackfillSummary:
     seasons: int
@@ -98,7 +125,11 @@ class CFBDClient:
         )
 
     def _url(self, path: str, **params: Any) -> str:
-        filtered = {key: value for key, value in params.items() if value is not None}
+        filtered = {
+            key: str(value).lower() if isinstance(value, bool) else value
+            for key, value in params.items()
+            if value is not None
+        }
         if not filtered:
             return f"{self.base_url}{path}"
         return f"{self.base_url}{path}?{urlencode(filtered)}"
@@ -127,6 +158,43 @@ class CFBDClient:
             seasonType=season_type,
             classification=classification,
         )
+
+    def fetch_sp(self, year: int) -> list[dict[str, Any]]:
+        return self._get_rows("/ratings/sp", year=year)
+
+    def fetch_srs(self, year: int) -> list[dict[str, Any]]:
+        return self._get_rows("/ratings/srs", year=year)
+
+    def fetch_elo(
+        self, year: int, week: int, *, season_type: str = "regular"
+    ) -> list[dict[str, Any]]:
+        return self._get_rows(
+            "/ratings/elo", year=year, week=week, seasonType=season_type
+        )
+
+    def fetch_advanced(
+        self,
+        year: int,
+        end_week: int,
+        *,
+        start_week: int = 1,
+        exclude_garbage_time: bool = True,
+        classification: str = "fbs",
+    ) -> list[dict[str, Any]]:
+        return self._get_rows(
+            "/stats/season/advanced",
+            year=year,
+            excludeGarbageTime=exclude_garbage_time,
+            startWeek=start_week,
+            endWeek=end_week,
+            classification=classification,
+        )
+
+    def fetch_returning_production(self, year: int) -> list[dict[str, Any]]:
+        return self._get_rows("/player/returning", year=year)
+
+    def fetch_talent(self, year: int) -> list[dict[str, Any]]:
+        return self._get_rows("/talent", year=year)
 
 
 def parse_venue(row: dict[str, Any]) -> dict[str, Any] | None:
@@ -267,3 +335,163 @@ def parse_game_team(row: dict[str, Any], *, side: str) -> dict[str, Any]:
             "location": None,
         }
     )
+
+
+def parse_sp_rating(row: dict[str, Any], *, as_of_utc: str) -> dict[str, Any]:
+    offense = _object(row, "offense")
+    defense = _object(row, "defense")
+    special_teams = _object(row, "specialTeams")
+    return {
+        "season": _as_int(row.get("year"), "year"),
+        "period": "season_final",
+        "week": None,
+        "team_name": _as_str(row.get("team"), "team"),
+        "source": "sp",
+        "snapshot_scope": "season_final",
+        "as_of_utc": as_of_utc,
+        "rating": _as_float(row.get("rating"), "rating"),
+        "ranking": _optional_int(row.get("ranking"), "ranking"),
+        "off_rating": _as_float(offense.get("rating"), "offense.rating"),
+        "def_rating": _as_float(defense.get("rating"), "defense.rating"),
+        "st_rating": _optional_float(special_teams.get("rating"), "specialTeams.rating"),
+        "sos": _optional_float(row.get("sos"), "sos"),
+        "second_order_wins": _optional_float(
+            row.get("secondOrderWins"), "secondOrderWins"
+        ),
+    }
+
+
+def parse_srs_rating(row: dict[str, Any], *, as_of_utc: str) -> dict[str, Any]:
+    return {
+        "season": _as_int(row.get("year"), "year"),
+        "period": "season_final",
+        "week": None,
+        "team_name": _as_str(row.get("team"), "team"),
+        "source": "srs",
+        "snapshot_scope": "season_final",
+        "as_of_utc": as_of_utc,
+        "rating": _as_float(row.get("rating"), "rating"),
+        "ranking": _optional_int(row.get("ranking"), "ranking"),
+        "off_rating": None,
+        "def_rating": None,
+        "st_rating": None,
+        "sos": None,
+        "second_order_wins": None,
+    }
+
+
+def parse_elo_rating(
+    row: dict[str, Any], *, week: int, as_of_utc: str
+) -> dict[str, Any]:
+    return {
+        "season": _as_int(row.get("year"), "year"),
+        "period": f"week:{week:02d}",
+        "week": week,
+        "team_name": _as_str(row.get("team"), "team"),
+        "source": "elo_cfbd",
+        "snapshot_scope": "weekly",
+        "as_of_utc": as_of_utc,
+        "rating": _optional_float(row.get("elo"), "elo"),
+        "ranking": None,
+        "off_rating": None,
+        "def_rating": None,
+        "st_rating": None,
+        "sos": None,
+        "second_order_wins": None,
+    }
+
+
+def parse_advanced_rows(
+    row: dict[str, Any], *, week: int, as_of_utc: str
+) -> list[dict[str, Any]]:
+    season = _as_int(row.get("season"), "season")
+    team_name = _as_str(row.get("team"), "team")
+    parsed: list[dict[str, Any]] = []
+    for source_key, side in (("offense", "off"), ("defense", "def")):
+        values = _object(row, source_key)
+        passing = _object(values, "passingPlays")
+        rushing = _object(values, "rushingPlays")
+        havoc = _object(values, "havoc")
+        parsed.append(
+            {
+                "season": season,
+                "week": week,
+                "team_name": team_name,
+                "side": side,
+                "as_of_utc": as_of_utc,
+                "garbage_excluded": 1,
+                "plays": _as_int(values.get("plays"), f"{source_key}.plays"),
+                "drives": _as_int(values.get("drives"), f"{source_key}.drives"),
+                "ppa": _as_float(values.get("ppa"), f"{source_key}.ppa"),
+                "total_ppa": _as_float(
+                    values.get("totalPPA"), f"{source_key}.totalPPA"
+                ),
+                "success_rate": _as_float(
+                    values.get("successRate"), f"{source_key}.successRate"
+                ),
+                "explosiveness": _optional_float(
+                    values.get("explosiveness"), f"{source_key}.explosiveness"
+                ),
+                "points_per_opportunity": _as_float(
+                    values.get("pointsPerOpportunity"),
+                    f"{source_key}.pointsPerOpportunity",
+                ),
+                "havoc": _optional_float(havoc.get("total"), f"{source_key}.havoc.total"),
+                "line_yards": _as_float(
+                    values.get("lineYards"), f"{source_key}.lineYards"
+                ),
+                "stuff_rate": _as_float(
+                    values.get("stuffRate"), f"{source_key}.stuffRate"
+                ),
+                "passing_ppa": _as_float(
+                    passing.get("ppa"), f"{source_key}.passingPlays.ppa"
+                ),
+                "rushing_ppa": _as_float(
+                    rushing.get("ppa"), f"{source_key}.rushingPlays.ppa"
+                ),
+                "passing_success_rate": _as_float(
+                    passing.get("successRate"),
+                    f"{source_key}.passingPlays.successRate",
+                ),
+                "rushing_success_rate": _as_float(
+                    rushing.get("successRate"),
+                    f"{source_key}.rushingPlays.successRate",
+                ),
+            }
+        )
+    return parsed
+
+
+def parse_returning_production(row: dict[str, Any]) -> dict[str, Any]:
+    fields = {
+        "total_ppa": "totalPPA",
+        "passing_ppa": "totalPassingPPA",
+        "receiving_ppa": "totalReceivingPPA",
+        "rushing_ppa": "totalRushingPPA",
+        "percent_ppa": "percentPPA",
+        "percent_passing_ppa": "percentPassingPPA",
+        "percent_receiving_ppa": "percentReceivingPPA",
+        "percent_rushing_ppa": "percentRushingPPA",
+        "usage": "usage",
+        "passing_usage": "passingUsage",
+        "receiving_usage": "receivingUsage",
+        "rushing_usage": "rushingUsage",
+    }
+    return {
+        "season": _as_int(row.get("season"), "season"),
+        "team_name": _as_str(row.get("team"), "team"),
+        "availability_class": "preseason",
+        **{
+            target: _as_float(row.get(source), source)
+            for target, source in fields.items()
+        },
+    }
+
+
+def parse_talent(row: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "season": _as_int(row.get("year"), "year"),
+        "team_name": _as_str(row.get("team"), "team"),
+        "availability_class": "preseason",
+        "talent_composite": _as_float(row.get("talent"), "talent"),
+    }
