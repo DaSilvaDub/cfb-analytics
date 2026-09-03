@@ -24,7 +24,7 @@ import urllib.error
 import urllib.request
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, TypeAlias
 
 from cfb_analytics import paths
 from cfb_analytics.errors import AuthRequiredError, SourceError, UnknownLeagueError
@@ -36,6 +36,7 @@ RETRYABLE_STATUS = frozenset({408, 425, 429, 500, 502, 503, 504})
 # The Outlier client disambiguates by probing a known-good token; see
 # outlier.OutlierClient.fetch_schedule.
 _UNKNOWN_LEAGUE_STATUS = frozenset({404, 502})
+JsonPayload: TypeAlias = dict[str, Any] | list[Any]
 
 
 def current_mode() -> str:
@@ -55,6 +56,7 @@ class HttpClient:
     max_retries: int = 3
     cache_ttl_seconds: int = 300
     headers: dict[str, str] = field(default_factory=dict)
+    auth_error_hint: str = "the saved session is missing, expired, or lacks access"
     cache_root: Path | None = None
     _sleep: Any = time.sleep
 
@@ -62,7 +64,7 @@ class HttpClient:
         root = self.cache_root or paths.cache_dir()
         return root / self.name / f"{cache_key(url)}.json"
 
-    def _read_cache(self, url: str, *, ignore_ttl: bool = False) -> dict[str, Any] | None:
+    def _read_cache(self, url: str, *, ignore_ttl: bool = False) -> JsonPayload | None:
         path = self._cache_path(url)
         if not path.exists():
             return None
@@ -75,9 +77,9 @@ class HttpClient:
             if age > self.cache_ttl_seconds:
                 return None
         payload = envelope.get("payload")
-        return payload if isinstance(payload, dict) else None
+        return payload if isinstance(payload, (dict, list)) else None
 
-    def _write_cache(self, url: str, payload: dict[str, Any]) -> None:
+    def _write_cache(self, url: str, payload: JsonPayload) -> None:
         path = self._cache_path(url)
         path.parent.mkdir(parents=True, exist_ok=True)
         envelope = {"url": url, "fetched_at": time.time(), "payload": payload}
@@ -88,7 +90,13 @@ class HttpClient:
     def _backoff(self, attempt: int) -> float:
         return min(8.0, 0.5 * (2 ** (attempt - 1))) * (0.5 + random.random() / 2)
 
-    def get_json(self, url: str) -> dict[str, Any]:
+    def get_payload(self, url: str) -> JsonPayload:
+        """Return a cached JSON object or array.
+
+        Outlier uses object envelopes while CollegeFootballData returns
+        top-level arrays. Scalars and null are refused because accepting them
+        would turn an upstream schema change into an apparently valid fetch.
+        """
         mode = current_mode()
 
         if mode == "replay":
@@ -114,16 +122,18 @@ class HttpClient:
                 if body[:2] == b"\x1f\x8b":
                     body = gzip.decompress(body)
                 payload = json.loads(body.decode("utf-8"))
-                if not isinstance(payload, dict):
-                    raise SourceError(f"[{self.name}] expected a JSON object from {url}")
+                if not isinstance(payload, (dict, list)):
+                    raise SourceError(
+                        f"[{self.name}] expected a JSON object or array from {url}"
+                    )
                 self._write_cache(url, payload)
                 return payload
             except urllib.error.HTTPError as exc:
                 last_detail = f"HTTP {exc.code}"
                 if exc.code in (401, 403):
                     raise AuthRequiredError(
-                        f"[{self.name}] {last_detail} for {url} - the saved session is "
-                        "missing, expired, or lacks access to this endpoint."
+                        f"[{self.name}] {last_detail} for {url} - {self.auth_error_hint} "
+                        "to this endpoint."
                     ) from exc
                 if exc.code in _UNKNOWN_LEAGUE_STATUS and attempt >= self.max_retries:
                     raise UnknownLeagueError(f"[{self.name}] {last_detail} for {url}") from exc
@@ -140,3 +150,9 @@ class HttpClient:
             self._sleep(self._backoff(attempt))
 
         raise SourceError(f"[{self.name}] failed to fetch {url}: {last_detail}")
+
+    def get_json(self, url: str) -> dict[str, Any]:
+        payload = self.get_payload(url)
+        if not isinstance(payload, dict):
+            raise SourceError(f"[{self.name}] expected a JSON object from {url}")
+        return payload

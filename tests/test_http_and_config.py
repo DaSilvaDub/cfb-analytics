@@ -43,6 +43,12 @@ class TestReplayMode:
         _seed_cache(client, "https://x/y", {"ok": True}, fetched_at=0.0)
         assert client.get_json("https://x/y") == {"ok": True}
 
+    def test_payload_mode_serves_cached_arrays(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("CFB_HTTP_MODE", "replay")
+        client = _client(tmp_path)
+        _seed_cache(client, "https://x/list", [{"ok": True}])
+        assert client.get_payload("https://x/list") == [{"ok": True}]
+
 
 class TestLiveMode:
     def test_expired_cache_is_refetched(self, tmp_path, monkeypatch):

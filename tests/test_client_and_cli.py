@@ -4,6 +4,7 @@ import pytest
 
 from cfb_analytics import cli, paths
 from cfb_analytics.errors import AuthRequiredError, UnknownLeagueError
+from cfb_analytics.sources.cfbd import CFBDClient
 from cfb_analytics.sources.outlier import LEAGUE_TOKEN, OutlierClient
 
 
@@ -24,6 +25,9 @@ class StubHttp:
             if fragment in url:
                 return payload
         raise UnknownLeagueError(f"no stub for {url}")
+
+    def get_payload(self, url):
+        return self.get_json(url)
 
 
 class TestOutlierClientRouting:
@@ -82,7 +86,7 @@ class TestCliParser:
         actions = [a for a in parser._actions if hasattr(a, "choices") and a.choices]
         commands = set(actions[0].choices)
         assert commands == {"init-db", "doctor", "schedule", "status", "ingest",
-                            "coverage", "market", "board"}
+                            "backfill-cfbd", "coverage", "market", "board"}
 
     def test_unimplemented_phases_are_absent(self):
         """`--help` must not advertise anything that does not run."""
@@ -99,7 +103,7 @@ class TestCliCommands:
     def test_init_db_creates_the_store_and_reports_what_it_applied(self, capsys):
         assert cli.main(["init-db"]) == 0
         assert paths.database_path().exists()
-        assert "applied migrations [1, 2, 3]" in capsys.readouterr().out
+        assert "applied migrations [1, 2, 3, 4]" in capsys.readouterr().out
 
     def test_init_db_is_idempotent(self, capsys):
         cli.main(["init-db"])
@@ -158,3 +162,22 @@ class TestCliCommands:
         monkeypatch.setattr(paths, "outlier_session_dir", lambda: paths.data_dir() / "missing")
         assert cli.main(["schedule"]) == 2
         assert "error:" in capsys.readouterr().err
+
+    def test_backfill_rejects_reverse_year_range_before_loading_credentials(self, capsys):
+        assert cli.main(
+            ["backfill-cfbd", "--start-year", "2025", "--end-year", "2024"]
+        ) == 2
+        assert "start-year" in capsys.readouterr().err
+
+
+class TestCfbdClient:
+    def test_games_use_query_parameters_from_the_docs(self):
+        http = StubHttp({"/games": []})
+        CFBDClient(http=http).fetch_games(2024, season_type="both", classification="fbs")
+        assert "/games?year=2024&seasonType=both&classification=fbs" in http.calls[0]
+
+    def test_teams_and_venues_are_array_endpoints(self):
+        http = StubHttp({"/teams/fbs": [{"id": 1, "school": "Ohio State", "location": {}}],
+                         "/venues": [{"id": 1}]})
+        assert len(CFBDClient(http=http).fetch_fbs_teams(2024)) == 1
+        assert len(CFBDClient(http=http).fetch_venues()) == 1
