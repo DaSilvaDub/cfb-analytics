@@ -27,14 +27,15 @@ class TestMigrations:
         names = {r["name"] for r in conn.execute(
             "SELECT name FROM sqlite_master WHERE type='table'")}
         assert {"runs", "teams", "games", "odds_snapshots", "availability",
-                "source_health", "schema_migrations"} <= names
+                "source_health", "schema_migrations", "team_seasons",
+                "team_aliases"} <= names
 
     def test_is_idempotent(self, conn):
         assert db.migrate(conn) == []
 
     def test_records_applied_version(self, conn):
         versions = {r["version"] for r in conn.execute("SELECT version FROM schema_migrations")}
-        assert versions == {1, 2, 3}
+        assert versions == {1, 2, 3, 4}
 
     def test_foreign_keys_are_enforced(self, conn):
         import sqlite3
@@ -147,7 +148,7 @@ class TestMigration002Backfill:
         )
         conn.commit()
 
-        assert migrate(conn) == [2, 3]
+        assert migrate(conn) == [2, 3, 4]
 
         row = conn.execute(
             "SELECT football_date FROM games WHERE game_id = 'late'").fetchone()

@@ -85,6 +85,26 @@ def _cmd_ingest(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_backfill_cfbd(args: argparse.Namespace) -> int:
+    from cfb_analytics.errors import SchemaError
+    from cfb_analytics.ingest.cfbd_ingest import backfill_years
+    from cfb_analytics.sources.cfbd import CFBDClient
+
+    if args.start_year > args.end_year:
+        raise SchemaError("start-year must be less than or equal to end-year")
+    paths.ensure_dirs()
+    client = CFBDClient()
+    with db.open_db() as conn:
+        summary = backfill_years(
+            conn,
+            client,
+            start_year=args.start_year,
+            end_year=args.end_year,
+        )
+    print(summary.as_text())
+    return 0
+
+
 def _cmd_schedule(args: argparse.Namespace) -> int:
     from collections import Counter
     from datetime import datetime
@@ -129,7 +149,10 @@ def _cmd_status(args: argparse.Namespace) -> int:
         print("No database yet. Run: cfb-analytics init-db")
         return 1
     with db.open_db() as conn:
-        for table in ("games", "teams", "odds_snapshots", "availability", "runs"):
+        for table in (
+            "games", "teams", "team_seasons", "team_aliases", "venues",
+            "odds_snapshots", "availability", "runs",
+        ):
             count = conn.execute(f"SELECT COUNT(*) AS n FROM {table}").fetchone()["n"]
             print(f"  {table:<16} {count:>8}")
         row = conn.execute(
@@ -285,6 +308,11 @@ def build_parser() -> argparse.ArgumentParser:
     ingest.add_argument("--no-injuries", action="store_true", help="skip the injury feed")
     ingest.add_argument("--limit", type=int, default=None, help="cap events (for smoke tests)")
     ingest.set_defaults(func=_cmd_ingest)
+
+    cfbd = sub.add_parser("backfill-cfbd", help="backfill historical FBS teams, venues, and games")
+    cfbd.add_argument("--start-year", type=int, required=True, help="first season year, inclusive")
+    cfbd.add_argument("--end-year", type=int, required=True, help="last season year, inclusive")
+    cfbd.set_defaults(func=_cmd_backfill_cfbd)
 
     market_cmd = sub.add_parser("market", help="compute vig-free consensus from stored odds")
     market_cmd.add_argument("--date", required=True, help="slate date, YYYY-MM-DD")

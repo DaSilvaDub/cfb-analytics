@@ -212,6 +212,30 @@ CREATE TABLE IF NOT EXISTS line_movement (
 );
 """
 
+MIGRATION_004 = """
+-- Historical affiliation must be append-only by season; overwriting `teams`
+-- would erase conference changes across the backfill window.
+CREATE TABLE IF NOT EXISTS team_seasons (
+    team_id        TEXT NOT NULL REFERENCES teams(team_id),
+    season         INTEGER NOT NULL,
+    source         TEXT NOT NULL,
+    conference     TEXT,
+    division       TEXT,
+    classification TEXT,
+    venue_id       TEXT REFERENCES venues(venue_id),
+    PRIMARY KEY (team_id, season, source)
+);
+CREATE INDEX IF NOT EXISTS idx_team_seasons_season ON team_seasons(season);
+
+CREATE TABLE IF NOT EXISTS team_aliases (
+    team_id    TEXT NOT NULL REFERENCES teams(team_id),
+    source     TEXT NOT NULL,
+    alias      TEXT NOT NULL,
+    alias_type TEXT NOT NULL,
+    PRIMARY KEY (team_id, source, alias)
+);
+"""
+
 
 # (version, name, SQL, optional Python step run after the SQL in the same transaction).
 # The Python hook exists because some backfills need the IANA time-zone database,
@@ -220,6 +244,7 @@ MIGRATIONS: tuple[tuple[int, str, str, Callable[[sqlite3.Connection], None] | No
     (1, "outlier_ingestion_core", MIGRATION_001, None),
     (2, "games_football_date", MIGRATION_002, _backfill_football_date),
     (3, "market_consensus_and_movement", MIGRATION_003, None),
+    (4, "cfbd_team_history", MIGRATION_004, None),
 )
 
 

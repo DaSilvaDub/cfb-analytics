@@ -20,7 +20,7 @@ Design of record: `docs/plans/2026-08-31-ncaaf-analytics-pipeline.md` in the
 |---|---|---|
 | 0 | Scaffold, config, SQLite migrations, CI | **done** |
 | 1 | Outlier ingestion (schedule, gameline odds, injuries) | **done** |
-| 1 | CFBD backfill 2014–2025 | **blocked** — needs `CFBD_API_KEY` |
+| 1 | CFBD teams/venues/games backfill | **implemented**; live 2014–2025 load needs `CFBD_API_KEY` |
 | 2a | Leakage guard, devig (3 methods), market consensus, line movement | **done** |
 | 2b–9 | Fundamentals features, models, backtest, totals, parlay, reporting | blocked on CFBD |
 
@@ -50,6 +50,7 @@ included in an exception message.
 ```bash
 python -m cfb_analytics.cli schedule                    # available slate dates
 python -m cfb_analytics.cli ingest --date 2026-09-05    # one slate
+python -m cfb_analytics.cli backfill-cfbd --start-year 2014 --end-year 2025
 python -m cfb_analytics.cli status                      # row counts, last run
 python -m cfb_analytics.cli coverage                    # books per capture
 ```
