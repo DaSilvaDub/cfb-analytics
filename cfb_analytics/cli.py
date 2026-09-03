@@ -36,8 +36,10 @@ def _cmd_doctor(args: argparse.Namespace) -> int:
 
     print("cfb-analytics doctor\n")
     print(f"  data dir      : {paths.data_dir()}")
-    print(f"  database      : {paths.database_path()} "
-          f"({'present' if paths.database_path().exists() else 'not created'})")
+    print(
+        f"  database      : {paths.database_path()} "
+        f"({'present' if paths.database_path().exists() else 'not created'})"
+    )
     mode = "SHADOW - no CORE tier emitted" if config.is_shadow_mode() else "PROMOTED"
     print(f"  mode          : {mode}")
 
@@ -80,8 +82,10 @@ def _cmd_ingest(args: argparse.Namespace) -> int:
         )
     print(summary.as_text())
     if summary.events_seen == 0:
-        print("\nNo events on that date. Outlier carries a forward schedule only; "
-              "use `cfb-analytics schedule` to list available dates.")
+        print(
+            "\nNo events on that date. Outlier carries a forward schedule only; "
+            "use `cfb-analytics schedule` to list available dates."
+        )
     return 0
 
 
@@ -96,6 +100,26 @@ def _cmd_backfill_cfbd(args: argparse.Namespace) -> int:
     client = CFBDClient()
     with db.open_db() as conn:
         summary = backfill_years(
+            conn,
+            client,
+            start_year=args.start_year,
+            end_year=args.end_year,
+        )
+    print(summary.as_text())
+    return 0
+
+
+def _cmd_backfill_fundamentals(args: argparse.Namespace) -> int:
+    from cfb_analytics.errors import SchemaError
+    from cfb_analytics.ingest.cfbd_fundamentals import backfill_fundamentals
+    from cfb_analytics.sources.cfbd import CFBDClient
+
+    if args.start_year > args.end_year:
+        raise SchemaError("start-year must be less than or equal to end-year")
+    paths.ensure_dirs()
+    client = CFBDClient()
+    with db.open_db() as conn:
+        summary = backfill_fundamentals(
             conn,
             client,
             start_year=args.start_year,
@@ -150,18 +174,30 @@ def _cmd_status(args: argparse.Namespace) -> int:
         return 1
     with db.open_db() as conn:
         for table in (
-            "games", "teams", "team_seasons", "team_aliases", "venues",
-            "odds_snapshots", "availability", "runs",
+            "games",
+            "teams",
+            "team_seasons",
+            "team_aliases",
+            "venues",
+            "team_ratings",
+            "team_season_advanced",
+            "returning_production",
+            "team_talent",
+            "odds_snapshots",
+            "availability",
+            "runs",
         ):
             count = conn.execute(f"SELECT COUNT(*) AS n FROM {table}").fetchone()["n"]
-            print(f"  {table:<16} {count:>8}")
+            print(f"  {table:<25} {count:>8}")
         row = conn.execute(
             "SELECT command, started_utc, status, rows_written FROM runs "
             "ORDER BY started_utc DESC LIMIT 1"
         ).fetchone()
         if row:
-            print(f"\n  last run: {row['command']} at {row['started_utc']} "
-                  f"-> {row['status']} ({row['rows_written']} rows)")
+            print(
+                f"\n  last run: {row['command']} at {row['started_utc']} "
+                f"-> {row['status']} ({row['rows_written']} rows)"
+            )
     return 0
 
 
@@ -197,32 +233,37 @@ def _cmd_coverage(args: argparse.Namespace) -> int:
             print("No odds captured yet. Run: cfb-analytics ingest --date <YYYY-MM-DD>")
             return 0
 
-        print(f"{'slate':<12} {'captured (UTC)':<21} {'d-to-kick':>9} {'games':>5} "
-              f"{'books':>5} {'prices':>7} {'px/game':>8}  sharp")
+        print(
+            f"{'slate':<12} {'captured (UTC)':<21} {'d-to-kick':>9} {'games':>5} "
+            f"{'books':>5} {'prices':>7} {'px/game':>8}  sharp"
+        )
         any_sharp = False
         for row in rows:
             present = sorted(sharp & set((row["book_list"] or "").split(",")))
             any_sharp = any_sharp or bool(present)
             lead = (
-                datetime.fromisoformat(row["first_kick"])
-                - datetime.fromisoformat(row["captured"])
+                datetime.fromisoformat(row["first_kick"]) - datetime.fromisoformat(row["captured"])
             ).days
-            print(f"{row['slate']:<12} {row['captured'][:19]:<21} {lead:>9} "
-                  f"{row['games']:>5} {row['books']:>5} {row['prices']:>7} "
-                  f"{row['prices'] // max(row['games'], 1):>8}  "
-                  f"{', '.join(present) if present else 'NONE'}")
+            print(
+                f"{row['slate']:<12} {row['captured'][:19]:<21} {lead:>9} "
+                f"{row['games']:>5} {row['books']:>5} {row['prices']:>7} "
+                f"{row['prices'] // max(row['games'], 1):>8}  "
+                f"{', '.join(present) if present else 'NONE'}"
+            )
 
         all_books = conn.execute(
-            "SELECT DISTINCT book FROM odds_snapshots ORDER BY book").fetchall()
-        print(f"\n  books ever seen ({len(all_books)}): "
-              f"{', '.join(r['book'] for r in all_books)}")
+            "SELECT DISTINCT book FROM odds_snapshots ORDER BY book"
+        ).fetchall()
+        print(f"\n  books ever seen ({len(all_books)}): {', '.join(r['book'] for r in all_books)}")
         print(f"  sharp set tracked: {', '.join(sorted(sharp))}")
         if not any_sharp:
-            print("\n  No sharp book has appeared in ANY capture. The sharp-anchor devig is "
-                  "not currently supported by this feed:\n"
-                  "  consensus must fall back to all books, rows carry `no_sharp_anchor`, "
-                  "and CLV must be measured\n  against best-available price rather than a "
-                  "Pinnacle close.")
+            print(
+                "\n  No sharp book has appeared in ANY capture. The sharp-anchor devig is "
+                "not currently supported by this feed:\n"
+                "  consensus must fall back to all books, rows carry `no_sharp_anchor`, "
+                "and CLV must be measured\n  against best-available price rather than a "
+                "Pinnacle close."
+            )
     return 0
 
 
@@ -234,8 +275,7 @@ def _cmd_market(args: argparse.Namespace) -> int:
         summary = build_market_for_slate(conn, args.date)
     print(summary.as_text())
     if summary.games == 0:
-        print("\nNo games stored for that slate. Run: cfb-analytics ingest --date "
-              f"{args.date}")
+        print(f"\nNo games stored for that slate. Run: cfb-analytics ingest --date {args.date}")
     return 0
 
 
@@ -260,14 +300,20 @@ def _cmd_board(args: argparse.Namespace) -> int:
             (args.date,),
         ).fetchall()
     if not rows:
-        print(f"No moneyline consensus for {args.date}. Run: cfb-analytics market "
-              f"--date {args.date}")
+        print(
+            f"No moneyline consensus for {args.date}. Run: cfb-analytics market --date {args.date}"
+        )
         return 0
 
-    print(f"MONEYLINE BOARD - {args.date}   [{config.SHADOW_STAMP}]"
-          if config.is_shadow_mode() else f"MONEYLINE BOARD - {args.date}")
-    print(f"\n{'team':<7} {'opp':<7} {'price':>7} {'best':>7} {'book':<11} "
-          f"{'fair%':>7} {'spread':>7} {'hold':>6} {'bk':>3}  flags")
+    print(
+        f"MONEYLINE BOARD - {args.date}   [{config.SHADOW_STAMP}]"
+        if config.is_shadow_mode()
+        else f"MONEYLINE BOARD - {args.date}"
+    )
+    print(
+        f"\n{'team':<7} {'opp':<7} {'price':>7} {'best':>7} {'book':<11} "
+        f"{'fair%':>7} {'spread':>7} {'hold':>6} {'bk':>3}  flags"
+    )
     for row in rows:
         prob = row["prob_shin"] or row["prob_multiplicative"]
         if prob is None or prob < args.min_prob:
@@ -275,13 +321,17 @@ def _cmd_board(args: argparse.Namespace) -> int:
         team = row["home"] if row["side"] == "HOME" else row["away"]
         opp = row["away"] if row["side"] == "HOME" else row["home"]
         flags = ",".join(json.loads(row["flags"] or "[]"))
-        print(f"{team or '?':<7} {opp or '?':<7} {row['consensus_price']:>7} "
-              f"{row['best_price']:>7} {(row['best_book'] or ''):<11} "
-              f"{prob * 100:>6.1f}% {(row['prob_spread'] or 0) * 100:>6.2f}pp "
-              f"{(row['hold'] or 0) * 100:>5.1f}% {row['n_books']:>3}  {flags}")
-    print("\nfair% is the vig-free market probability (Shin). spread is the "
-          "disagreement\nbetween devig methods - wide means the fair number is "
-          "method-dependent.")
+        print(
+            f"{team or '?':<7} {opp or '?':<7} {row['consensus_price']:>7} "
+            f"{row['best_price']:>7} {(row['best_book'] or ''):<11} "
+            f"{prob * 100:>6.1f}% {(row['prob_spread'] or 0) * 100:>6.2f}pp "
+            f"{(row['hold'] or 0) * 100:>5.1f}% {row['n_books']:>3}  {flags}"
+        )
+    print(
+        "\nfair% is the vig-free market probability (Shin). spread is the "
+        "disagreement\nbetween devig methods - wide means the fair number is "
+        "method-dependent."
+    )
     if config.is_shadow_mode():
         print("This is the MARKET's view only. No model probability or edge exists yet.")
     return 0
@@ -292,11 +342,14 @@ def build_parser() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest="command", required=True)
 
     sub.add_parser("init-db", help="create or migrate the SQLite store").set_defaults(
-        func=_cmd_init_db)
+        func=_cmd_init_db
+    )
     sub.add_parser("doctor", help="report source and credential readiness").set_defaults(
-        func=_cmd_doctor)
+        func=_cmd_doctor
+    )
     sub.add_parser("schedule", help="list available slate dates from Outlier").set_defaults(
-        func=_cmd_schedule)
+        func=_cmd_schedule
+    )
     sub.add_parser("status", help="row counts and last run").set_defaults(func=_cmd_status)
     sub.add_parser(
         "coverage", help="book coverage per capture, and whether sharp books appear"
@@ -314,14 +367,30 @@ def build_parser() -> argparse.ArgumentParser:
     cfbd.add_argument("--end-year", type=int, required=True, help="last season year, inclusive")
     cfbd.set_defaults(func=_cmd_backfill_cfbd)
 
+    fundamentals = sub.add_parser(
+        "backfill-fundamentals",
+        help="backfill CFBD SP+, SRS, Elo, advanced stats, returning production, and talent",
+    )
+    fundamentals.add_argument(
+        "--start-year", type=int, required=True, help="first season year, inclusive"
+    )
+    fundamentals.add_argument(
+        "--end-year", type=int, required=True, help="last season year, inclusive"
+    )
+    fundamentals.set_defaults(func=_cmd_backfill_fundamentals)
+
     market_cmd = sub.add_parser("market", help="compute vig-free consensus from stored odds")
     market_cmd.add_argument("--date", required=True, help="slate date, YYYY-MM-DD")
     market_cmd.set_defaults(func=_cmd_market)
 
     board = sub.add_parser("board", help="moneyline board for a slate")
     board.add_argument("--date", required=True, help="slate date, YYYY-MM-DD")
-    board.add_argument("--min-prob", type=float, default=0.0,
-                       help="only show sides at or above this fair probability")
+    board.add_argument(
+        "--min-prob",
+        type=float,
+        default=0.0,
+        help="only show sides at or above this fair probability",
+    )
     board.set_defaults(func=_cmd_board)
 
     return parser

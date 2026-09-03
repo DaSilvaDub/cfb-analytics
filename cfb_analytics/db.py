@@ -236,6 +236,123 @@ CREATE TABLE IF NOT EXISTS team_aliases (
 );
 """
 
+MIGRATION_005 = """
+-- CFBD fundamentals. `snapshot_scope` is a blocking leakage contract:
+-- SP+ and SRS have no week parameter and are season-final only, while Elo is
+-- captured at an explicit post-week cutoff. Consumers must never treat a
+-- season-final row as knowable before a game in that same season.
+CREATE TABLE IF NOT EXISTS team_ratings (
+    snapshot_id      TEXT PRIMARY KEY,
+    season          INTEGER NOT NULL,
+    period          TEXT NOT NULL,
+    week            INTEGER,
+    season_type     TEXT,
+    team_id         TEXT NOT NULL REFERENCES teams(team_id),
+    source          TEXT NOT NULL CHECK (source IN ('sp', 'srs', 'elo_cfbd')),
+    snapshot_scope  TEXT NOT NULL CHECK (snapshot_scope IN ('weekly', 'season_final')),
+    provenance_mode TEXT NOT NULL DEFAULT 'reconstructed'
+        CHECK (provenance_mode IN ('reconstructed', 'observed')),
+    as_of_utc       TEXT NOT NULL,
+    ingested_utc    TEXT NOT NULL,
+    rating          REAL,
+    ranking         INTEGER,
+    off_rating      REAL,
+    def_rating      REAL,
+    st_rating       REAL,
+    sos             REAL,
+    second_order_wins REAL,
+    CHECK ((snapshot_scope = 'weekly' AND week IS NOT NULL AND season_type IS NOT NULL
+            AND period = printf('%s:week:%02d', season_type, week))
+        OR (snapshot_scope = 'season_final' AND week IS NULL AND season_type IS NULL
+            AND period = 'season_final'))
+);
+CREATE INDEX IF NOT EXISTS idx_team_ratings_asof
+    ON team_ratings(team_id, source, as_of_utc);
+
+-- One cumulative through-week snapshot per side. CFBD calls PPA "predicted
+-- points added"; it is stored as PPA rather than relabelled as EPA.
+CREATE TABLE IF NOT EXISTS team_season_advanced (
+    snapshot_id      TEXT PRIMARY KEY,
+    season          INTEGER NOT NULL,
+    week            INTEGER NOT NULL,
+    team_id         TEXT NOT NULL REFERENCES teams(team_id),
+    side            TEXT NOT NULL CHECK (side IN ('off', 'def')),
+    as_of_utc       TEXT NOT NULL,
+    ingested_utc    TEXT NOT NULL,
+    provenance_mode TEXT NOT NULL DEFAULT 'reconstructed'
+        CHECK (provenance_mode IN ('reconstructed', 'observed')),
+    garbage_excluded INTEGER NOT NULL CHECK (garbage_excluded IN (0, 1)),
+    plays           INTEGER,
+    drives          INTEGER,
+    ppa             REAL,
+    total_ppa       REAL,
+    success_rate    REAL,
+    explosiveness   REAL,
+    points_per_opportunity REAL,
+    havoc           REAL,
+    line_yards      REAL,
+    stuff_rate      REAL,
+    passing_ppa     REAL,
+    rushing_ppa     REAL,
+    passing_success_rate REAL,
+    rushing_success_rate REAL
+);
+CREATE INDEX IF NOT EXISTS idx_team_advanced_asof
+    ON team_season_advanced(team_id, as_of_utc);
+
+CREATE TABLE IF NOT EXISTS returning_production (
+    snapshot_id      TEXT PRIMARY KEY,
+    season          INTEGER NOT NULL,
+    team_id         TEXT NOT NULL REFERENCES teams(team_id),
+    availability_class TEXT NOT NULL DEFAULT 'preseason'
+        CHECK (availability_class = 'preseason'),
+    ingested_utc    TEXT NOT NULL,
+    total_ppa       REAL,
+    passing_ppa     REAL,
+    receiving_ppa   REAL,
+    rushing_ppa     REAL,
+    percent_ppa     REAL,
+    percent_passing_ppa REAL,
+    percent_receiving_ppa REAL,
+    percent_rushing_ppa REAL,
+    usage           REAL,
+    passing_usage   REAL,
+    receiving_usage REAL,
+    rushing_usage   REAL
+);
+CREATE INDEX IF NOT EXISTS idx_returning_production_season
+    ON returning_production(season, team_id, ingested_utc);
+
+CREATE TABLE IF NOT EXISTS team_talent (
+    snapshot_id      TEXT PRIMARY KEY,
+    season          INTEGER NOT NULL,
+    team_id         TEXT NOT NULL REFERENCES teams(team_id),
+    availability_class TEXT NOT NULL DEFAULT 'preseason'
+        CHECK (availability_class = 'preseason'),
+    ingested_utc    TEXT NOT NULL,
+    talent_composite REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_team_talent_season
+    ON team_talent(season, team_id, ingested_utc);
+"""
+
+MIGRATION_006 = """
+CREATE TABLE IF NOT EXISTS feature_rows (
+    game_id            TEXT NOT NULL REFERENCES games(game_id),
+    team_id            TEXT NOT NULL REFERENCES teams(team_id),
+    feature_key        TEXT NOT NULL,
+    feature_value      REAL NOT NULL,
+    source             TEXT NOT NULL,
+    availability_class TEXT NOT NULL CHECK (availability_class IN ('preseason', 'weekly', 'pregame')),
+    source_season      INTEGER,
+    source_week        INTEGER,
+    source_detail      TEXT,
+    generated_utc      TEXT NOT NULL,
+    PRIMARY KEY (game_id, team_id, feature_key, source)
+);
+CREATE INDEX IF NOT EXISTS idx_feature_rows_game ON feature_rows(game_id, team_id);
+"""
+
 
 # (version, name, SQL, optional Python step run after the SQL in the same transaction).
 # The Python hook exists because some backfills need the IANA time-zone database,
@@ -245,6 +362,8 @@ MIGRATIONS: tuple[tuple[int, str, str, Callable[[sqlite3.Connection], None] | No
     (2, "games_football_date", MIGRATION_002, _backfill_football_date),
     (3, "market_consensus_and_movement", MIGRATION_003, None),
     (4, "cfbd_team_history", MIGRATION_004, None),
+    (5, "cfbd_fundamentals", MIGRATION_005, None),
+    (6, "feature_rows", MIGRATION_006, None),
 )
 
 
