@@ -61,7 +61,8 @@ def _cmd_doctor(args: argparse.Namespace) -> int:
         print("    cfbd      : OK   (key configured)")
     else:
         print(f"    cfbd      : BLOCKED - set {config.CFBD_ENV_VAR}. {config.CFBD_HOW}")
-    print("    espn      : not implemented (needed for starting-QB confirmation)")
+    print("    espn      : dropped - ESPN publishes no CFB depth chart "
+          "(see sources/__init__)")
     print("    weather   : OK   (Open-Meteo; no credential required)")
     return 0
 

@@ -22,7 +22,13 @@ Design of record: `docs/plans/2026-08-31-ncaaf-analytics-pipeline.md` in the
 | 1 | Outlier ingestion (schedule, gameline odds, injuries) | **done** |
 | 1 | CFBD teams/venues/games backfill | **implemented**; live 2014–2025 load needs `CFBD_API_KEY` |
 | 2a | Leakage guard, devig (3 methods), market consensus, line movement | **done** |
+| 2a | Weather (Open-Meteo), venue geolocation | **done** |
 | 2b–9 | Fundamentals features, models, backtest, totals, parlay, reporting | in progress |
+
+ESPN was evaluated as a starting-QB source and **dropped**: it publishes no CFB
+depth chart (`/teams/{id}/depthchart` returns `{}`; core-API variants 400/404),
+and its roster carries no `starter` field. CFBD covers the rest better. No free
+source confirms a starting quarterback, so that remains a hard CORE blocker.
 
 ### Scheduled capture
 
