@@ -355,6 +355,68 @@ CREATE INDEX IF NOT EXISTS idx_feature_rows_game ON feature_rows(game_id, team_i
 """
 
 
+MIGRATION_007 = """
+-- Games link to venues by ID, not by name. Seven venue names are shared by
+-- more than one venue ("Memorial Stadium" x3, "Husky Stadium" x3), so a
+-- name join returned 10,973 rows for 10,465 games and would have attached
+-- the wrong city's weather to those games.
+ALTER TABLE games ADD COLUMN venue_id TEXT REFERENCES venues(venue_id);
+CREATE INDEX IF NOT EXISTS idx_games_venue ON games(venue_id);
+
+-- Append-only weather observations, one row per (game, capture).
+-- Forecasts move, so a later capture is a new row and the backtest can ask
+-- what the forecast said at any point before kickoff.
+CREATE TABLE IF NOT EXISTS weather (
+    game_id        TEXT NOT NULL REFERENCES games(game_id),
+    as_of_utc      TEXT NOT NULL,
+    hours_to_kick  REAL,
+    temp_c         REAL,
+    wind_kph       REAL,
+    wind_gust_kph  REAL,
+    wind_dir_deg   REAL,
+    precip_mm      REAL,
+    precip_prob    REAL,
+    humidity       REAL,
+    -- 1 = forecast (may still change), 0 = reanalysis of what actually happened.
+    is_forecast    INTEGER NOT NULL,
+    -- Indoor games have no weather. Recorded explicitly rather than left NULL,
+    -- so "roof" is distinguishable from "we failed to fetch".
+    is_indoor      INTEGER NOT NULL DEFAULT 0,
+    source         TEXT NOT NULL,
+    PRIMARY KEY (game_id, as_of_utc)
+);
+CREATE INDEX IF NOT EXISTS idx_weather_game ON weather(game_id);
+"""
+
+
+def _backfill_game_venue_id(conn: sqlite3.Connection) -> None:
+    """Resolve venue_id from venue_name -- but only where the name is unique.
+
+    Ambiguous names are left NULL rather than resolved to an arbitrary match.
+    A wrong venue means a wrong latitude, which means a confident forecast for
+    the wrong city; a NULL is honest and the weather ingest skips it. Rows
+    ingested after this migration carry CFBD's venueId directly and need no
+    guessing at all.
+    """
+    unambiguous = conn.execute(
+        """SELECT name, MIN(venue_id) AS venue_id FROM venues
+           WHERE name IS NOT NULL
+           GROUP BY name HAVING COUNT(*) = 1"""
+    ).fetchall()
+    lookup = {str(row["name"]): str(row["venue_id"]) for row in unambiguous}
+    if not lookup:
+        return
+    rows = conn.execute(
+        "SELECT game_id, venue_name FROM games WHERE venue_id IS NULL AND venue_name IS NOT NULL"
+    ).fetchall()
+    updates = [
+        (lookup[str(row["venue_name"])], row["game_id"])
+        for row in rows
+        if str(row["venue_name"]) in lookup
+    ]
+    conn.executemany("UPDATE games SET venue_id = ? WHERE game_id = ?", updates)
+
+
 # (version, name, SQL, optional Python step run after the SQL in the same transaction).
 # The Python hook exists because some backfills need the IANA time-zone database,
 # which SQLite does not have.
@@ -365,6 +427,7 @@ MIGRATIONS: tuple[tuple[int, str, str, Callable[[sqlite3.Connection], None] | No
     (4, "cfbd_team_history", MIGRATION_004, None),
     (5, "cfbd_fundamentals", MIGRATION_005, None),
     (6, "feature_rows", MIGRATION_006, None),
+    (7, "game_venue_id_and_weather", MIGRATION_007, _backfill_game_venue_id),
 )
 
 

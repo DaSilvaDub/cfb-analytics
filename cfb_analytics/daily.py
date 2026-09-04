@@ -45,6 +45,7 @@ class DailyReport:
     market_rows: int = 0
     movement_rows: int = 0
     games: int = 0
+    weather_rows: int = 0
     bootstrapped: bool = False
 
     @property
@@ -74,6 +75,7 @@ class DailyReport:
             "",
             f"  consensus rows   : {self.market_rows}",
             f"  movement rows    : {self.movement_rows}",
+            f"  weather rows     : {self.weather_rows}",
         ]
         if config.is_shadow_mode():
             lines.append(f"\n  {config.SHADOW_STAMP}")
@@ -191,11 +193,31 @@ def _run_outlier(conn: sqlite3.Connection, report: DailyReport, slates: list[str
         report.outcomes.append(SourceOutcome("outlier", "failed", str(exc)[:200]))
 
 
+def _run_weather(conn: sqlite3.Connection, report: DailyReport, slates: list[str]) -> None:
+    """Open-Meteo needs no credential, so this leg always runs."""
+    try:
+        from cfb_analytics.ingest.weather_ingest import ingest_weather
+
+        summary = ingest_weather(conn, slates)
+        detail = f"{summary.written} observations, {summary.indoor} indoor"
+        gaps = summary.no_venue + summary.no_coordinates + summary.outside_window
+        if gaps:
+            detail += (
+                f" ({summary.no_venue} no venue, {summary.no_coordinates} no lat/lon, "
+                f"{summary.outside_window} outside the forecast window)"
+            )
+        report.weather_rows = summary.written
+        report.outcomes.append(SourceOutcome("weather", "ok", detail, rows=summary.written))
+    except CfbAnalyticsError as exc:
+        report.outcomes.append(SourceOutcome("weather", "failed", str(exc)[:200]))
+
+
 def run_daily(
     conn: sqlite3.Connection,
     *,
     season: int | None = None,
     with_outlier: bool = True,
+    with_weather: bool = True,
     bootstrap: bool = True,
     now: datetime | None = None,
 ) -> DailyReport:
@@ -218,6 +240,9 @@ def run_daily(
             "outlier", "skipped", "no stored slates inside the operating window"))
 
     report.slates = slates_in_window(conn, now=moment)
+    if report.slates and with_weather:
+        _run_weather(conn, report, report.slates)
+
     if report.slates:
         from cfb_analytics.features.build_market import build_market_for_slate
 

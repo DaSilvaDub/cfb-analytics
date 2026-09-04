@@ -61,8 +61,8 @@ def _cmd_doctor(args: argparse.Namespace) -> int:
         print("    cfbd      : OK   (key configured)")
     else:
         print(f"    cfbd      : BLOCKED - set {config.CFBD_ENV_VAR}. {config.CFBD_HOW}")
-    print("    espn      : not implemented (Phase 2; needed for starting-QB confirmation)")
-    print("    weather   : not implemented (Phase 2)")
+    print("    espn      : not implemented (needed for starting-QB confirmation)")
+    print("    weather   : OK   (Open-Meteo; no credential required)")
     return 0
 
 
@@ -349,6 +349,7 @@ def _cmd_daily(args: argparse.Namespace) -> int:
             conn,
             season=args.season,
             with_outlier=not args.no_outlier,
+            with_weather=not args.no_weather,
             bootstrap=not args.no_bootstrap,
         )
     text = report.as_text()
@@ -425,6 +426,8 @@ def build_parser() -> argparse.ArgumentParser:
     daily.add_argument("--season", type=int, default=None, help="season year (default: current)")
     daily.add_argument("--no-outlier", action="store_true",
                        help="skip the Outlier leg (its token expires after 24h)")
+    daily.add_argument("--no-weather", action="store_true",
+                       help="skip the Open-Meteo leg")
     daily.add_argument("--no-bootstrap", action="store_true",
                        help="do not auto-load this season's schedule when the store is empty")
     daily.set_defaults(func=_cmd_daily)

@@ -95,22 +95,45 @@ def upsert_team(conn: sqlite3.Connection, team: dict[str, Any]) -> None:
     )
 
 
+def resolve_venue_id_by_name(conn: sqlite3.Connection, venue_name: str | None) -> str | None:
+    """Venue id for a name, but only when the name identifies one venue.
+
+    The Outlier feed supplies a venue NAME with no id. Seven names are shared
+    by more than one venue ("Memorial Stadium" x3, "Husky Stadium" x3), so an
+    ambiguous name resolves to None rather than to whichever row sorts first --
+    a wrong venue is a wrong latitude, and a wrong latitude is a confident
+    forecast for another city.
+    """
+    if not venue_name:
+        return None
+    rows = conn.execute(
+        "SELECT venue_id FROM venues WHERE name = ? LIMIT 2", (venue_name,)
+    ).fetchall()
+    return str(rows[0]["venue_id"]) if len(rows) == 1 else None
+
+
 def upsert_game(conn: sqlite3.Connection, game: dict[str, Any]) -> None:
     conn.execute(
         """INSERT INTO games (game_id, season, kickoff_utc, football_date, day_of_week,
-                              home_team_id, away_team_id, venue_name, network, status,
-                              source, ingested_utc)
+                              home_team_id, away_team_id, venue_name, venue_id, network,
+                              status, source, ingested_utc)
            VALUES (:game_id, :season, :kickoff_utc, :football_date, :day_of_week,
-                   :home_team_id, :away_team_id, :venue_name, :network, :status,
-                   'outlier', :ingested_utc)
+                   :home_team_id, :away_team_id, :venue_name, :venue_id, :network,
+                   :status, 'outlier', :ingested_utc)
            ON CONFLICT(game_id) DO UPDATE SET
              kickoff_utc = COALESCE(excluded.kickoff_utc, games.kickoff_utc),
              football_date = COALESCE(excluded.football_date, games.football_date),
              status      = COALESCE(excluded.status, games.status),
              network     = COALESCE(excluded.network, games.network),
              venue_name  = COALESCE(excluded.venue_name, games.venue_name),
+             venue_id    = COALESCE(excluded.venue_id, games.venue_id),
              ingested_utc = excluded.ingested_utc""",
-        {**game, "ingested_utc": utc_now_iso()},
+        {
+            **game,
+            "venue_id": game.get("venue_id")
+            or resolve_venue_id_by_name(conn, game.get("venue_name")),
+            "ingested_utc": utc_now_iso(),
+        },
     )
 
 
@@ -118,11 +141,11 @@ def upsert_cfbd_game(conn: sqlite3.Connection, game: dict[str, Any]) -> None:
     conn.execute(
         """INSERT INTO games (game_id, season, week, season_type, kickoff_utc, football_date,
                               neutral_site, conference_game, home_team_id, away_team_id,
-                              venue_name, status, home_points, away_points, completed,
+                              venue_name, venue_id, status, home_points, away_points, completed,
                               source, ingested_utc)
            VALUES (:game_id, :season, :week, :season_type, :kickoff_utc, :football_date,
                    :neutral_site, :conference_game, :home_team_id, :away_team_id,
-                   :venue_name, :status, :home_points, :away_points, :completed,
+                   :venue_name, :venue_id, :status, :home_points, :away_points, :completed,
                    :source, :ingested_utc)
            ON CONFLICT(game_id) DO UPDATE SET
              season = excluded.season,
@@ -135,6 +158,7 @@ def upsert_cfbd_game(conn: sqlite3.Connection, game: dict[str, Any]) -> None:
              home_team_id = excluded.home_team_id,
              away_team_id = excluded.away_team_id,
              venue_name = COALESCE(excluded.venue_name, games.venue_name),
+             venue_id = COALESCE(excluded.venue_id, games.venue_id),
              status = excluded.status,
              home_points = COALESCE(excluded.home_points, games.home_points),
              away_points = COALESCE(excluded.away_points, games.away_points),

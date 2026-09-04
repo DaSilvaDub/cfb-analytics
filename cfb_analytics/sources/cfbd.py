@@ -323,6 +323,12 @@ def parse_game(row: dict[str, Any]) -> dict[str, Any]:
         "home_team_id": f"cfbd:{_as_int(row.get('homeId'), 'homeId')}",
         "away_team_id": f"cfbd:{_as_int(row.get('awayId'), 'awayId')}",
         "venue_name": _string_or_none(row.get("venue")),
+        # Venue NAME is not unique -- "Memorial Stadium" belongs to three
+        # different venues and "Husky Stadium" to three more. Joining games
+        # to venues by name therefore duplicates rows (10,973 matches from
+        # 10,465 games) and would attach the wrong city's weather. CFBD
+        # supplies venueId on every game, so the id is the join key.
+        "venue_id": _string_or_none(row.get("venueId")),
         "status": "completed" if completed else "scheduled",
         "home_points": home_points,
         "away_points": away_points,
