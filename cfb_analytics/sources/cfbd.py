@@ -159,6 +159,21 @@ class CFBDClient:
             classification=classification,
         )
 
+    def fetch_lines(
+        self, year: int, *, week: int | None = None, season_type: str = "regular"
+    ) -> list[dict[str, Any]]:
+        """Betting lines per game per provider.
+
+        Each row carries BOTH the opening and the current number
+        (``spreadOpen``/``spread``, ``overUnderOpen``/``overUnder``), so
+        open-to-current movement is available from a single call rather than
+        by differencing captures taken days apart. That is what makes a daily
+        cloud job useful on day one instead of after a week of accumulation.
+        """
+        return self._get_rows(
+            "/lines", year=year, week=week, seasonType=season_type
+        )
+
     def fetch_sp(self, year: int) -> list[dict[str, Any]]:
         return self._get_rows("/ratings/sp", year=year)
 

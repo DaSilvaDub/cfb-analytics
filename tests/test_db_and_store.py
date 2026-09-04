@@ -34,8 +34,10 @@ class TestMigrations:
         assert db.migrate(conn) == []
 
     def test_records_applied_version(self, conn):
+        from cfb_analytics.db import MIGRATIONS
+
         versions = {r["version"] for r in conn.execute("SELECT version FROM schema_migrations")}
-        assert versions == {1, 2, 3, 4}
+        assert versions == {version for version, _, _, _ in MIGRATIONS}
 
     def test_foreign_keys_are_enforced(self, conn):
         import sqlite3
@@ -148,7 +150,7 @@ class TestMigration002Backfill:
         )
         conn.commit()
 
-        assert migrate(conn) == [2, 3, 4]
+        assert migrate(conn) == [v for v, _, _, _ in MIGRATIONS if v > 1]
 
         row = conn.execute(
             "SELECT football_date FROM games WHERE game_id = 'late'").fetchone()

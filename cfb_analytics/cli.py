@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 
 from cfb_analytics import config, db, paths
@@ -337,6 +338,28 @@ def _cmd_board(args: argparse.Namespace) -> int:
     return 0
 
 
+
+def _cmd_daily(args: argparse.Namespace) -> int:
+    """The scheduled job: ingest what is credentialed, then rebuild the market."""
+    from cfb_analytics.daily import run_daily
+
+    paths.ensure_dirs()
+    with db.open_db() as conn:
+        report = run_daily(conn, season=args.season, with_outlier=not args.no_outlier)
+    text = report.as_text()
+    print(text)
+
+    summary_path = os.getenv("GITHUB_STEP_SUMMARY")
+    if summary_path:
+        with open(summary_path, "a", encoding="utf-8") as handle:
+            fence = "```"
+            handle.write(f"## Daily ingest\n\n{fence}\n{text}\n{fence}\n")
+
+    # Exit non-zero only when EVERY source failed. A skipped source is an
+    # expected state, not a red build every morning.
+    return 0 if report.ok else 1
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="cfb-analytics", description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
@@ -392,6 +415,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="only show sides at or above this fair probability",
     )
     board.set_defaults(func=_cmd_board)
+
+    daily = sub.add_parser("daily", help="scheduled job: ingest available sources, rebuild market")
+    daily.add_argument("--season", type=int, default=None, help="season year (default: current)")
+    daily.add_argument("--no-outlier", action="store_true",
+                       help="skip the Outlier leg (its token expires after 24h)")
+    daily.set_defaults(func=_cmd_daily)
 
     return parser
 

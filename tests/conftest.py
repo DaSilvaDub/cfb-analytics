@@ -7,9 +7,17 @@ from cfb_analytics import db
 
 @pytest.fixture(autouse=True)
 def isolated_data_dir(tmp_path, monkeypatch):
-    """Never touch the real store or cache during tests."""
+    """Never touch the real store or cache during tests.
+
+    Credentials are blanked too. Several tests previously passed only because
+    the developer happened to have no CFBD key; once a key existed in `.env`
+    they started failing. Setting the variable to empty (rather than deleting
+    it) also stops `config.load_env` re-reading it out of `.env`, so the suite
+    behaves identically on every machine and in CI.
+    """
     monkeypatch.setenv("CFB_DATA_DIR", str(tmp_path / "data"))
     monkeypatch.setenv("CFB_HTTP_MODE", "replay")
+    monkeypatch.setenv("CFBD_API_KEY", "")
     yield tmp_path
 
 

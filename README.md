@@ -22,7 +22,24 @@ Design of record: `docs/plans/2026-08-31-ncaaf-analytics-pipeline.md` in the
 | 1 | Outlier ingestion (schedule, gameline odds, injuries) | **done** |
 | 1 | CFBD teams/venues/games backfill | **implemented**; live 2014–2025 load needs `CFBD_API_KEY` |
 | 2a | Leakage guard, devig (3 methods), market consensus, line movement | **done** |
-| 2b–9 | Fundamentals features, models, backtest, totals, parlay, reporting | blocked on CFBD |
+| 2b–9 | Fundamentals features, models, backtest, totals, parlay, reporting | in progress |
+
+### Scheduled capture
+
+`.github/workflows/daily-ingest.yml` runs at 11:00 UTC daily (7am ET, ahead of
+the day's moves — a *consistent* capture time matters more than the hour, since
+day-over-day movement is only comparable between like snapshots). It restores
+the SQLite store from the `data` branch, ingests, rebuilds the market, and
+force-pushes a single-commit snapshot back.
+
+Requires one repository secret: **`CFBD_API_KEY`**.
+
+The Outlier leg is opt-in via workflow_dispatch and best-effort: its access
+token lives **24 hours** and is refreshed by an interactive Playwright +
+email-OTP login, so an unattended runner finds it expired on day two. CFBD is
+the source a scheduled job can actually rely on — a static key, no session, and
+it returns `spreadOpen`/`overUnderOpen` next to the current numbers, so movement
+is measurable on the first run instead of after a week of accumulation.
 
 ## Setup
 

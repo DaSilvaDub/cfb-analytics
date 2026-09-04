@@ -86,7 +86,8 @@ class TestCliParser:
         actions = [a for a in parser._actions if hasattr(a, "choices") and a.choices]
         commands = set(actions[0].choices)
         assert commands == {"init-db", "doctor", "schedule", "status", "ingest",
-                            "backfill-cfbd", "coverage", "market", "board"}
+                            "backfill-cfbd", "coverage", "market", "board", "daily",
+                            "backfill-fundamentals"}
 
     def test_unimplemented_phases_are_absent(self):
         """`--help` must not advertise anything that does not run."""
@@ -103,7 +104,10 @@ class TestCliCommands:
     def test_init_db_creates_the_store_and_reports_what_it_applied(self, capsys):
         assert cli.main(["init-db"]) == 0
         assert paths.database_path().exists()
-        assert "applied migrations [1, 2, 3, 4]" in capsys.readouterr().out
+        from cfb_analytics.db import MIGRATIONS
+
+        expected = [version for version, _, _, _ in MIGRATIONS]
+        assert f"applied migrations {expected}" in capsys.readouterr().out
 
     def test_init_db_is_idempotent(self, capsys):
         cli.main(["init-db"])
@@ -151,7 +155,6 @@ class TestCliCommands:
         assert "PS3838" in out, "the tracked sharp set is named"
 
     def test_doctor_reports_blocked_cfbd_without_printing_a_key(self, capsys, monkeypatch):
-        monkeypatch.delenv("CFBD_API_KEY", raising=False)
         monkeypatch.setattr(paths, "outlier_session_dir", lambda: paths.data_dir() / "nope")
         assert cli.main(["doctor"]) == 0
         out = capsys.readouterr().out

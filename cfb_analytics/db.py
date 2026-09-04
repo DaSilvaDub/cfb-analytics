@@ -343,7 +343,8 @@ CREATE TABLE IF NOT EXISTS feature_rows (
     feature_key        TEXT NOT NULL,
     feature_value      REAL NOT NULL,
     source             TEXT NOT NULL,
-    availability_class TEXT NOT NULL CHECK (availability_class IN ('preseason', 'weekly', 'pregame')),
+    availability_class TEXT NOT NULL
+        CHECK (availability_class IN ('preseason', 'weekly', 'pregame')),
     source_season      INTEGER,
     source_week        INTEGER,
     source_detail      TEXT,

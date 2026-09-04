@@ -132,7 +132,6 @@ class TestLiveMode:
 
 class TestConfig:
     def test_missing_cfbd_key_names_the_variable(self, monkeypatch):
-        monkeypatch.delenv("CFBD_API_KEY", raising=False)
         with pytest.raises(MissingCredentialError) as excinfo:
             config.cfbd_api_key()
         message = str(excinfo.value)
@@ -140,7 +139,6 @@ class TestConfig:
         assert "collegefootballdata.com/key" in message
 
     def test_has_cfbd_key_is_false_when_unset(self, monkeypatch):
-        monkeypatch.delenv("CFBD_API_KEY", raising=False)
         assert config.has_cfbd_key() is False
 
     def test_shadow_mode_is_the_default(self):
