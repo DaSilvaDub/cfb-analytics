@@ -19,6 +19,10 @@ on:
         required: false
         type: boolean
         default: false
+      backfill_from:
+        description: "One-off historical backfill start year (e.g. 2014). Leave blank for none."
+        required: false
+        type: string
 
 concurrency:
   group: daily-ingest
@@ -55,6 +59,18 @@ jobs:
 
       - name: Migrate
         run: python -m cfb_analytics.cli init-db
+
+      - name: Historical backfill (manual, one-off)
+        # Deliberately NOT part of the daily path: twelve seasons of fetches
+        # every morning would cost minutes and a pile of API calls for data
+        # that never changes. The daily job bootstraps the CURRENT season only.
+        if: ${{ github.event.inputs.backfill_from != '' }}
+        env:
+          CFBD_API_KEY: ${{ secrets.CFBD_API_KEY }}
+          CFB_HTTP_MODE: live
+        run: |
+          YEAR_NOW=$(date -u +%Y)
+          python -m cfb_analytics.cli backfill-cfbd             --start-year "${{ github.event.inputs.backfill_from }}" --end-year "$YEAR_NOW"
 
       - name: Daily ingest
         env:

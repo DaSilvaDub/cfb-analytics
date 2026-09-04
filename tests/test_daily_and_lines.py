@@ -278,3 +278,98 @@ class TestProvenance:
         cloned = [type(r)(**{**r.__dict__, "source": "cfbd"}) for r in outlier_rows]
         added = store.insert_odds(seeded, cloned)
         assert added == len(cloned)
+
+
+class FakeBackfillClient:
+    """Enough of CFBDClient for the bootstrap path."""
+
+    def __init__(self, games):
+        self._games = games
+
+    def fetch_venues(self):
+        return []
+
+    def fetch_fbs_teams(self, year):
+        return [
+            {"id": 1, "school": "Tulsa", "abbreviation": "TLSA", "conference": "AAC",
+             "classification": "fbs"},
+            {"id": 2, "school": "Oklahoma State", "abbreviation": "OKST", "conference": "Big 12",
+             "classification": "fbs"},
+        ]
+
+    def fetch_games(self, year, *, season_type="both", classification="fbs"):
+        return self._games
+
+
+class TestBootstrap:
+    """A fresh cloud runner has no data branch, so the store starts empty."""
+
+    def test_reports_skip_when_empty_and_no_key(self, conn, monkeypatch):
+        monkeypatch.setattr(daily.config, "has_cfbd_key", lambda: False)
+        report = daily.run_daily(
+            conn, season=2026, with_outlier=False,
+            now=datetime(2026, 9, 4, 12, tzinfo=FOOTBALL_TZ))
+        boot = next(o for o in report.outcomes if o.name == "bootstrap")
+        assert boot.status == "skipped"
+        assert "no 2026 games" in boot.detail
+
+    def test_does_not_run_when_the_season_already_has_games(self, seeded, monkeypatch):
+        monkeypatch.setattr(daily.config, "has_cfbd_key", lambda: False)
+        report = daily.run_daily(
+            seeded, season=2026, with_outlier=False,
+            now=datetime(2026, 9, 4, 12, tzinfo=FOOTBALL_TZ))
+        assert not [o for o in report.outcomes if o.name == "bootstrap"]
+        assert report.bootstrapped is False
+
+    def test_can_be_disabled(self, conn, monkeypatch):
+        monkeypatch.setattr(daily.config, "has_cfbd_key", lambda: False)
+        report = daily.run_daily(
+            conn, season=2026, with_outlier=False, bootstrap=False,
+            now=datetime(2026, 9, 4, 12, tzinfo=FOOTBALL_TZ))
+        assert not [o for o in report.outcomes if o.name == "bootstrap"]
+
+    def test_counts_games_for_the_season(self, seeded):
+        assert daily.games_for_season(seeded, 2026) == 1
+        assert daily.games_for_season(seeded, 2025) == 0
+
+    def test_empty_store_with_a_key_loads_the_season(self, conn, monkeypatch):
+        """The self-healing path: no data branch on the first cloud run."""
+        games = [{
+            "id": 900, "season": 2026, "week": 2, "seasonType": "regular",
+            "startDate": "2026-09-05T23:30:00.000Z", "neutralSite": False,
+            "conferenceGame": False, "completed": False,
+            "homeTeam": "Tulsa", "homeId": 1, "awayTeam": "Oklahoma State", "awayId": 2,
+            "venue": "Chapman Stadium",
+        }]
+        monkeypatch.setattr(
+            "cfb_analytics.sources.cfbd.CFBDClient",
+            lambda *a, **k: FakeBackfillClient(games))
+        monkeypatch.setattr(daily.config, "has_cfbd_key", lambda: True)
+        # Keep the lines leg out of it; this test is about the bootstrap alone.
+        monkeypatch.setattr(
+            "cfb_analytics.ingest.cfbd_lines.ingest_lines",
+            lambda *a, **k: (_ for _ in ()).throw(AssertionError("should not run")),
+            raising=False)
+
+        report = daily.DailyReport(started_utc="x")
+        daily._bootstrap_if_empty(conn, report, 2026)
+
+        boot = next(o for o in report.outcomes if o.name == "bootstrap")
+        assert boot.status == "ok", boot.detail
+        assert report.bootstrapped is True
+        assert daily.games_for_season(conn, 2026) == 1
+
+    def test_bootstrap_failure_is_reported_not_raised(self, conn, monkeypatch):
+        from cfb_analytics.errors import SourceError
+
+        monkeypatch.setattr(daily.config, "has_cfbd_key", lambda: True)
+
+        def boom(*a, **k):
+            raise SourceError("CFBD is down")
+
+        monkeypatch.setattr("cfb_analytics.sources.cfbd.CFBDClient", boom)
+        report = daily.DailyReport(started_utc="x")
+        daily._bootstrap_if_empty(conn, report, 2026)
+        boot = next(o for o in report.outcomes if o.name == "bootstrap")
+        assert boot.status == "failed"
+        assert "CFBD is down" in boot.detail

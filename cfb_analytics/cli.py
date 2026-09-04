@@ -345,7 +345,12 @@ def _cmd_daily(args: argparse.Namespace) -> int:
 
     paths.ensure_dirs()
     with db.open_db() as conn:
-        report = run_daily(conn, season=args.season, with_outlier=not args.no_outlier)
+        report = run_daily(
+            conn,
+            season=args.season,
+            with_outlier=not args.no_outlier,
+            bootstrap=not args.no_bootstrap,
+        )
     text = report.as_text()
     print(text)
 
@@ -420,6 +425,8 @@ def build_parser() -> argparse.ArgumentParser:
     daily.add_argument("--season", type=int, default=None, help="season year (default: current)")
     daily.add_argument("--no-outlier", action="store_true",
                        help="skip the Outlier leg (its token expires after 24h)")
+    daily.add_argument("--no-bootstrap", action="store_true",
+                       help="do not auto-load this season's schedule when the store is empty")
     daily.set_defaults(func=_cmd_daily)
 
     return parser

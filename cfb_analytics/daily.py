@@ -45,6 +45,7 @@ class DailyReport:
     market_rows: int = 0
     movement_rows: int = 0
     games: int = 0
+    bootstrapped: bool = False
 
     @property
     def ok(self) -> bool:
@@ -92,6 +93,50 @@ def slates_in_window(conn: sqlite3.Connection, *, now: datetime | None = None) -
         (today, latest),
     ).fetchall()
     return [str(row["football_date"]) for row in rows]
+
+
+def games_for_season(conn: sqlite3.Connection, season: int) -> int:
+    return int(
+        conn.execute(
+            "SELECT COUNT(*) AS n FROM games WHERE season = ?", (season,)
+        ).fetchone()["n"]
+    )
+
+
+def _bootstrap_if_empty(conn: sqlite3.Connection, report: DailyReport, season: int) -> None:
+    """Populate this season's schedule when the store comes up empty.
+
+    A fresh cloud runner restores from the ``data`` branch; on the very first
+    run that branch does not exist, so the store has no games and CFBD lines
+    have nothing to attach to. Rather than depending on someone remembering to
+    seed it by hand, the job notices and fixes itself.
+
+    Deliberately **this season only**. The 2014-2025 historical load is for the
+    model and the backtest, not for pricing tonight's slate; running twelve
+    seasons of fetches inside a daily cron would spend minutes and a lot of API
+    calls every morning for data that never changes. Trigger that separately
+    with `backfill-cfbd`.
+    """
+    if games_for_season(conn, season) > 0:
+        return
+    if not config.has_cfbd_key():
+        report.outcomes.append(SourceOutcome(
+            "bootstrap", "skipped",
+            f"store has no {season} games and no {config.CFBD_ENV_VAR} to fetch them"))
+        return
+    try:
+        from cfb_analytics.ingest.cfbd_ingest import backfill_years
+        from cfb_analytics.sources.cfbd import CFBDClient
+
+        summary = backfill_years(conn, CFBDClient(), start_year=season, end_year=season)
+        report.bootstrapped = True
+        report.outcomes.append(SourceOutcome(
+            "bootstrap", "ok",
+            f"store was empty for {season}; loaded {summary.games} games, "
+            f"{summary.teams} teams, {summary.venues} venues",
+            rows=summary.games))
+    except CfbAnalyticsError as exc:
+        report.outcomes.append(SourceOutcome("bootstrap", "failed", str(exc)[:200]))
 
 
 def _run_cfbd_lines(conn: sqlite3.Connection, report: DailyReport, season: int) -> None:
@@ -151,11 +196,17 @@ def run_daily(
     *,
     season: int | None = None,
     with_outlier: bool = True,
+    bootstrap: bool = True,
     now: datetime | None = None,
 ) -> DailyReport:
     report = DailyReport(started_utc=utc_now_iso())
     moment = now or datetime.now(FOOTBALL_TZ)
     year = season or moment.year
+
+    if bootstrap:
+        # Must precede the lines ingest: lines attach to stored games, so
+        # an empty store would silently price nothing.
+        _bootstrap_if_empty(conn, report, year)
 
     _run_cfbd_lines(conn, report, year)
 
