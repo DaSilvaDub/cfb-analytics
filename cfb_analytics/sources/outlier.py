@@ -61,11 +61,16 @@ class OddsRow:
     price_decimal: float | None
     is_primary: bool
     captured_utc: str
+    # Which feed this price came from. Carried on the row rather than assumed
+    # by the writer: CFBD and Outlier both produce OddsRows, and mislabelling
+    # them destroys the only column that tells a juice-free CFBD spread apart
+    # from a priced Outlier one.
+    source: str = "outlier"
 
     @property
     def snapshot_id(self) -> str:
         return stable_id(
-            self.game_id, self.book, self.market, self.side,
+            self.source, self.game_id, self.book, self.market, self.side,
             self.line, self.price_american, self.captured_utc,
         )
 

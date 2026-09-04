@@ -267,7 +267,7 @@ def insert_odds(conn: sqlite3.Connection, rows: Iterable[OddsRow]) -> int:
         (
             row.snapshot_id, row.game_id, row.market_id, row.book, row.captured_utc,
             row.market, row.side, row.line, row.price_american, row.price_decimal,
-            1 if row.is_primary else 0, "outlier",
+            1 if row.is_primary else 0, row.source,
         )
         for row in rows
     ]

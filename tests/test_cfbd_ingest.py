@@ -262,6 +262,5 @@ class TestCfbdBackfill:
             assert "startDate" in health["detail"]
 
     def test_cli_backfill_requires_cfbd_key(self, capsys, monkeypatch):
-        monkeypatch.delenv("CFBD_API_KEY", raising=False)
         assert cli.main(["backfill-cfbd", "--start-year", "2024", "--end-year", "2024"]) == 2
         assert "CFBD_API_KEY" in capsys.readouterr().err
