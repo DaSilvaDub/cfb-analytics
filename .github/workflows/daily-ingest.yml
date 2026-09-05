@@ -23,6 +23,10 @@ on:
         description: "One-off historical backfill start year (e.g. 2014). Leave blank for none."
         required: false
         type: string
+      backfill_elo_from:
+        description: "One-off weekly-Elo backfill start year (e.g. 2014). Leave blank for none."
+        required: false
+        type: string
 
 concurrency:
   group: daily-ingest
@@ -71,6 +75,20 @@ jobs:
         run: |
           YEAR_NOW=$(date -u +%Y)
           python -m cfb_analytics.cli backfill-cfbd             --start-year "${{ github.event.inputs.backfill_from }}" --end-year "$YEAR_NOW"
+
+      - name: Historical Elo backfill (manual, one-off)
+        # Weekly Elo rows were silently dropped by a schema bug for as long as
+        # this table has existed (see the fix commit on parse_elo_rating /
+        # insert_team_ratings). This is how the cloud data branch actually
+        # picks the fix up -- a targeted re-fetch of the Elo endpoint only,
+        # not a full backfill-cfbd/backfill-fundamentals re-run.
+        if: ${{ github.event.inputs.backfill_elo_from != '' }}
+        env:
+          CFBD_API_KEY: ${{ secrets.CFBD_API_KEY }}
+          CFB_HTTP_MODE: live
+        run: |
+          YEAR_NOW=$(date -u +%Y)
+          python -m cfb_analytics.cli backfill-elo             --start-year "${{ github.event.inputs.backfill_elo_from }}" --end-year "$YEAR_NOW"
 
       - name: Daily ingest
         env:
