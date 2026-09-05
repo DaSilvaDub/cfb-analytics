@@ -7,6 +7,9 @@ Contract verified against the official CFBD API docs on 2026-09-02:
 * Teams: GET /teams/fbs?year=...
 * Venues: GET /venues
 * Games: GET /games?year=...&seasonType=...&classification=...
+* Roster: GET /roster?year=... (whole league, one call)
+* Per-game player stats: GET /games/players?year=...&week=...&seasonType=...
+  (whole week across every team, one call)
 """
 
 from __future__ import annotations
@@ -210,6 +213,27 @@ class CFBDClient:
 
     def fetch_talent(self, year: int) -> list[dict[str, Any]]:
         return self._get_rows("/talent", year=year)
+
+    def fetch_roster(self, year: int) -> list[dict[str, Any]]:
+        """Whole-league roster for a season, one call (30k+ rows, 300+ teams).
+
+        Verified 2026-09-04: /roster with no team filter returns every team's
+        roster for that year, so a full-league pull costs one request rather
+        than one per team.
+        """
+        return self._get_rows("/roster", year=year)
+
+    def fetch_game_players(
+        self, year: int, week: int, *, season_type: str = "regular"
+    ) -> list[dict[str, Any]]:
+        """Per-game box-score stats for every game in a week, one call.
+
+        Verified 2026-09-04: /games/players with no team filter returns all
+        137 games and 260 teams for a given week in a single request.
+        """
+        return self._get_rows(
+            "/games/players", year=year, week=week, seasonType=season_type
+        )
 
 
 def parse_venue(row: dict[str, Any]) -> dict[str, Any] | None:
@@ -516,3 +540,116 @@ def parse_talent(row: dict[str, Any]) -> dict[str, Any]:
         "availability_class": "preseason",
         "talent_composite": _as_float(row.get("talent"), "talent"),
     }
+
+
+def parse_roster_row(row: dict[str, Any]) -> dict[str, Any] | None:
+    """One roster entry. Returns None for a row with no player id.
+
+    ``year`` is CFBD's own field name for years-in-program (an integer, not
+    an FR/SO/JR/SR string) -- kept as ``class_year`` here to avoid colliding
+    with the season year in the same row's caller context.
+    """
+    player_id = row.get("id")
+    if player_id in (None, ""):
+        return None
+    return {
+        "player_id": f"cfbd:{player_id}",
+        "name": " ".join(
+            part for part in (_string_or_none(row.get("firstName")),
+                              _string_or_none(row.get("lastName"))) if part
+        ) or None,
+        "team_name": _as_str(row.get("team"), "team"),
+        "position": _string_or_none(row.get("position")),
+        "class_year": _optional_int(row.get("year"), "year"),
+        "height_in": _optional_int(row.get("height"), "height"),
+        "weight_lb": _optional_int(row.get("weight"), "weight"),
+        "home_state": _string_or_none(row.get("homeState")),
+    }
+
+
+_CATT_SEP = "/"
+
+
+def _split_completions_attempts(stat: Any) -> tuple[int | None, int | None]:
+    """CFBD reports passing 'C/ATT' as one string, e.g. '7/9'."""
+    text = _string_or_none(stat)
+    if text is None or _CATT_SEP not in text:
+        return None, None
+    made, _, tried = text.partition(_CATT_SEP)
+    return _optional_int(made.strip() or None, "completions"), _optional_int(
+        tried.strip() or None, "attempts"
+    )
+
+
+def parse_game_player_passing(game_row: dict[str, Any]) -> list[dict[str, Any]]:
+    """Flatten one /games/players game entry into per-player passing lines.
+
+    The payload nests athletes three levels deep (team -> category -> stat
+    type -> athletes), with each stat type ('C/ATT', 'YDS', 'TD', ...) listing
+    the same players again under that type. This pivots it into one row per
+    player carrying every stat, keyed by CFBD's per-athlete id.
+
+    A team side with no 'passing' category (rare, but not impossible for a
+    running-clock blowout box score) contributes no rows for that side rather
+    than raising -- passing category absence is a data fact, not a schema
+    violation.
+
+    CFBD also emits a synthetic pseudo-athlete named ' Team' with a negative
+    id for plays not attributed to a specific player (77 instances found
+    scanning 2024 week 3 alone). Real athlete ids are always positive, so a
+    negative id is dropped here rather than stored as a phantom player.
+    """
+    game_id = f"cfbd:{_as_int(game_row.get('id'), 'id')}"
+    rows: list[dict[str, Any]] = []
+
+    for team in game_row.get("teams") or []:
+        if not isinstance(team, dict):
+            continue
+        home_away = _string_or_none(team.get("homeAway"))
+        if home_away not in ("home", "away"):
+            continue
+        passing = next(
+            (cat for cat in team.get("categories") or []
+             if isinstance(cat, dict) and cat.get("name") == "passing"),
+            None,
+        )
+        if passing is None:
+            continue
+
+        by_player: dict[str, dict[str, Any]] = {}
+
+        for stat_type in passing.get("types") or []:
+            if not isinstance(stat_type, dict):
+                continue
+            type_name = stat_type.get("name")
+            for athlete in stat_type.get("athletes") or []:
+                if not isinstance(athlete, dict):
+                    continue
+                athlete_id = _string_or_none(athlete.get("id"))
+                if athlete_id is None or athlete_id.startswith("-"):
+                    continue
+                cell = by_player.setdefault(athlete_id, {
+                    "player_id": f"cfbd:{athlete_id}",
+                    "name": _string_or_none(athlete.get("name")),
+                    "completions": None, "attempts": None, "yards": None,
+                    "avg_yards": None, "touchdowns": None, "interceptions": None,
+                    "qbr": None,
+                })
+                stat = athlete.get("stat")
+                if type_name == "C/ATT":
+                    cell["completions"], cell["attempts"] = _split_completions_attempts(stat)
+                elif type_name == "YDS":
+                    cell["yards"] = _optional_int(stat, "passing.yards")
+                elif type_name == "AVG":
+                    cell["avg_yards"] = _float_or_none(stat)
+                elif type_name == "TD":
+                    cell["touchdowns"] = _optional_int(stat, "passing.td")
+                elif type_name == "INT":
+                    cell["interceptions"] = _optional_int(stat, "passing.int")
+                elif type_name == "QBR":
+                    cell["qbr"] = _float_or_none(stat)
+
+        for cell in by_player.values():
+            rows.append({**cell, "game_id": game_id, "home_away": home_away})
+
+    return rows

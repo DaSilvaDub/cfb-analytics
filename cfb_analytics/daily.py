@@ -212,12 +212,50 @@ def _run_weather(conn: sqlite3.Connection, report: DailyReport, slates: list[str
         report.outcomes.append(SourceOutcome("weather", "failed", str(exc)[:200]))
 
 
+def _run_player_passing(conn: sqlite3.Connection, report: DailyReport, season: int) -> None:
+    """Ingest completed-but-uncaptured weeks of per-game passing stats.
+
+    Cheap and incremental: most days this finds zero or one new completed
+    week (one CFBD call each), never the whole season. This is what gives the
+    presumptive-starter/QB-usage signal something fresh to measure without a
+    30k-row roster re-upsert running daily for no benefit -- roster refreshes
+    stay a deliberate, separate `backfill-roster` action.
+    """
+    if not config.has_cfbd_key():
+        report.outcomes.append(SourceOutcome(
+            "player_passing", "skipped",
+            f"no {config.CFBD_ENV_VAR} configured. {config.CFBD_HOW}"))
+        return
+    try:
+        from cfb_analytics.ingest.cfbd_players import ingest_game_passing, weeks_missing_passing
+        from cfb_analytics.sources.cfbd import CFBDClient
+
+        missing = weeks_missing_passing(conn, season)
+        if not missing:
+            report.outcomes.append(SourceOutcome(
+                "player_passing", "ok", "already current for every completed week"))
+            return
+
+        client = CFBDClient()
+        total_rows = 0
+        for week in missing:
+            summary = ingest_game_passing(conn, client, season, week)
+            total_rows += summary.rows_written
+        report.outcomes.append(SourceOutcome(
+            "player_passing", "ok",
+            f"{total_rows} passing rows across {len(missing)} newly-completed week(s)",
+            rows=total_rows))
+    except CfbAnalyticsError as exc:
+        report.outcomes.append(SourceOutcome("player_passing", "failed", str(exc)[:200]))
+
+
 def run_daily(
     conn: sqlite3.Connection,
     *,
     season: int | None = None,
     with_outlier: bool = True,
     with_weather: bool = True,
+    with_player_passing: bool = True,
     bootstrap: bool = True,
     now: datetime | None = None,
 ) -> DailyReport:
@@ -238,6 +276,9 @@ def run_daily(
     elif with_outlier:
         report.outcomes.append(SourceOutcome(
             "outlier", "skipped", "no stored slates inside the operating window"))
+
+    if with_player_passing:
+        _run_player_passing(conn, report, year)
 
     report.slates = slates_in_window(conn, now=moment)
     if report.slates and with_weather:

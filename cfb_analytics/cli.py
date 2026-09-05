@@ -111,6 +111,41 @@ def _cmd_backfill_cfbd(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_backfill_roster(args: argparse.Namespace) -> int:
+    from cfb_analytics.errors import SchemaError
+    from cfb_analytics.ingest.cfbd_players import ingest_roster
+    from cfb_analytics.sources.cfbd import CFBDClient
+
+    if args.start_year > args.end_year:
+        raise SchemaError("start-year must be less than or equal to end-year")
+    paths.ensure_dirs()
+    client = CFBDClient()
+    with db.open_db() as conn:
+        for year in range(args.start_year, args.end_year + 1):
+            summary = ingest_roster(conn, client, year)
+            print(summary.as_text())
+    return 0
+
+
+def _cmd_backfill_passing(args: argparse.Namespace) -> int:
+    from cfb_analytics.errors import SchemaError
+    from cfb_analytics.ingest.cfbd_players import completed_weeks, ingest_game_passing
+    from cfb_analytics.sources.cfbd import CFBDClient
+
+    if args.start_year > args.end_year:
+        raise SchemaError("start-year must be less than or equal to end-year")
+    paths.ensure_dirs()
+    client = CFBDClient()
+    with db.open_db() as conn:
+        for year in range(args.start_year, args.end_year + 1):
+            for week in completed_weeks(conn, year, season_type=args.season_type):
+                summary = ingest_game_passing(
+                    conn, client, year, week, season_type=args.season_type
+                )
+                print(summary.as_text())
+    return 0
+
+
 def _cmd_backfill_fundamentals(args: argparse.Namespace) -> int:
     from cfb_analytics.errors import SchemaError
     from cfb_analytics.ingest.cfbd_fundamentals import backfill_fundamentals
@@ -351,6 +386,7 @@ def _cmd_daily(args: argparse.Namespace) -> int:
             season=args.season,
             with_outlier=not args.no_outlier,
             with_weather=not args.no_weather,
+            with_player_passing=not args.no_player_passing,
             bootstrap=not args.no_bootstrap,
         )
     text = report.as_text()
@@ -397,6 +433,25 @@ def build_parser() -> argparse.ArgumentParser:
     cfbd.add_argument("--end-year", type=int, required=True, help="last season year, inclusive")
     cfbd.set_defaults(func=_cmd_backfill_cfbd)
 
+    roster = sub.add_parser(
+        "backfill-roster", help="backfill CFBD season rosters (position, class year)"
+    )
+    roster.add_argument(
+        "--start-year", type=int, required=True, help="first season year, inclusive"
+    )
+    roster.add_argument("--end-year", type=int, required=True, help="last season year, inclusive")
+    roster.set_defaults(func=_cmd_backfill_roster)
+
+    passing = sub.add_parser(
+        "backfill-passing", help="backfill CFBD per-game passing stats for completed weeks"
+    )
+    passing.add_argument(
+        "--start-year", type=int, required=True, help="first season year, inclusive"
+    )
+    passing.add_argument("--end-year", type=int, required=True, help="last season year, inclusive")
+    passing.add_argument("--season-type", default="regular", help="regular | postseason")
+    passing.set_defaults(func=_cmd_backfill_passing)
+
     fundamentals = sub.add_parser(
         "backfill-fundamentals",
         help="backfill CFBD SP+, SRS, Elo, advanced stats, returning production, and talent",
@@ -429,6 +484,8 @@ def build_parser() -> argparse.ArgumentParser:
                        help="skip the Outlier leg (its token expires after 24h)")
     daily.add_argument("--no-weather", action="store_true",
                        help="skip the Open-Meteo leg")
+    daily.add_argument("--no-player-passing", action="store_true",
+                       help="skip incremental per-game passing-stat capture")
     daily.add_argument("--no-bootstrap", action="store_true",
                        help="do not auto-load this season's schedule when the store is empty")
     daily.set_defaults(func=_cmd_daily)

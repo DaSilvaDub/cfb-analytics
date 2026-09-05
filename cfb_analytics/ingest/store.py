@@ -321,3 +321,49 @@ def insert_availability(conn: sqlite3.Connection, rows: Iterable[dict[str, Any]]
         payload,
     )
     return cursor.rowcount if cursor.rowcount and cursor.rowcount > 0 else 0
+
+
+def upsert_player(conn: sqlite3.Connection, player_id: str, name: str | None) -> None:
+    now = utc_now_iso()
+    conn.execute(
+        """INSERT INTO players (player_id, name, first_seen_utc, last_seen_utc)
+           VALUES (?, ?, ?, ?)
+           ON CONFLICT(player_id) DO UPDATE SET
+             name = COALESCE(excluded.name, players.name),
+             last_seen_utc = excluded.last_seen_utc""",
+        (player_id, name, now, now),
+    )
+
+
+def upsert_player_season(conn: sqlite3.Connection, row: dict[str, Any]) -> None:
+    conn.execute(
+        """INSERT INTO player_seasons
+           (player_id, season, team_id, position, class_year, height_in,
+            weight_lb, home_state, source, ingested_utc)
+           VALUES (:player_id, :season, :team_id, :position, :class_year, :height_in,
+                   :weight_lb, :home_state, :source, :ingested_utc)
+           ON CONFLICT(player_id, season) DO UPDATE SET
+             team_id      = excluded.team_id,
+             position     = COALESCE(excluded.position, player_seasons.position),
+             class_year   = COALESCE(excluded.class_year, player_seasons.class_year),
+             height_in    = COALESCE(excluded.height_in, player_seasons.height_in),
+             weight_lb    = COALESCE(excluded.weight_lb, player_seasons.weight_lb),
+             home_state   = COALESCE(excluded.home_state, player_seasons.home_state),
+             ingested_utc = excluded.ingested_utc""",
+        {**row, "ingested_utc": utc_now_iso()},
+    )
+
+
+def upsert_player_game_passing(conn: sqlite3.Connection, row: dict[str, Any]) -> None:
+    """CFBD reports a completed box score, not an evolving one -- unlike odds
+    or weather, there is no "a later capture changed the number" case, so a
+    plain REPLACE (rather than an append-only insert) is correct here."""
+    conn.execute(
+        """INSERT OR REPLACE INTO player_game_passing
+           (game_id, team_id, player_id, season, week, completions, attempts,
+            yards, avg_yards, touchdowns, interceptions, qbr, source, ingested_utc)
+           VALUES (:game_id, :team_id, :player_id, :season, :week, :completions,
+                   :attempts, :yards, :avg_yards, :touchdowns, :interceptions,
+                   :qbr, :source, :ingested_utc)""",
+        {**row, "ingested_utc": utc_now_iso()},
+    )

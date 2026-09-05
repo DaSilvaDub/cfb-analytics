@@ -373,3 +373,96 @@ class TestBootstrap:
         boot = next(o for o in report.outcomes if o.name == "bootstrap")
         assert boot.status == "failed"
         assert "CFBD is down" in boot.detail
+
+
+class FakeGamePlayersClient:
+    def __init__(self, payload):
+        self._payload = payload
+
+    def fetch_game_players(self, year, week, *, season_type="regular"):
+        return self._payload
+
+
+def _seed_completed_cfbd_game(conn, game_id="cfbd:1", season=2026, week=1):
+    store.upsert_team(conn, {"team_id": "cfbd:h", "school": "Tulsa", "alias": None, "market": None})
+    store.upsert_team(
+        conn, {"team_id": "cfbd:a", "school": "Oklahoma State", "alias": None, "market": None})
+    store.upsert_cfbd_game(conn, {
+        "game_id": game_id, "season": season, "week": week, "season_type": "regular",
+        "kickoff_utc": "2026-09-05T23:30:00+00:00", "football_date": "2026-09-05",
+        "neutral_site": 0, "conference_game": 0,
+        "home_team_id": "cfbd:h", "away_team_id": "cfbd:a",
+        "venue_name": None, "venue_id": None, "status": "final",
+        "home_points": 30, "away_points": 10, "completed": 1, "source": "cfbd",
+    })
+
+
+class TestPlayerPassingLeg:
+    """The incremental daily leg: cheap, only fetches newly-completed weeks."""
+
+    def test_skipped_without_a_cfbd_key(self, conn, monkeypatch):
+        monkeypatch.setattr(daily.config, "has_cfbd_key", lambda: False)
+        report = daily.DailyReport(started_utc="x")
+        daily._run_player_passing(conn, report, 2026)
+        outcome = next(o for o in report.outcomes if o.name == "player_passing")
+        assert outcome.status == "skipped"
+        assert "CFBD_API_KEY" in outcome.detail
+
+    def test_failed_when_key_present_but_no_cfbd_games_stored(self, conn, monkeypatch):
+        monkeypatch.setattr(daily.config, "has_cfbd_key", lambda: True)
+        report = daily.DailyReport(started_utc="x")
+        daily._run_player_passing(conn, report, 2026)
+        outcome = next(o for o in report.outcomes if o.name == "player_passing")
+        assert outcome.status == "failed"
+
+    def test_reports_already_current_when_nothing_completed_yet(self, conn, monkeypatch):
+        _seed_completed_cfbd_game(conn, week=1)
+        # Mark that one week as already captured by inserting a passing row for it.
+        store.upsert_player(conn, "cfbd:qb", "QB")
+        store.upsert_player_game_passing(conn, {
+            "game_id": "cfbd:1", "team_id": "cfbd:h", "player_id": "cfbd:qb",
+            "season": 2026, "week": 1, "completions": None, "attempts": 10,
+            "yards": None, "avg_yards": None, "touchdowns": None, "interceptions": None,
+            "qbr": None, "source": "cfbd",
+        })
+        monkeypatch.setattr(daily.config, "has_cfbd_key", lambda: True)
+        report = daily.DailyReport(started_utc="x")
+        daily._run_player_passing(conn, report, 2026)
+        outcome = next(o for o in report.outcomes if o.name == "player_passing")
+        assert outcome.status == "ok"
+        assert "already current" in outcome.detail
+
+    def test_ingests_only_the_missing_completed_week(self, conn, monkeypatch):
+        _seed_completed_cfbd_game(conn, week=1)
+        game_players_payload = [{
+            "id": 1,
+            "teams": [
+                {"homeAway": "home", "categories": [{"name": "passing", "types": [
+                    {"name": "C/ATT", "athletes": [
+                        {"id": "999", "name": "QB One", "stat": "20/30"}]},
+                ]}]},
+                {"homeAway": "away", "categories": []},
+            ],
+        }]
+        monkeypatch.setattr(daily.config, "has_cfbd_key", lambda: True)
+        monkeypatch.setattr(
+            "cfb_analytics.sources.cfbd.CFBDClient",
+            lambda *a, **k: FakeGamePlayersClient(game_players_payload))
+
+        report = daily.DailyReport(started_utc="x")
+        daily._run_player_passing(conn, report, 2026)
+
+        outcome = next(o for o in report.outcomes if o.name == "player_passing")
+        assert outcome.status == "ok"
+        assert outcome.rows == 1
+        row = conn.execute(
+            "SELECT attempts FROM player_game_passing WHERE player_id = 'cfbd:999'"
+        ).fetchone()
+        assert row["attempts"] == 30
+
+    def test_run_daily_skips_the_leg_when_disabled(self, conn, monkeypatch):
+        monkeypatch.setattr(daily.config, "has_cfbd_key", lambda: False)
+        report = daily.run_daily(
+            conn, season=2026, with_outlier=False, with_player_passing=False,
+            now=datetime(2026, 9, 4, 12, tzinfo=FOOTBALL_TZ))
+        assert not [o for o in report.outcomes if o.name == "player_passing"]

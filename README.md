@@ -23,12 +23,22 @@ Design of record: `docs/plans/2026-08-31-ncaaf-analytics-pipeline.md` in the
 | 1 | CFBD teams/venues/games backfill | **implemented**; live 2014–2025 load needs `CFBD_API_KEY` |
 | 2a | Leakage guard, devig (3 methods), market consensus, line movement | **done** |
 | 2a | Weather (Open-Meteo), venue geolocation | **done** |
+| 2a | CFBD roster + per-game passing, presumptive-starter (usage-based) | **done** |
 | 2b–9 | Fundamentals features, models, backtest, totals, parlay, reporting | in progress |
 
 ESPN was evaluated as a starting-QB source and **dropped**: it publishes no CFB
 depth chart (`/teams/{id}/depthchart` returns `{}`; core-API variants 400/404),
 and its roster carries no `starter` field. CFBD covers the rest better. No free
 source confirms a starting quarterback, so that remains a hard CORE blocker.
+
+What CFBD *does* give: a full-league roster in one call (`/roster`, position and
+years-in-program) and a full week's per-game box scores in one call
+(`/games/players`). Neither needs a per-team loop. `features/qb.py` uses the
+box scores to compute a **presumptive starter** — the QB with the plurality of
+pass attempts over a team's own last N games — which is a genuine signal for
+experience/efficiency differentials but is explicitly *not* a confirmed
+starter and does not relax the CORE blocker: it returns `None` before any
+games are played, exactly the case that blocker exists for.
 
 ### Scheduled capture
 
@@ -74,6 +84,8 @@ included in an exception message.
 python -m cfb_analytics.cli schedule                    # available slate dates
 python -m cfb_analytics.cli ingest --date 2026-09-05    # one slate
 python -m cfb_analytics.cli backfill-cfbd --start-year 2014 --end-year 2025
+python -m cfb_analytics.cli backfill-roster --start-year 2025 --end-year 2025
+python -m cfb_analytics.cli backfill-passing --start-year 2024 --end-year 2024
 python -m cfb_analytics.cli status                      # row counts, last run
 python -m cfb_analytics.cli coverage                    # books per capture
 ```
@@ -115,6 +127,23 @@ Each is verified against the live feed and covered by a regression test.
    (Out / Doubtful / Questionable / Probable / Out for Season) and covers QBs,
    but absence from it does not confirm a healthy starter — so unknown QB status
    is a hard CORE blocker, and there is **no OL coverage at all**.
+9. **Games link to venues by id, not by name.** Seven venue names are shared by
+   more than one venue ("Memorial Stadium" x3, "Husky Stadium" x3); a name join
+   returned 10,973 rows for 10,465 games and would have attached the wrong
+   city's forecast. CFBD's own `venueId` was being dropped by the parser and is
+   now captured; the Outlier feed (name-only) self-links on insert but only
+   when the name is unambiguous — otherwise `venue_id` stays `NULL` rather than
+   guessing.
+10. **CFBD's per-game player stats bury an unattributed-play pseudo-athlete.**
+    `/games/players` emits an entry named `' Team'` with a **negative** id for
+    plays not credited to a specific player (77 instances found scanning one
+    week alone). A real athlete id is never negative; the parser drops it.
+11. **`outcomes[].books` isn't the only place a nested payload conceals a
+    two-track structure.** `player_game_passing` carries no player name at
+    all — it is join-only via `players.player_id` — because CFBD reports a
+    completed box score per game (name lives with the roster identity, not
+    the per-game fact), and a query that forgets the join fails loudly
+    (`no such column: p.name`) rather than silently returning blanks.
 
 ## Development
 

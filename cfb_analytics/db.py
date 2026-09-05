@@ -417,6 +417,64 @@ def _backfill_game_venue_id(conn: sqlite3.Connection) -> None:
     conn.executemany("UPDATE games SET venue_id = ? WHERE game_id = ?", updates)
 
 
+MIGRATION_008 = """
+-- Player dimension. Unlike availability (injuries), names ARE stored here:
+-- this is public roster/bio data feeding human-readable output ("QB1 is
+-- Jalen Milroe"), not injury-adjacent data, and the plan's report sections
+-- name specific players by design.
+CREATE TABLE IF NOT EXISTS players (
+    player_id      TEXT PRIMARY KEY,   -- cfbd:<id>
+    name           TEXT NOT NULL,
+    first_seen_utc TEXT NOT NULL,
+    last_seen_utc  TEXT NOT NULL
+);
+
+-- Roster attributes are season-scoped, not a single mutable dimension row:
+-- a player who is a Junior in 2025 is a Senior in 2026, and CFBD's own
+-- roster feed is season-parameterised for exactly this reason.
+CREATE TABLE IF NOT EXISTS player_seasons (
+    player_id    TEXT NOT NULL REFERENCES players(player_id),
+    season       INTEGER NOT NULL,
+    team_id      TEXT NOT NULL REFERENCES teams(team_id),
+    position     TEXT,
+    -- CFBD's 'year' field: an integer years-in-program count (1=freshman,
+    -- 4/5=senior/grad), not an FR/SO/JR/SR enum. Treated as a numeric proxy
+    -- for experience, not eligibility class.
+    class_year   INTEGER,
+    height_in    INTEGER,
+    weight_lb    INTEGER,
+    home_state   TEXT,
+    source       TEXT NOT NULL,
+    ingested_utc TEXT NOT NULL,
+    PRIMARY KEY (player_id, season)
+);
+CREATE INDEX IF NOT EXISTS idx_player_seasons_team
+    ON player_seasons(team_id, season, position);
+
+-- Per-game passing box score. One row per (game, player); CFBD reports a
+-- completed final line, not an evolving one, so INSERT OR REPLACE is safe --
+-- unlike odds or weather, there is no "a later capture changed the number".
+CREATE TABLE IF NOT EXISTS player_game_passing (
+    game_id       TEXT NOT NULL REFERENCES games(game_id),
+    team_id       TEXT NOT NULL REFERENCES teams(team_id),
+    player_id     TEXT NOT NULL REFERENCES players(player_id),
+    season        INTEGER NOT NULL,
+    week          INTEGER,
+    completions   INTEGER,
+    attempts      INTEGER,
+    yards         INTEGER,
+    avg_yards     REAL,
+    touchdowns    INTEGER,
+    interceptions INTEGER,
+    qbr           REAL,
+    source        TEXT NOT NULL,
+    ingested_utc  TEXT NOT NULL,
+    PRIMARY KEY (game_id, player_id)
+);
+CREATE INDEX IF NOT EXISTS idx_player_game_passing_team
+    ON player_game_passing(team_id, season, week);
+"""
+
 # (version, name, SQL, optional Python step run after the SQL in the same transaction).
 # The Python hook exists because some backfills need the IANA time-zone database,
 # which SQLite does not have.
@@ -428,6 +486,7 @@ MIGRATIONS: tuple[tuple[int, str, str, Callable[[sqlite3.Connection], None] | No
     (5, "cfbd_fundamentals", MIGRATION_005, None),
     (6, "feature_rows", MIGRATION_006, None),
     (7, "game_venue_id_and_weather", MIGRATION_007, _backfill_game_venue_id),
+    (8, "players_and_passing", MIGRATION_008, None),
 )
 
 
