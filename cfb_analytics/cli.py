@@ -1,9 +1,9 @@
 """Command-line entry point.
 
 Only the commands backed by working code are registered. Phases 2-9 add
-``features``, ``train``, ``backtest``, ``slate``, ``parlay`` and ``settle``;
-they are deliberately absent rather than present-and-stubbed, so ``--help``
-never advertises something that does not run.
+``features``, ``train``, ``slate``, ``parlay`` and ``settle``; they are
+deliberately absent rather than present-and-stubbed, so ``--help`` never
+advertises something that does not run.
 """
 
 from __future__ import annotations
@@ -163,6 +163,31 @@ def _cmd_backfill_fundamentals(args: argparse.Namespace) -> int:
             end_year=args.end_year,
         )
     print(summary.as_text())
+    return 0
+
+
+def _cmd_backtest(args: argparse.Namespace) -> int:
+    """Walk-forward moneyline backtest of the internal ridge model.
+
+    See ``backtest/moneyline.py`` for why this reports calibration only, not
+    a promotion decision: none of the three required baselines (market,
+    SP+-only, Elo-only) have a leakage-safe historical series in this store
+    yet.
+    """
+    from cfb_analytics.backtest.moneyline import DEFAULT_SEASONS, run_moneyline_backtest
+    from cfb_analytics.errors import SchemaError
+
+    if (args.start_year is None) != (args.end_year is None):
+        raise SchemaError("--start-year and --end-year must be given together")
+    seasons = (
+        tuple(range(args.start_year, args.end_year + 1))
+        if args.start_year is not None
+        else DEFAULT_SEASONS
+    )
+    paths.ensure_dirs()
+    with db.open_db() as conn:
+        report = run_moneyline_backtest(conn, seasons)
+    print(report.as_text())
     return 0
 
 
@@ -505,6 +530,19 @@ def build_parser() -> argparse.ArgumentParser:
         "--ridge-lambda", type=float, default=None, help="override the default ridge penalty"
     )
     fit_ratings.set_defaults(func=_cmd_fit_ratings)
+
+    backtest_cmd = sub.add_parser(
+        "backtest", help="walk-forward moneyline backtest of the internal ridge model"
+    )
+    backtest_cmd.add_argument(
+        "--start-year", type=int, default=None,
+        help="first season, inclusive (default: 2014, the full stored history)"
+    )
+    backtest_cmd.add_argument(
+        "--end-year", type=int, default=None,
+        help="last season, inclusive (default: 2025)"
+    )
+    backtest_cmd.set_defaults(func=_cmd_backtest)
 
     market_cmd = sub.add_parser("market", help="compute vig-free consensus from stored odds")
     market_cmd.add_argument("--date", required=True, help="slate date, YYYY-MM-DD")

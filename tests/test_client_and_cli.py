@@ -88,13 +88,13 @@ class TestCliParser:
         assert commands == {"init-db", "doctor", "schedule", "status", "ingest",
                             "backfill-cfbd", "coverage", "market", "board", "daily",
                             "backfill-fundamentals", "backfill-roster", "backfill-passing",
-                            "fit-ratings"}
+                            "fit-ratings", "backtest"}
 
     def test_unimplemented_phases_are_absent(self):
         """`--help` must not advertise anything that does not run."""
         parser = cli.build_parser()
         commands = set([a for a in parser._actions if getattr(a, "choices", None)][0].choices)
-        assert not commands & {"features", "train", "backtest", "slate", "parlay", "settle"}
+        assert not commands & {"features", "train", "slate", "parlay", "settle"}
 
     def test_ingest_requires_a_date(self):
         with pytest.raises(SystemExit):
