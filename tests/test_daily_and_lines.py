@@ -466,3 +466,60 @@ class TestPlayerPassingLeg:
             conn, season=2026, with_outlier=False, with_player_passing=False,
             now=datetime(2026, 9, 4, 12, tzinfo=FOOTBALL_TZ))
         assert not [o for o in report.outcomes if o.name == "player_passing"]
+
+
+class TestInternalRatingsLeg:
+    """No credential to check -- this leg's only states are 'ok' (whether or
+    not there was enough history to fit) and 'failed' (an actual bug)."""
+
+    def test_reports_ok_with_no_games_stored_yet(self, conn):
+        report = daily.DailyReport(started_utc="x")
+        daily._run_internal_ratings(conn, report, 2026)
+        outcome = next(o for o in report.outcomes if o.name == "internal_ratings")
+        assert outcome.status == "ok"
+        assert "insufficient_history" in outcome.detail
+
+    def test_active_fit_persists_a_row_per_team(self, conn):
+        # A safely past season: _run_internal_ratings always cuts off at the
+        # real current instant, so the fixture's kickoffs must sit in the
+        # past relative to it, not just relative to each other.
+        season = 2020
+        teams = ["a", "b", "c", "d"]
+        for team_id in teams:
+            store.upsert_team(conn, {"team_id": team_id, "school": team_id.upper(),
+                                      "alias": None, "market": None})
+        game_id = 0
+        # 6 rounds x 6 pairs = 36 games, clearing the ridge model's default
+        # 30-game floor (see DEFAULT_MIN_GAMES) so this fit comes back active.
+        for _round in range(6):
+            for i, home in enumerate(teams):
+                for away in teams[i + 1:]:
+                    game_id += 1
+                    store.upsert_cfbd_game(conn, {
+                        "game_id": f"cfbd:{game_id}", "season": season, "week": 1,
+                        "season_type": "regular",
+                        "kickoff_utc": f"{season}-09-{1 + game_id % 27:02d}T00:00:00+00:00",
+                        "football_date": f"{season}-09-01",
+                        "neutral_site": 0, "conference_game": 0,
+                        "home_team_id": home, "away_team_id": away,
+                        "venue_name": None, "venue_id": None, "status": "final",
+                        "home_points": 30, "away_points": 10, "completed": 1,
+                        "source": "cfbd",
+                    })
+
+        report = daily.DailyReport(started_utc="x")
+        daily._run_internal_ratings(conn, report, season)
+
+        outcome = next(o for o in report.outcomes if o.name == "internal_ratings")
+        assert outcome.status == "ok"
+        assert outcome.rows == len(teams)
+        stored = conn.execute(
+            "SELECT COUNT(*) AS n FROM internal_team_ratings WHERE season = ?", (season,)
+        ).fetchone()["n"]
+        assert stored == len(teams)
+
+    def test_run_daily_skips_the_leg_when_disabled(self, conn):
+        report = daily.run_daily(
+            conn, season=2026, with_outlier=False, with_player_passing=False,
+            with_internal_ratings=False, now=datetime(2026, 9, 4, 12, tzinfo=FOOTBALL_TZ))
+        assert not [o for o in report.outcomes if o.name == "internal_ratings"]

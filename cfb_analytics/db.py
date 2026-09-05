@@ -478,6 +478,37 @@ CREATE INDEX IF NOT EXISTS idx_player_game_passing_team
 # (version, name, SQL, optional Python step run after the SQL in the same transaction).
 # The Python hook exists because some backfills need the IANA time-zone database,
 # which SQLite does not have.
+MIGRATION_009 = """
+-- Internally-fit team ratings (ridge, and eventually Elo), kept separate from
+-- the CFBD-sourced team_ratings table rather than widened into it: that
+-- table's schema is a specific CFBD snapshot contract (period must be
+-- 'week:NN' or 'season_final', source CHECK restricted to CFBD's own three
+-- providers), which does not naturally fit a rating produced as of an
+-- arbitrary kickoff cutoff for a walk-forward backtest.
+CREATE TABLE IF NOT EXISTS internal_team_ratings (
+    season          INTEGER NOT NULL,
+    -- The exact leakage cutoff used for this fit: only games with
+    -- kickoff_utc strictly before this were used. NOT a CFBD week label,
+    -- since a walk-forward backtest fits at arbitrary points in time.
+    as_of_utc       TEXT NOT NULL,
+    team_id         TEXT NOT NULL REFERENCES teams(team_id),
+    model           TEXT NOT NULL CHECK (model IN ('internal_ridge')),
+    offense         REAL NOT NULL,
+    defense         REAL NOT NULL,
+    team_games      INTEGER NOT NULL,
+    ridge_lambda    REAL,
+    home_field_advantage REAL,
+    league_avg_points REAL,
+    -- Total games used across the WHOLE league fit (not just this team's own
+    -- games), so a low-data early-season fit is visible on every row.
+    n_games_in_fit  INTEGER NOT NULL,
+    generated_utc   TEXT NOT NULL,
+    PRIMARY KEY (season, as_of_utc, team_id, model)
+);
+CREATE INDEX IF NOT EXISTS idx_internal_ratings_team
+    ON internal_team_ratings(team_id, season, as_of_utc);
+"""
+
 MIGRATIONS: tuple[tuple[int, str, str, Callable[[sqlite3.Connection], None] | None], ...] = (
     (1, "outlier_ingestion_core", MIGRATION_001, None),
     (2, "games_football_date", MIGRATION_002, _backfill_football_date),
@@ -487,6 +518,7 @@ MIGRATIONS: tuple[tuple[int, str, str, Callable[[sqlite3.Connection], None] | No
     (6, "feature_rows", MIGRATION_006, None),
     (7, "game_venue_id_and_weather", MIGRATION_007, _backfill_game_venue_id),
     (8, "players_and_passing", MIGRATION_008, None),
+    (9, "internal_team_ratings", MIGRATION_009, None),
 )
 
 

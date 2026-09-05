@@ -166,6 +166,35 @@ def _cmd_backfill_fundamentals(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_fit_ratings(args: argparse.Namespace) -> int:
+    """Fit and persist internal ridge team-strength ratings as of a cutoff.
+
+    Defaults ``--as-of`` to right now: the useful case for a scheduled run is
+    "the freshest legal fit," and any earlier cutoff (a backtest walking
+    forward through a season) is what ``--as-of`` exists to override.
+    """
+    from cfb_analytics.features.team_ratings import fit_ratings_as_of
+    from cfb_analytics.ingest.store import upsert_internal_team_ratings
+    from cfb_analytics.models.ridge import DEFAULT_RIDGE_LAMBDA
+    from cfb_analytics.utils import utc_now_iso
+
+    as_of_utc = args.as_of or utc_now_iso()
+    ridge_lambda = args.ridge_lambda if args.ridge_lambda is not None else DEFAULT_RIDGE_LAMBDA
+    paths.ensure_dirs()
+    with db.open_db() as conn:
+        ratings = fit_ratings_as_of(
+            conn, args.season, as_of_utc, ridge_lambda=ridge_lambda
+        )
+        written = upsert_internal_team_ratings(
+            conn, ratings, season=args.season, as_of_utc=as_of_utc
+        )
+    print(
+        f"internal ridge fit: season={args.season} as_of={as_of_utc} "
+        f"status={ratings.status} n_games={ratings.n_games} teams_written={written}"
+    )
+    return 0
+
+
 def _cmd_schedule(args: argparse.Namespace) -> int:
     from collections import Counter
     from datetime import datetime
@@ -387,6 +416,7 @@ def _cmd_daily(args: argparse.Namespace) -> int:
             with_outlier=not args.no_outlier,
             with_weather=not args.no_weather,
             with_player_passing=not args.no_player_passing,
+            with_internal_ratings=not args.no_internal_ratings,
             bootstrap=not args.no_bootstrap,
         )
     text = report.as_text()
@@ -464,6 +494,18 @@ def build_parser() -> argparse.ArgumentParser:
     )
     fundamentals.set_defaults(func=_cmd_backfill_fundamentals)
 
+    fit_ratings = sub.add_parser(
+        "fit-ratings", help="fit and persist internal ridge team-strength ratings"
+    )
+    fit_ratings.add_argument("--season", type=int, required=True)
+    fit_ratings.add_argument(
+        "--as-of", default=None, help="ISO cutoff timestamp (default: now)"
+    )
+    fit_ratings.add_argument(
+        "--ridge-lambda", type=float, default=None, help="override the default ridge penalty"
+    )
+    fit_ratings.set_defaults(func=_cmd_fit_ratings)
+
     market_cmd = sub.add_parser("market", help="compute vig-free consensus from stored odds")
     market_cmd.add_argument("--date", required=True, help="slate date, YYYY-MM-DD")
     market_cmd.set_defaults(func=_cmd_market)
@@ -486,6 +528,8 @@ def build_parser() -> argparse.ArgumentParser:
                        help="skip the Open-Meteo leg")
     daily.add_argument("--no-player-passing", action="store_true",
                        help="skip incremental per-game passing-stat capture")
+    daily.add_argument("--no-internal-ratings", action="store_true",
+                       help="skip fitting internal ridge team-strength ratings")
     daily.add_argument("--no-bootstrap", action="store_true",
                        help="do not auto-load this season's schedule when the store is empty")
     daily.set_defaults(func=_cmd_daily)

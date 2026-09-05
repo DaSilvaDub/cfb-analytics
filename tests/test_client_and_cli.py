@@ -87,7 +87,8 @@ class TestCliParser:
         commands = set(actions[0].choices)
         assert commands == {"init-db", "doctor", "schedule", "status", "ingest",
                             "backfill-cfbd", "coverage", "market", "board", "daily",
-                            "backfill-fundamentals", "backfill-roster", "backfill-passing"}
+                            "backfill-fundamentals", "backfill-roster", "backfill-passing",
+                            "fit-ratings"}
 
     def test_unimplemented_phases_are_absent(self):
         """`--help` must not advertise anything that does not run."""

@@ -18,6 +18,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Any, Literal
 
+from cfb_analytics.models.ridge import RidgeRatings
 from cfb_analytics.sources.outlier import OddsRow
 from cfb_analytics.utils import stable_id, utc_now_iso
 
@@ -284,6 +285,50 @@ def insert_team_talent(conn: sqlite3.Connection, rows: Iterable[dict[str, Any]])
         "talent_composite",
     )
     return _insert_snapshots(conn, "team_talent", columns, rows)
+
+
+def upsert_internal_team_ratings(
+    conn: sqlite3.Connection,
+    ratings: RidgeRatings,
+    *,
+    season: int,
+    as_of_utc: str,
+    model: str = "internal_ridge",
+) -> int:
+    """Persist one ridge fit, one row per team.
+
+    A no-op unless ``ratings.status == 'active'``: an insufficient-history or
+    fit-failed result has nothing meaningful to write, and writing zeros/None
+    would be indistinguishable in the table from a real weak-signal fit.
+
+    ``INSERT OR REPLACE`` rather than ``OR IGNORE``: refitting the identical
+    ``(season, as_of_utc, model)`` is expected (an idempotent daily re-run),
+    and should overwrite with the latest numbers rather than silently keep a
+    stale fit from an earlier, less-complete run of the same day.
+    """
+    if ratings.status != "active":
+        return 0
+    now = utc_now_iso()
+    payload = [
+        (
+            season, as_of_utc, team_id, model,
+            rating.offense, rating.defense, rating.games,
+            ratings.ridge_lambda, ratings.home_field_advantage,
+            ratings.league_avg_points, ratings.n_games, now,
+        )
+        for team_id, rating in ratings.teams.items()
+    ]
+    if not payload:
+        return 0
+    conn.executemany(
+        """INSERT OR REPLACE INTO internal_team_ratings
+           (season, as_of_utc, team_id, model, offense, defense, team_games,
+            ridge_lambda, home_field_advantage, league_avg_points,
+            n_games_in_fit, generated_utc)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        payload,
+    )
+    return len(payload)
 
 
 def insert_odds(conn: sqlite3.Connection, rows: Iterable[OddsRow]) -> int:

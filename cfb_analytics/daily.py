@@ -249,6 +249,36 @@ def _run_player_passing(conn: sqlite3.Connection, report: DailyReport, season: i
         report.outcomes.append(SourceOutcome("player_passing", "failed", str(exc)[:200]))
 
 
+def _run_internal_ratings(conn: sqlite3.Connection, report: DailyReport, season: int) -> None:
+    """Fit and persist the internal ridge team-strength ratings as of right now.
+
+    Unlike the other legs, this one has no external credential to check -- it
+    reads only games already in the store -- so its only non-"ok" outcomes are
+    genuinely insufficient history (normal in the first few weeks of a season,
+    reported as "ok" since there is nothing broken about it) or an outright
+    fit failure.
+    """
+    try:
+        from cfb_analytics.features.team_ratings import fit_ratings_as_of
+        from cfb_analytics.ingest.store import upsert_internal_team_ratings
+
+        as_of_utc = utc_now_iso()
+        ratings = fit_ratings_as_of(conn, season, as_of_utc)
+        if ratings.status != "active":
+            report.outcomes.append(SourceOutcome(
+                "internal_ratings", "ok",
+                f"{ratings.status} ({ratings.n_games} games so far this season)"))
+            return
+        written = upsert_internal_team_ratings(
+            conn, ratings, season=season, as_of_utc=as_of_utc
+        )
+        report.outcomes.append(SourceOutcome(
+            "internal_ratings", "ok",
+            f"fit {ratings.n_games} games, wrote {written} team ratings", rows=written))
+    except CfbAnalyticsError as exc:
+        report.outcomes.append(SourceOutcome("internal_ratings", "failed", str(exc)[:200]))
+
+
 def run_daily(
     conn: sqlite3.Connection,
     *,
@@ -256,6 +286,7 @@ def run_daily(
     with_outlier: bool = True,
     with_weather: bool = True,
     with_player_passing: bool = True,
+    with_internal_ratings: bool = True,
     bootstrap: bool = True,
     now: datetime | None = None,
 ) -> DailyReport:
@@ -279,6 +310,9 @@ def run_daily(
 
     if with_player_passing:
         _run_player_passing(conn, report, year)
+
+    if with_internal_ratings:
+        _run_internal_ratings(conn, report, year)
 
     report.slates = slates_in_window(conn, now=moment)
     if report.slates and with_weather:
