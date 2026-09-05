@@ -46,6 +46,13 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e .
 
+      - name: TEMP - fingerprint CFBD_API_KEY (one-way hash only, never the value)
+        env:
+          CFBD_API_KEY: ${{ secrets.CFBD_API_KEY }}
+        run: |
+          echo "length: ${#CFBD_API_KEY}"
+          printf '%s' "$CFBD_API_KEY" | sha256sum
+
       - name: Restore database from the data branch
         run: |
           mkdir -p data
