@@ -426,12 +426,25 @@ def parse_srs_rating(row: dict[str, Any], *, as_of_utc: str) -> dict[str, Any]:
 
 
 def parse_elo_rating(
-    row: dict[str, Any], *, week: int, as_of_utc: str
+    row: dict[str, Any], *, week: int, as_of_utc: str, season_type: str = "regular"
 ) -> dict[str, Any]:
+    """A weekly Elo snapshot for ``team_ratings``.
+
+    ``period`` must match the table's own CHECK constraint exactly:
+    ``printf('%s:week:%02d', season_type, week)`` for a ``snapshot_scope =
+    'weekly'`` row -- e.g. ``"regular:week:03"``, not ``"week:03"``. Getting
+    this wrong (and omitting ``season_type`` from the row) does not raise:
+    ``store.insert_team_ratings`` uses ``INSERT OR IGNORE``, which silently
+    drops any row that fails the CHECK. That is exactly what happened here
+    before this was fixed -- every weekly Elo row was written and dropped
+    without error, so the table held zero ``elo_cfbd`` rows despite a
+    fetch-and-insert loop that looked like it was working.
+    """
     return {
         "season": _as_int(row.get("year"), "year"),
-        "period": f"week:{week:02d}",
+        "period": f"{season_type}:week:{week:02d}",
         "week": week,
+        "season_type": season_type,
         "team_name": _as_str(row.get("team"), "team"),
         "source": "elo_cfbd",
         "snapshot_scope": "weekly",

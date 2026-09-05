@@ -246,8 +246,18 @@ def _insert_snapshots(
 
 
 def insert_team_ratings(conn: sqlite3.Connection, rows: Iterable[dict[str, Any]]) -> int:
+    """Insert rows into ``team_ratings``.
+
+    ``season_type`` MUST be in this column list: the table's CHECK constraint
+    requires it to be non-NULL (and ``period`` to embed it) for any
+    ``snapshot_scope = 'weekly'`` row. A season-final row (SP+/SRS) never
+    sets ``season_type`` in its dict, so it inserts as NULL there, which the
+    CHECK's other branch requires -- both branches are satisfied by the same
+    column list. Omitting this column previously made every weekly row (Elo)
+    fail the CHECK and vanish silently under ``INSERT OR IGNORE``.
+    """
     columns = (
-        "snapshot_id", "season", "period", "week", "team_id", "source",
+        "snapshot_id", "season", "period", "week", "season_type", "team_id", "source",
         "snapshot_scope", "provenance_mode", "as_of_utc", "ingested_utc",
         "rating", "ranking", "off_rating", "def_rating", "st_rating", "sos",
         "second_order_wins",

@@ -149,6 +149,33 @@ def _check_season(rows: Iterable[dict[str, Any]], year: int, endpoint: str) -> N
         raise SchemaError(f"CFBD {endpoint} requested {year} but returned seasons {wrong}")
 
 
+def _backfill_elo_week(
+    conn: sqlite3.Connection,
+    client: CFBDClient,
+    run: store.RunRecorder,
+    resolver: dict[str, str],
+    *,
+    year: int,
+    week: int,
+    as_of_utc: str,
+    season_type: str = "regular",
+) -> tuple[int, int]:
+    """Fetch, parse, and persist one week's Elo ratings. Returns (written, filtered)."""
+    endpoint = f"ratings/elo:{year}:week:{week}"
+    raw_elo = _fetch(
+        run, endpoint, partial(client.fetch_elo, year, week, season_type=season_type)
+    )
+    elo = [
+        parse_elo_rating(row, week=week, as_of_utc=as_of_utc, season_type=season_type)
+        for row in raw_elo
+    ]
+    _check_season(elo, year, endpoint)
+    elo, skipped = _resolve_rows(elo, resolver, endpoint=endpoint, allow_unresolved=True)
+    for row in elo:
+        row["provenance_mode"] = "reconstructed"
+    return store.insert_team_ratings(conn, elo), skipped
+
+
 def backfill_fundamentals(
     conn: sqlite3.Connection,
     client: CFBDClient,
@@ -226,18 +253,12 @@ def backfill_fundamentals(
             talent_count += store.insert_team_talent(conn, talent)
 
             for week, as_of_utc in sorted(weekly_cutoffs.items()):
-                elo_endpoint = f"ratings/elo:{year}:week:{week}"
-                raw_elo = _fetch(run, elo_endpoint, partial(client.fetch_elo, year, week))
-                endpoints += 1
-                elo = [parse_elo_rating(row, week=week, as_of_utc=as_of_utc) for row in raw_elo]
-                _check_season(elo, year, elo_endpoint)
-                elo, skipped_elo = _resolve_rows(
-                    elo, resolver, endpoint=elo_endpoint, allow_unresolved=True
+                written, skipped_elo = _backfill_elo_week(
+                    conn, client, run, resolver, year=year, week=week, as_of_utc=as_of_utc
                 )
+                endpoints += 1
+                rating_count += written
                 filtered_elo += skipped_elo
-                for row in elo:
-                    row["provenance_mode"] = "reconstructed"
-                rating_count += store.insert_team_ratings(conn, elo)
 
                 advanced_endpoint = f"stats/season/advanced:{year}:week:{week}"
                 raw_advanced = _fetch(
@@ -276,4 +297,70 @@ def backfill_fundamentals(
         filtered_advanced=filtered_advanced,
         filtered_returning=filtered_returning,
         filtered_talent=filtered_talent,
+    )
+
+
+@dataclass(frozen=True)
+class EloBackfillSummary:
+    seasons: int
+    endpoints: int
+    ratings: int
+    filtered: int
+
+    def as_text(self) -> str:
+        return (
+            f"CFBD weekly Elo backfill wrote {self.ratings} rating snapshots across "
+            f"{self.seasons} season(s) and {self.endpoints} healthy endpoints. "
+            f"Filtered {self.filtered} non-FBS rows."
+        )
+
+
+def backfill_elo(
+    conn: sqlite3.Connection,
+    client: CFBDClient,
+    *,
+    start_year: int,
+    end_year: int,
+    season_type: str = "regular",
+) -> EloBackfillSummary:
+    """Backfill ONLY weekly Elo ratings.
+
+    A standalone entry point rather than a re-run of ``backfill_fundamentals``:
+    Elo's rows were the only ones silently dropped by the CHECK-constraint bug
+    documented on ``parse_elo_rating`` (SP+/SRS/advanced/returning/talent all
+    inserted correctly the first time), so re-fetching those four other
+    endpoints again per season, just to pick up the Elo fix, would waste API
+    calls and time for data that is already correct in the store.
+    """
+    if start_year > end_year:
+        raise SchemaError("start_year must be less than or equal to end_year")
+
+    rating_count = filtered = endpoints = 0
+    command = f"backfill-elo --start-year {start_year} --end-year {end_year}"
+
+    with store.RunRecorder(conn, command) as run:
+        for year in range(start_year, end_year + 1):
+            weekly_cutoffs, _season_final = _cutoffs(conn, year)
+            team_rows = _fetch(run, f"teams/fbs:{year}", partial(client.fetch_fbs_teams, year))
+            endpoints += 1
+            resolver = _team_resolver(team_rows)
+
+            for week, as_of_utc in sorted(weekly_cutoffs.items()):
+                written, skipped = _backfill_elo_week(
+                    conn, client, run, resolver,
+                    year=year, week=week, as_of_utc=as_of_utc, season_type=season_type,
+                )
+                endpoints += 1
+                rating_count += written
+                filtered += skipped
+            conn.commit()
+
+        run.add_rows(rating_count)
+        conn.commit()
+
+    return EloBackfillSummary(
+        seasons=end_year - start_year + 1,
+        endpoints=endpoints,
+        ratings=rating_count,
+        filtered=filtered,
     )

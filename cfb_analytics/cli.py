@@ -166,6 +166,29 @@ def _cmd_backfill_fundamentals(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_backfill_elo(args: argparse.Namespace) -> int:
+    """Backfill ONLY weekly CFBD Elo ratings.
+
+    A separate command from ``backfill-fundamentals``: Elo's rows were the
+    only ones a since-fixed CHECK-constraint bug silently dropped (see
+    ``parse_elo_rating``'s docstring), so a full fundamentals re-run to pick
+    up the fix would waste four other endpoints' worth of API calls per
+    season for data that is already correct in the store.
+    """
+    from cfb_analytics.errors import SchemaError
+    from cfb_analytics.ingest.cfbd_fundamentals import backfill_elo
+    from cfb_analytics.sources.cfbd import CFBDClient
+
+    if args.start_year > args.end_year:
+        raise SchemaError("start-year must be less than or equal to end-year")
+    paths.ensure_dirs()
+    client = CFBDClient()
+    with db.open_db() as conn:
+        summary = backfill_elo(conn, client, start_year=args.start_year, end_year=args.end_year)
+    print(summary.as_text())
+    return 0
+
+
 def _cmd_backtest(args: argparse.Namespace) -> int:
     """Walk-forward moneyline backtest of the internal ridge model.
 
@@ -518,6 +541,15 @@ def build_parser() -> argparse.ArgumentParser:
         "--end-year", type=int, required=True, help="last season year, inclusive"
     )
     fundamentals.set_defaults(func=_cmd_backfill_fundamentals)
+
+    elo_cmd = sub.add_parser(
+        "backfill-elo", help="backfill ONLY weekly CFBD Elo ratings (see backfill-fundamentals)"
+    )
+    elo_cmd.add_argument(
+        "--start-year", type=int, required=True, help="first season year, inclusive"
+    )
+    elo_cmd.add_argument("--end-year", type=int, required=True, help="last season year, inclusive")
+    elo_cmd.set_defaults(func=_cmd_backfill_elo)
 
     fit_ratings = sub.add_parser(
         "fit-ratings", help="fit and persist internal ridge team-strength ratings"
