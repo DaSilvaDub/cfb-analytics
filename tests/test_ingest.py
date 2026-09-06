@@ -35,6 +35,17 @@ class FakeClient:
         return self._injuries
 
 
+@pytest.fixture(autouse=True)
+def _canonical(canonical_slate):
+    """Outlier resolves onto canonical rows, so every test needs them present.
+
+    Autouse rather than per-test: an ingest run against an empty canonical
+    store resolves nothing, which would make each assertion below fail for a
+    reason unrelated to what it is testing.
+    """
+    return canonical_slate
+
+
 @pytest.fixture
 def two_events(schedule_event):
     second = {
@@ -56,7 +67,7 @@ class TestSlateFiltering:
         client = FakeClient(two_events + [off_slate])
         summary = ingest_slate(conn, client, SLATE, with_odds=False, with_injuries=False)
         assert summary.events_seen == 2
-        assert summary.games_written == 2
+        assert summary.games_matched == 2
 
     def test_empty_slate_is_not_an_error(self, conn, two_events):
         summary = ingest_slate(conn, FakeClient(two_events), "2030-01-01")
@@ -100,7 +111,7 @@ class TestPartialFailure:
                             market_errors={"evt-1"})
         summary = ingest_slate(conn, client, SLATE, with_injuries=False)
 
-        assert summary.games_written == 2, "both games still stored"
+        assert summary.games_matched == 2, "both games still stored"
         assert len(summary.market_failures) == 1
         assert summary.odds_rows > 0, "the healthy event's odds were kept"
 
@@ -108,7 +119,7 @@ class TestPartialFailure:
         client = FakeClient(two_events, injury_errors={"t-home"})
         summary = ingest_slate(conn, client, SLATE, with_odds=False)
         assert len(summary.injury_failures) == 1
-        assert summary.games_written == 2
+        assert summary.games_matched == 2
 
     def test_failures_land_in_source_health(self, conn, two_events, moneyline_market):
         client = FakeClient(two_events, markets=[moneyline_market], market_errors={"evt-1"})
@@ -120,7 +131,7 @@ class TestPartialFailure:
         client = FakeClient(two_events + [{"eventId": "bad", "scheduledTime": "nope"}])
         summary = ingest_slate(conn, client, SLATE, with_odds=False, with_injuries=False)
         assert len(summary.schema_failures) == 1
-        assert summary.games_written == 2
+        assert summary.games_matched == 2
 
 
 class TestIngestOutputs:
@@ -141,10 +152,77 @@ class TestIngestOutputs:
     def test_limit_caps_events(self, conn, two_events, moneyline_market):
         client = FakeClient(two_events, markets=[moneyline_market])
         summary = ingest_slate(conn, client, SLATE, limit=1, with_injuries=False)
-        assert summary.games_written == 1
+        assert summary.games_matched == 1
         assert summary.events_seen == 2, "events_seen reports the slate, not the capped subset"
 
     def test_summary_text_mentions_failures(self, conn, two_events, moneyline_market):
         client = FakeClient(two_events, markets=[moneyline_market], market_errors={"evt-1"})
         text = ingest_slate(conn, client, SLATE, with_injuries=False).as_text()
         assert "market fetch failures: 1" in text
+
+
+class TestCanonicalIdentity:
+    """The defect this ingest was rewritten to prevent: one game, one row.
+
+    Before this, ingesting a slate wrote a second `games` row under Outlier's
+    `eventId` beside the CFBD row for the same fixture, so the board listed
+    every side twice and each key held only half the books.
+    """
+
+    def test_ingest_writes_no_second_game_row(self, conn, two_events, moneyline_market):
+        client = FakeClient(two_events, markets=[moneyline_market])
+        summary = ingest_slate(conn, client, SLATE, with_injuries=False)
+
+        rows = conn.execute("SELECT game_id, source FROM games ORDER BY game_id").fetchall()
+        assert [r["game_id"] for r in rows] == ["cfbd:1001", "cfbd:1002"]
+        assert {r["source"] for r in rows} == {"cfbd"}
+        assert summary.games_matched == 2
+
+    def test_odds_attach_to_the_canonical_game(self, conn, two_events, moneyline_market):
+        client = FakeClient(two_events, markets=[moneyline_market])
+        ingest_slate(conn, client, SLATE, with_injuries=False)
+        keys = {r["game_id"] for r in conn.execute("SELECT DISTINCT game_id FROM odds_snapshots")}
+        assert keys <= {"cfbd:1001", "cfbd:1002"}, "odds must not hang off a feed-native id"
+
+    def test_no_feed_native_team_rows_are_created(self, conn, two_events):
+        ingest_slate(conn, FakeClient(two_events), SLATE,
+                     with_odds=False, with_injuries=False)
+        stray = conn.execute(
+            "SELECT COUNT(*) AS n FROM teams WHERE cfbd_id IS NULL").fetchone()["n"]
+        assert stray == 0
+
+    def test_unresolvable_event_is_named_not_materialised(self, conn, schedule_event):
+        """An event with no canonical game is reported, and creates nothing.
+
+        Inventing a row to hold the odds is exactly what produced the duplicate
+        in the first place, so the data is refused and the reason names the
+        teams and the fix.
+        """
+        stranger = {
+            **schedule_event, "eventId": "evt-fcs",
+            "home": {"teamId": "t-x", "name": "Bison", "alias": "NDSU",
+                     "market": "North Dakota State"},
+            "away": {"teamId": "t-y", "name": "Jackrabbits", "alias": "SDST",
+                     "market": "South Dakota State"},
+        }
+        before = conn.execute("SELECT COUNT(*) AS n FROM games").fetchone()["n"]
+        summary = ingest_slate(conn, FakeClient([stranger]), SLATE,
+                               with_odds=False, with_injuries=False)
+
+        assert summary.games_matched == 0
+        assert conn.execute("SELECT COUNT(*) AS n FROM games").fetchone()["n"] == before
+        assert len(summary.unresolved_events) == 1
+        assert "North Dakota State" in summary.unresolved_events[0]
+        assert "unresolved events: 1" in summary.as_text()
+
+    def test_feed_naming_is_kept_as_an_alias_on_the_canonical_team(
+        self, conn, two_events
+    ):
+        ingest_slate(conn, FakeClient(two_events), SLATE,
+                     with_odds=False, with_injuries=False)
+        aliases = {
+            (r["team_id"], r["alias"]) for r in conn.execute(
+                "SELECT team_id, alias FROM team_aliases WHERE source = 'outlier'")
+        }
+        assert ("cfbd:202", "Tulsa") in aliases
+        assert ("cfbd:202", "TLSA") in aliases
