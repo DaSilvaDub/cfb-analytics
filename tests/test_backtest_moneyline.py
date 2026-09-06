@@ -185,6 +185,38 @@ class TestInternalElo:
                 != custom_report.internal_elo_seasons.log_loss)
 
 
+class TestPLogitAlone:
+    def test_logit_slice_is_populated_for_a_seeded_season(self, conn):
+        _seed_season(conn, 2019)
+        report = run_moneyline_backtest(conn, seasons=(2019,), min_games=1, logit_min_n=1)
+        assert report.logit_seasons is not None
+        assert report.logit_seasons.n_games > 0
+
+    def test_logit_slice_never_exceeds_the_ridge_slices_game_count(self, conn):
+        _seed_season(conn, 2019)
+        report = run_moneyline_backtest(conn, seasons=(2019,), min_games=1, logit_min_n=1)
+        assert report.logit_seasons.n_games <= report.seasons.n_games
+
+    def test_report_text_includes_a_ridge_vs_p_logit_comparison(self, conn):
+        _seed_season(conn, 2019)
+        text = run_moneyline_backtest(
+            conn, seasons=(2019,), min_games=1, logit_min_n=1
+        ).as_text()
+        assert "p_logit" in text.lower()
+        assert ("ridge beats p_logit" in text.lower()
+                or "ridge does not beat p_logit" in text.lower())
+
+    def test_default_min_n_of_30_can_leave_the_slice_empty(self, conn):
+        """The default min_n=30 is a real, honest floor -- a small seeded
+        fixture legitimately produces no P_logit predictions at all until
+        enough games accumulate, and that must be reported, not crash."""
+        _seed_season(conn, 2019, weeks=2)
+        report = run_moneyline_backtest(conn, seasons=(2019,), min_games=1)
+        assert report.skipped_logit_unrated >= 0
+        if report.logit_seasons is None:
+            assert "no games had a p_logit prediction" in report.as_text().lower()
+
+
 class TestThreeModelEnsemble:
     def test_fitted_weights_are_reported_and_sum_to_one(self, conn):
         _seed_season(conn, 2019)

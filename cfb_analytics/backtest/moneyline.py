@@ -36,12 +36,17 @@ but it is NOT a full promotion decision by itself: ``config/promotion.json``
 also requires beating a market and an SP+ baseline, neither of which exist
 yet. That is a tracked gap, not an oversight.
 
+It also reports ``P_logit`` alone (``features/ensemble.py``'s IRLS logistic
+regression on talent/returning-production/home-field/rest/advanced-stat-net
+diffs -- see that module's docstring for the full feature list and what is
+still a tracked gap), the same way it reports internal Elo alone: a genuine
+comparison point, not one of the plan's three required baselines.
+
 Finally, it reports the plan's own three-model ENSEMBLE (section 6.4):
 ``P_ridge`` (``Phi(M/sigma)``), ``P_elo`` (the internal Elo model, NOT the
 CFBD baseline -- the baseline is a comparison point, never an ensemble
-input), and ``P_logit`` (``features/ensemble.py``'s IRLS logistic
-regression). The pooling weights ``v`` are fit once, by grid search
-minimizing log loss on the non-stress fit predictions
+input), and ``P_logit``. The pooling weights ``v`` are fit once, by grid
+search minimizing log loss on the non-stress fit predictions
 (``backtest/ensemble_fit.py``), then applied to both the fit and stress
 slices -- the same fit-then-apply shape ``sigma_0`` and the shrinkage/lambda
 constants already use elsewhere in this module and ``models/``.
@@ -68,6 +73,7 @@ from cfb_analytics.backtest.metrics import (
 from cfb_analytics.models.elo import DEFAULT_K as DEFAULT_ELO_K
 from cfb_analytics.models.elo import HFA_ELO_POINTS
 from cfb_analytics.models.ensemble import pool_probabilities
+from cfb_analytics.models.logistic import DEFAULT_L2_LAMBDA as DEFAULT_LOGIT_L2_LAMBDA
 from cfb_analytics.models.ridge import DEFAULT_MIN_GAMES, DEFAULT_RIDGE_LAMBDA
 from cfb_analytics.models.shrinkage import DEFAULT_COEFFICIENTS, ShrinkageCoefficients
 
@@ -105,6 +111,9 @@ class MoneylineBacktestReport:
     internal_elo_seasons: SliceMetrics | None
     internal_elo_stress: SliceMetrics | None
     skipped_internal_elo_unrated: int
+    logit_seasons: SliceMetrics | None
+    logit_stress: SliceMetrics | None
+    skipped_logit_unrated: int
     ensemble_weights: dict[str, float] | None
     ensemble_seasons: SliceMetrics | None
     ensemble_stress: SliceMetrics | None
@@ -118,6 +127,7 @@ class MoneylineBacktestReport:
             f"  skipped (a team had no rating)          : {self.skipped_unrated_team}",
             f"  skipped (no Elo baseline available)     : {self.skipped_elo_unrated}",
             f"  skipped (no internal Elo rating)        : {self.skipped_internal_elo_unrated}",
+            f"  skipped (no P_logit prediction)         : {self.skipped_logit_unrated}",
             "",
             "== internal ridge ==",
             _slice_text(self.seasons),
@@ -145,6 +155,17 @@ class MoneylineBacktestReport:
             lines.append("  (no games had an internal Elo rating for both teams)")
         if self.internal_elo_stress is not None:
             lines += ["", _slice_text(self.internal_elo_stress)]
+        lines += ["", "== P_logit (plan section 6.4) =="]
+        if self.logit_seasons is not None:
+            lines.append(_slice_text(self.logit_seasons))
+            comparison = _comparison_line(
+                "ridge", self.seasons, "P_logit", self.logit_seasons
+            )
+            lines.append(f"    {comparison}")
+        else:
+            lines.append("  (no games had a P_logit prediction available)")
+        if self.logit_stress is not None:
+            lines += ["", _slice_text(self.logit_stress)]
         lines += ["", "== three-model ensemble (plan section 6.4) =="]
         if self.ensemble_weights is not None:
             weight_text = ", ".join(
@@ -257,6 +278,20 @@ def _internal_elo_probs(predictions: list[GamePrediction]) -> tuple[list[Predict
     return probs, skipped
 
 
+def _logit_probs(predictions: list[GamePrediction]) -> tuple[list[Prediction], int]:
+    """P_logit-alone probabilities for the games where it actually produced
+    one (already computed by harness.py -- see min_n's own insufficient-data
+    status on ``models/logistic.py``'s ``LogisticFit``)."""
+    probs: list[Prediction] = []
+    skipped = 0
+    for prediction in predictions:
+        if prediction.logit_win_prob is None:
+            skipped += 1
+            continue
+        probs.append((prediction.logit_win_prob, prediction.home_won))
+    return probs, skipped
+
+
 def _member_probs(prediction: GamePrediction, sigma_0: float) -> dict[str, float]:
     """Every ensemble member's probability for one game, omitting whichever
     are unavailable (internal Elo's own insufficient-history weeks, P_logit
@@ -296,11 +331,14 @@ def run_moneyline_backtest(
     coeffs: ShrinkageCoefficients = DEFAULT_COEFFICIENTS,
     elo_k: float = DEFAULT_ELO_K,
     elo_hfa: float = HFA_ELO_POINTS,
+    logit_l2_lambda: float = DEFAULT_LOGIT_L2_LAMBDA,
+    logit_min_n: int = 30,
     ensemble_grid_step: float = 0.05,
 ) -> MoneylineBacktestReport:
     run = run_walk_forward(
         conn, list(seasons), ridge_lambda=ridge_lambda, min_games=min_games,
         apply_shrinkage=apply_shrinkage, coeffs=coeffs, elo_k=elo_k, elo_hfa=elo_hfa,
+        logit_l2_lambda=logit_l2_lambda, logit_min_n=logit_min_n,
     )
 
     fit_predictions = [p for p in run.predictions if p.season not in STRESS_SEASONS]
@@ -343,6 +381,19 @@ def run_moneyline_backtest(
         else None
     )
 
+    logit_fit_probs, logit_fit_skipped = _logit_probs(fit_predictions)
+    logit_stress_probs, logit_stress_skipped = _logit_probs(stress_predictions)
+    logit_seasons_metrics = (
+        _score_slice("P_logit, same seasons/games as ridge", logit_fit_probs)
+        if logit_fit_probs
+        else None
+    )
+    logit_stress_metrics = (
+        _score_slice("P_logit, 2020 stress slice", logit_stress_probs)
+        if logit_stress_probs
+        else None
+    )
+
     ensemble_fit_member_probs = [_member_probs(p, sigma_0) for p in fit_predictions]
     ensemble_fit_outcomes = [p.home_won for p in fit_predictions]
     ensemble_weights = (
@@ -382,6 +433,9 @@ def run_moneyline_backtest(
         internal_elo_seasons=internal_elo_seasons_metrics,
         internal_elo_stress=internal_elo_stress_metrics,
         skipped_internal_elo_unrated=internal_elo_fit_skipped + internal_elo_stress_skipped,
+        logit_seasons=logit_seasons_metrics,
+        logit_stress=logit_stress_metrics,
+        skipped_logit_unrated=logit_fit_skipped + logit_stress_skipped,
         ensemble_weights=ensemble_weights,
         ensemble_seasons=ensemble_seasons_metrics,
         ensemble_stress=ensemble_stress_metrics,

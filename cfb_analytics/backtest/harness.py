@@ -52,9 +52,10 @@ change this backtest's runtime.
 Each week also refits ``features/ensemble.py``'s ``P_logit`` (plan section
 6.4's third ensemble member -- ``logit_win_prob`` on each prediction,
 already a probability). Unlike ridge/Elo, its training set is not reset per
-season (see that module's docstring for why), but IRLS on 3 features is
-cheap enough regardless that refitting it fresh every week is still no
-meaningful cost.
+season (see that module's docstring for why), but IRLS on eleven features is
+still cheap enough that refitting it fresh every week is no meaningful cost.
+A ``RestLookup`` (``features/rest.py``) is built ONCE for the whole run,
+not per week, since the schedule it indexes never changes mid-run.
 """
 
 from __future__ import annotations
@@ -64,6 +65,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
+from cfb_analytics.features.advanced_stats import load_advanced_stats, team_advanced_nets
 from cfb_analytics.features.elo_internal import (
     fit_internal_elo_as_of,
     previous_season_final_elo,
@@ -71,6 +73,7 @@ from cfb_analytics.features.elo_internal import (
 from cfb_analytics.features.elo_ratings import elo_rating_as_of
 from cfb_analytics.features.ensemble import fit_logistic_as_of, game_features
 from cfb_analytics.features.preseason import returning_ppa_zscores, talent_zscores
+from cfb_analytics.features.rest import RestLookup
 from cfb_analytics.features.team_ratings import (
     apply_shrinkage_prior,
     previous_season_final_ratings,
@@ -150,6 +153,7 @@ def run_walk_forward(
     logit_min_n: int = 30,
 ) -> WalkForwardRun:
     run = WalkForwardRun()
+    rest_lookup = RestLookup(conn)
     for season in seasons:
         previous_season_ratings = (
             previous_season_final_ratings(conn, season, ridge_lambda=ridge_lambda,
@@ -162,6 +166,7 @@ def run_walk_forward(
         )
         talent_z = talent_zscores(conn, season)
         returning_z = returning_ppa_zscores(conn, season)
+        advanced_cache = load_advanced_stats(conn, season)
         for week in _regular_season_weeks(conn, season):
             week_games = conn.execute(
                 """SELECT game_id, home_team_id, away_team_id, home_points,
@@ -204,7 +209,8 @@ def run_walk_forward(
                 previous_season_ratings=previous_season_elo,
             )
             logistic_fit_for_week = fit_logistic_as_of(
-                conn, as_of_utc, l2_lambda=logit_l2_lambda, min_n=logit_min_n
+                conn, as_of_utc, l2_lambda=logit_l2_lambda, min_n=logit_min_n,
+                rest_lookup=rest_lookup,
             )
 
             for row in week_games:
@@ -215,10 +221,21 @@ def run_walk_forward(
                 if margin is None:
                     run.skipped_unrated_team += 1
                     continue
+                home_id, away_id = row["home_team_id"], row["away_team_id"]
                 logit_win_prob = logistic_fit_for_week.probability(
                     game_features(
-                        row["home_team_id"], row["away_team_id"], neutral_site=neutral_site,
+                        home_id, away_id, neutral_site=neutral_site,
                         talent_z=talent_z, returning_z=returning_z,
+                        home_advanced=team_advanced_nets(
+                            advanced_cache, home_id, as_of_utc, season=season
+                        ),
+                        away_advanced=team_advanced_nets(
+                            advanced_cache, away_id, as_of_utc, season=season
+                        ),
+                        rest_diff=(
+                            rest_lookup.rest_days(home_id, as_of_utc)
+                            - rest_lookup.rest_days(away_id, as_of_utc)
+                        ),
                     )
                 )
                 run.predictions.append(GamePrediction(
