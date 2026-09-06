@@ -4,6 +4,17 @@ A partial failure degrades the run rather than aborting it — one event's marke
 failing must not lose the other twenty-nine — but every failure is recorded in
 ``source_health`` and counted in the summary, so a degraded run is visible
 instead of silently thin.
+
+**This ingest writes no games and no teams.** It resolves each event onto the
+canonical CFBD row and attaches odds and availability there. Writing its own
+``games`` row under Outlier's ``eventId`` is what put every current-slate game
+in the store twice, splitting one game's book set across two keys. An event
+that does not resolve is reported and skipped, never materialised — see
+``ingest.identity``.
+
+Note the asymmetry that runs through this module: the Outlier **API** is called
+with Outlier's own ids (``eventId``, ``teamId``), while everything **stored**
+carries canonical ids. Confusing the two is the easy mistake here.
 """
 
 from __future__ import annotations
@@ -13,6 +24,7 @@ from dataclasses import dataclass, field
 
 from cfb_analytics.errors import SchemaError, SourceError
 from cfb_analytics.ingest import store
+from cfb_analytics.ingest.identity import CanonicalResolver, EventResolution
 from cfb_analytics.sources.outlier import (
     OutlierClient,
     parse_event,
@@ -26,14 +38,16 @@ from cfb_analytics.utils import utc_now_iso
 class IngestSummary:
     slate_date: str
     events_seen: int = 0
-    games_written: int = 0
-    teams_written: int = 0
+    games_matched: int = 0
+    aliases_written: int = 0
     odds_rows: int = 0
     injury_rows: int = 0
     books: set[str] = field(default_factory=set)
     market_failures: list[str] = field(default_factory=list)
     injury_failures: list[str] = field(default_factory=list)
     schema_failures: list[str] = field(default_factory=list)
+    # Events with no unique canonical game. Named, never silently dropped.
+    unresolved_events: list[str] = field(default_factory=list)
     # Cross-check: the feed's own dayOfWeek code must agree with the Eastern
     # weekday we derive. A mismatch means the slate definition has drifted.
     weekday_mismatches: list[str] = field(default_factory=list)
@@ -42,8 +56,8 @@ class IngestSummary:
         lines = [
             f"slate {self.slate_date}",
             f"  events on slate : {self.events_seen}",
-            f"  games written   : {self.games_written}",
-            f"  teams written   : {self.teams_written}",
+            f"  games matched   : {self.games_matched}",
+            f"  team aliases    : {self.aliases_written}",
             f"  odds rows       : {self.odds_rows}  across {len(self.books)} books",
             f"  injury rows     : {self.injury_rows}",
         ]
@@ -53,6 +67,7 @@ class IngestSummary:
             ("market fetch failures", self.market_failures),
             ("injury fetch failures", self.injury_failures),
             ("schema failures", self.schema_failures),
+            ("unresolved events", self.unresolved_events),
             ("weekday cross-check mismatches", self.weekday_mismatches),
         ):
             if failures:
@@ -101,68 +116,99 @@ def ingest_slate(
         if limit is not None:
             parsed = parsed[:limit]
 
+        resolver = CanonicalResolver(conn)
+        resolved: list[tuple[dict, EventResolution]] = []
         for record in parsed:
-            for side in ("home", "away"):
-                store.upsert_team(conn, record[side])
-                summary.teams_written += 1
-            store.upsert_game(
-                conn,
-                {
-                    "game_id": record["game_id"],
-                    "season": record["season"],
-                    "kickoff_utc": record["kickoff_utc"],
-                    "football_date": record["football_date"],
-                    "day_of_week": record["day_of_week"],
-                    "home_team_id": record["home"]["team_id"],
-                    "away_team_id": record["away"]["team_id"],
-                    "venue_name": record["venue_name"],
-                    "network": record["network"],
-                    "status": record["status"],
-                },
+            resolution = resolver.event(record)
+            if not resolution.ok:
+                summary.unresolved_events.append(resolution.reason)
+                run.record_health(
+                    "outlier", f"resolve:{record['game_id']}",
+                    ok=False, detail=resolution.reason,
+                )
+                continue
+            summary.games_matched += 1
+            summary.aliases_written += store.insert_team_aliases(
+                conn, _alias_rows(record, resolution)
             )
-            summary.games_written += 1
+            resolved.append((record, resolution))
         conn.commit()
 
         if with_odds:
-            _ingest_odds(conn, client, parsed, captured_utc, summary, run)
+            _ingest_odds(conn, client, resolved, captured_utc, summary, run)
         if with_injuries:
-            _ingest_injuries(conn, client, parsed, captured_utc, summary, run)
+            _ingest_injuries(conn, client, resolved, captured_utc, summary, run)
 
-        run.add_rows(summary.odds_rows + summary.injury_rows + summary.games_written)
+        run.add_rows(summary.odds_rows + summary.injury_rows)
         conn.commit()
 
     return summary
 
 
-def _ingest_odds(conn, client, parsed, captured_utc, summary, run) -> None:
-    for record in parsed:
-        game_id = record["game_id"]
+def _ingest_odds(conn, client, resolved, captured_utc, summary, run) -> None:
+    for record, resolution in resolved:
+        event_id = record["game_id"]          # Outlier's id: what the API wants.
+        canonical_id = resolution.game_id     # cfbd:<id>: what the store wants.
         try:
-            markets = client.fetch_event_markets(game_id, "GAMELINE")
+            markets = client.fetch_event_markets(event_id, "GAMELINE")
         except SourceError as exc:
-            summary.market_failures.append(f"{game_id}: {exc}")
-            run.record_health("outlier", f"markets:{game_id}", ok=False, detail=str(exc))
+            summary.market_failures.append(f"{event_id}: {exc}")
+            run.record_health("outlier", f"markets:{event_id}", ok=False, detail=str(exc))
             continue
-        rows = parse_odds_rows(game_id, markets, captured_utc)
+        rows = parse_odds_rows(canonical_id, markets, captured_utc)
         written = store.insert_odds(conn, rows)
         summary.odds_rows += written
         summary.books.update(row.book for row in rows)
-        run.record_health("outlier", f"markets:{game_id}", ok=True, rows=written)
+        run.record_health("outlier", f"markets:{event_id}", ok=True, rows=written)
     conn.commit()
 
 
-def _ingest_injuries(conn, client, parsed, captured_utc, summary, run) -> None:
-    for record in parsed:
-        game_id = record["game_id"]
-        for side in ("home", "away"):
-            team_id = record[side]["team_id"]
+def _ingest_injuries(conn, client, resolved, captured_utc, summary, run) -> None:
+    for record, resolution in resolved:
+        canonical_game = resolution.game_id
+        sides = (
+            ("home", resolution.home_team_id),
+            ("away", resolution.away_team_id),
+        )
+        for side, canonical_team in sides:
+            feed_team_id = record[side]["team_id"]   # Outlier's id: for the API.
             try:
-                players = client.fetch_team_injuries(team_id)
+                players = client.fetch_team_injuries(feed_team_id)
             except SourceError as exc:
-                summary.injury_failures.append(f"{team_id}: {exc}")
-                run.record_health("outlier", f"injuries:{team_id}", ok=False, detail=str(exc))
+                summary.injury_failures.append(f"{feed_team_id}: {exc}")
+                run.record_health(
+                    "outlier", f"injuries:{feed_team_id}", ok=False, detail=str(exc)
+                )
                 continue
-            rows = parse_injury_rows(game_id, team_id, players, captured_utc)
+            rows = parse_injury_rows(canonical_game, canonical_team, players, captured_utc)
             summary.injury_rows += store.insert_availability(conn, rows)
-            run.record_health("outlier", f"injuries:{team_id}", ok=True, rows=len(rows))
+            run.record_health("outlier", f"injuries:{feed_team_id}", ok=True, rows=len(rows))
     conn.commit()
+
+
+def _alias_rows(record: dict, resolution: EventResolution) -> list[dict[str, str]]:
+    """Keep Outlier's naming as aliases on the canonical team.
+
+    This ingest no longer writes ``teams`` rows, so without this the feed's
+    vocabulary would be discarded and every run would re-derive the same
+    mapping. Only ``market`` ("Washington") and ``alias`` ("WASH") are kept --
+    deliberately NOT the nickname, because "Huskies" denotes three programmes
+    and storing it as a resolving name would eventually let one of them win.
+    """
+    rows: list[dict[str, str]] = []
+    sides = (
+        ("home", resolution.home_team_id),
+        ("away", resolution.away_team_id),
+    )
+    for side, canonical_team in sides:
+        if canonical_team is None:
+            continue
+        team = record[side]
+        for field_name, alias_type in (("market", "market"), ("alias", "abbreviation")):
+            value = team.get(field_name)
+            if value:
+                rows.append({
+                    "team_id": canonical_team, "source": "outlier",
+                    "alias": str(value), "alias_type": alias_type,
+                })
+    return rows

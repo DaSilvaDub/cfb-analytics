@@ -544,6 +544,155 @@ CREATE INDEX IF NOT EXISTS idx_internal_elo_ratings_team
     ON internal_elo_ratings(team_id, season, as_of_utc);
 """
 
+MIGRATION_011 = """
+-- No schema change: this migration exists for its hook, which merges the two
+-- identity namespaces that had grown up side by side. The index is what makes
+-- the canonical game lookup (source + slate date) cheap enough to rebuild on
+-- every ingest.
+CREATE INDEX IF NOT EXISTS idx_games_source_slate ON games(source, football_date);
+"""
+
+
+def _merge_outlier_identities(conn: sqlite3.Connection) -> None:
+    """Fold Outlier-keyed rows onto the canonical CFBD game and team ids.
+
+    Until now the two ingests minted primary keys in disjoint namespaces --
+    ``cfbd:401`` beside Outlier's ``eventId`` -- so one real game was two rows,
+    each holding half the books. The board listed every side twice and no
+    consensus saw the whole market.
+
+    Three rules govern what happens to the existing data:
+
+    1. **Raw observations are re-keyed, never dropped.** ``odds_snapshots`` is
+       the actual captured market and cannot be re-fetched for a past capture
+       time. ``snapshot_id`` is recomputed rather than carried over, because it
+       is a hash *of* ``game_id``: leaving a stale id would break the
+       re-ingest-is-idempotent guarantee that hash exists to provide, and the
+       next capture of an unchanged price would insert a duplicate.
+    2. **Derived rows are deleted, not moved.** ``market_consensus`` and
+       ``line_movement`` computed over a split book set are wrong on *both*
+       sides of the split, so they are cleared for the canonical game too and
+       rebuilt by ``build_market_for_slate``. Absent beats confidently wrong.
+    3. **Anything that does not resolve is left exactly where it is.** An
+       unresolved Outlier game keeps ``source = 'outlier'`` and stays visible
+       rather than being quietly deleted or force-matched.
+    """
+    from cfb_analytics.ingest.identity import CanonicalResolver
+    from cfb_analytics.utils import stable_id
+
+    resolver = CanonicalResolver(conn)
+
+    team_map: dict[str, str] = {}
+    for row in conn.execute(
+        "SELECT team_id, school, alias, market FROM teams WHERE cfbd_id IS NULL"
+    ):
+        canonical = resolver.team_id(
+            {"school": row["school"], "alias": row["alias"], "market": row["market"]}
+        )
+        if canonical:
+            team_map[str(row["team_id"])] = canonical
+
+    game_map: dict[str, str] = {}
+    for row in conn.execute(
+        """SELECT game_id, home_team_id, away_team_id, football_date
+           FROM games WHERE source <> 'cfbd'"""
+    ):
+        home = team_map.get(str(row["home_team_id"]))
+        away = team_map.get(str(row["away_team_id"]))
+        if not home or not away:
+            continue
+        match = resolver.game(
+            home_team_id=home, away_team_id=away,
+            football_date=str(row["football_date"]),
+        )
+        # An orientation disagreement would relabel HOME/AWAY prices onto the
+        # wrong team, so such a game is left unmerged for a human to look at.
+        if match is None or not match.orientation_agrees:
+            continue
+        game_map[str(row["game_id"])] = match.game_id
+
+    if not game_map:
+        return
+
+    # Preserve the feed's vocabulary before its team rows go away, so the
+    # mapping survives as data rather than having to be re-derived every run.
+    for old_team, canonical_team in team_map.items():
+        names = conn.execute(
+            "SELECT alias, market FROM teams WHERE team_id = ?", (old_team,)
+        ).fetchone()
+        if names is None:
+            continue
+        conn.executemany(
+            """INSERT OR IGNORE INTO team_aliases (team_id, source, alias, alias_type)
+               VALUES (?, 'outlier', ?, ?)""",
+            [
+                (canonical_team, str(names[field]), alias_type)
+                for field, alias_type in (("market", "market"), ("alias", "abbreviation"))
+                if names[field]
+            ],
+        )
+
+    # Rule 2: clear derived rows on both sides of every merge.
+    affected = sorted(set(game_map) | set(game_map.values()))
+    placeholders = ", ".join("?" for _ in affected)
+    for table in ("market_consensus", "line_movement"):
+        conn.execute(f"DELETE FROM {table} WHERE game_id IN ({placeholders})", affected)
+
+    # Rule 1: re-key raw observations, recomputing the content hash.
+    for old_game, new_game in game_map.items():
+        rows = conn.execute(
+            """SELECT snapshot_id, source, book, market, side, line,
+                      price_american, captured_utc
+               FROM odds_snapshots WHERE game_id = ?""",
+            (old_game,),
+        ).fetchall()
+        conn.executemany(
+            "UPDATE OR IGNORE odds_snapshots SET snapshot_id = ?, game_id = ? "
+            "WHERE snapshot_id = ?",
+            [
+                (
+                    stable_id(
+                        row["source"], new_game, row["book"], row["market"], row["side"],
+                        row["line"], row["price_american"], row["captured_utc"],
+                    ),
+                    new_game,
+                    row["snapshot_id"],
+                )
+                for row in rows
+            ],
+        )
+
+    conn.executemany(
+        "UPDATE OR IGNORE availability SET team_id = ? WHERE team_id = ?",
+        [(canonical, old) for old, canonical in team_map.items()],
+    )
+    for table in ("availability", "weather"):
+        conn.executemany(
+            f"UPDATE OR IGNORE {table} SET game_id = ? WHERE game_id = ?",
+            [(new, old) for old, new in game_map.items()],
+        )
+
+    # Whatever did not move collided with an identical canonical row, so the
+    # observation is already present under the right key and the leftover is a
+    # duplicate. Clearing it is also what lets the games row go (FK).
+    old_games = [(game_id,) for game_id in game_map]
+    for table in ("odds_snapshots", "availability", "weather"):
+        conn.executemany(f"DELETE FROM {table} WHERE game_id = ?", old_games)
+    conn.executemany("DELETE FROM games WHERE game_id = ?", old_games)
+
+    # Finally the team rows, but only those nothing points at any more: an
+    # unresolved Outlier game still needs its teams.
+    conn.executemany(
+        """DELETE FROM teams WHERE team_id = ? AND cfbd_id IS NULL
+             AND NOT EXISTS (SELECT 1 FROM games
+                             WHERE home_team_id = teams.team_id
+                                OR away_team_id = teams.team_id)
+             AND NOT EXISTS (SELECT 1 FROM availability
+                             WHERE team_id = teams.team_id)""",
+        [(team_id,) for team_id in team_map],
+    )
+
+
 MIGRATIONS: tuple[tuple[int, str, str, Callable[[sqlite3.Connection], None] | None], ...] = (
     (1, "outlier_ingestion_core", MIGRATION_001, None),
     (2, "games_football_date", MIGRATION_002, _backfill_football_date),
@@ -555,6 +704,7 @@ MIGRATIONS: tuple[tuple[int, str, str, Callable[[sqlite3.Connection], None] | No
     (8, "players_and_passing", MIGRATION_008, None),
     (9, "internal_team_ratings", MIGRATION_009, None),
     (10, "internal_elo_ratings", MIGRATION_010, None),
+    (11, "canonical_game_identity", MIGRATION_011, _merge_outlier_identities),
 )
 
 

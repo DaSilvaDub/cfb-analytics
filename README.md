@@ -145,6 +145,26 @@ Each is verified against the live feed and covered by a regression test.
     the per-game fact), and a query that forgets the join fails loudly
     (`no such column: p.name`) rather than silently returning blanks.
 
+12. **Two feeds describing the same game do not agree on what a game *is*.**
+    CFBD keys games `cfbd:<id>` and Outlier keys them by `eventId`, so for a
+    while every current-slate game existed twice: 93 Outlier rows shadowing 888
+    CFBD ones, with each key holding a different subset of the books. The board
+    listed every side up to six times, and neither row's "consensus" had seen
+    the whole market — Washington/WSU carried 2 books on one key and 13 on the
+    other. Naming made it visible (Outlier's `name` is the *nickname*,
+    "Huskies", where CFBD's `school` is "Washington") but naming was never the
+    cause: the primary keys were disjoint, so identical names would still have
+    produced two rows. CFBD is canonical; Outlier resolves onto it and writes
+    no `games` or `teams` rows of its own.
+    (`ingest.identity`, `tests/test_identity.py`, migration 011)
+
+13. **A duplicated game silently halves weather coverage too.** The Outlier
+    copy carried a venue *name* with no id, and three of the six names in one
+    window were ambiguous, so `venue_id` stayed NULL and those games got no
+    forecast — while the CFBD twin sitting next to them had `venueId` all
+    along. Deduplicating the games took window coverage from 13 observations
+    with 3 gaps to 10 with none.
+
 ## Development
 
 ```bash
