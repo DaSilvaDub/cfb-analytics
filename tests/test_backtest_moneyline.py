@@ -36,6 +36,28 @@ def _seed_season(conn, season, teams=("a", "b", "c", "d"), weeks=6):
                 })
 
 
+def _elo_row(team_id, season, week, as_of_utc, rating):
+    return {
+        "season": season, "period": f"regular:week:{week:02d}", "week": week,
+        "season_type": "regular", "team_id": team_id, "source": "elo_cfbd",
+        "snapshot_scope": "weekly", "provenance_mode": "reconstructed",
+        "as_of_utc": as_of_utc, "rating": rating, "ranking": None,
+        "off_rating": None, "def_rating": None, "st_rating": None,
+        "sos": None, "second_order_wins": None,
+    }
+
+
+def _seed_elo(conn, season, teams, weeks, base_rating=1500.0):
+    rows = []
+    for week in range(1, weeks + 1):
+        as_of_utc = f"{season}-09-{week:02d}T12:00:00+00:00"
+        for i, team in enumerate(teams):
+            rows.append(_elo_row(
+                f"{team}{season}", season, week, as_of_utc, base_rating + 10 * i + week
+            ))
+    store.insert_team_ratings(conn, rows)
+
+
 class TestRunMoneylineBacktest:
     def test_stress_season_is_excluded_from_sigma_calibration_but_still_scored(self, conn):
         _seed_season(conn, 2019)
@@ -58,7 +80,7 @@ class TestRunMoneylineBacktest:
     def test_report_text_states_the_missing_baseline_limitation(self, conn):
         _seed_season(conn, 2019)
         text = run_moneyline_backtest(conn, seasons=(2019,), min_games=1).as_text()
-        assert "not a promotion decision" in text
+        assert "not a full promotion decision" in text
         assert "baseline" in text.lower()
 
     def test_report_text_includes_both_calibration_tables(self, conn):
@@ -72,3 +94,56 @@ class TestRunMoneylineBacktest:
         report = run_moneyline_backtest(conn, seasons=(2019,), min_games=1)
         assert report.stress is None
         assert "stress" not in report.as_text().lower()
+
+
+class TestEloOnlyBaseline:
+    def test_no_elo_data_reports_none_rather_than_crashing(self, conn):
+        _seed_season(conn, 2019)
+        report = run_moneyline_backtest(conn, seasons=(2019,), min_games=1)
+        assert report.elo_seasons is None
+        assert "no games had an elo rating" in report.as_text().lower()
+
+    def test_elo_slice_is_populated_when_ratings_exist(self, conn):
+        teams = ("a", "b", "c", "d")
+        _seed_season(conn, 2019, teams=teams)
+        _seed_elo(conn, 2019, teams, weeks=6)
+
+        report = run_moneyline_backtest(conn, seasons=(2019,), min_games=1)
+
+        assert report.elo_seasons is not None
+        assert report.elo_seasons.n_games > 0
+        # Every predicted game had Elo data available in this fixture (every
+        # team has a row every week), so nothing should have been skipped.
+        assert report.skipped_elo_unrated == 0
+
+    def test_elo_slice_never_exceeds_the_ridge_slices_game_count(self, conn):
+        """Elo can only ever cover a subset of what ridge covers -- it is
+        scored on exactly the same games, minus any missing an Elo rating."""
+        teams = ("a", "b", "c", "d")
+        _seed_season(conn, 2019, teams=teams)
+        _seed_elo(conn, 2019, teams, weeks=6)
+
+        report = run_moneyline_backtest(conn, seasons=(2019,), min_games=1)
+        assert report.elo_seasons.n_games <= report.seasons.n_games
+
+    def test_report_text_includes_a_ridge_vs_elo_comparison(self, conn):
+        teams = ("a", "b", "c", "d")
+        _seed_season(conn, 2019, teams=teams)
+        _seed_elo(conn, 2019, teams, weeks=6)
+
+        text = run_moneyline_backtest(conn, seasons=(2019,), min_games=1).as_text()
+        assert "log loss" in text.lower()
+        assert ("beats the elo-only baseline" in text.lower()
+                or "does not beat the elo-only baseline" in text.lower())
+
+    def test_partial_elo_coverage_is_counted_not_silently_dropped(self, conn):
+        """One team never gets an Elo row (e.g. an FCS opponent CFBD's Elo
+        backfill never resolved) -- games involving it should be excluded
+        from the Elo slice and counted, while still scored by ridge."""
+        teams = ("a", "b", "c", "d")
+        _seed_season(conn, 2019, teams=teams)
+        _seed_elo(conn, 2019, ("a", "b", "c"), weeks=6)  # "d" gets no Elo history
+
+        report = run_moneyline_backtest(conn, seasons=(2019,), min_games=1)
+        assert report.skipped_elo_unrated > 0
+        assert report.elo_seasons.n_games < report.seasons.n_games

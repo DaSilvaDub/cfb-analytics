@@ -18,6 +18,16 @@ plan calls for it to be *excluded from fitting* and *retained as a stress
 slice*: see ``moneyline.py``, which is where that split into "calibration
 season" vs "stress season" predictions actually happens. This module has no
 opinion about it -- it just labels each prediction with its season.
+
+Each prediction also carries CFBD's own weekly Elo rating for both teams
+(``elo_home_rating``/``elo_away_rating``, possibly None), looked up with the
+exact same per-week leakage cutoff used for the ridge fit -- see
+``features/elo_ratings.py``. This makes the Elo-only baseline (plan section
+8, baseline #3; see ``backtest/elo_baseline.py``) score on precisely the
+same games as the ridge model, which is what makes the comparison fair: a
+game the ridge model could not predict (e.g. insufficient season history)
+never produces a ``GamePrediction`` at all, so it never enters either
+model's metrics.
 """
 
 from __future__ import annotations
@@ -26,6 +36,7 @@ import sqlite3
 from dataclasses import dataclass, field
 from typing import Any
 
+from cfb_analytics.features.elo_ratings import elo_rating_as_of
 from cfb_analytics.models.ridge import DEFAULT_MIN_GAMES, DEFAULT_RIDGE_LAMBDA, fit_ratings
 
 
@@ -36,8 +47,11 @@ class GamePrediction:
     week: int
     home_team_id: str
     away_team_id: str
+    neutral_site: bool
     predicted_margin: float
     actual_margin: float
+    elo_home_rating: float | None
+    elo_away_rating: float | None
 
     @property
     def home_won(self) -> bool:
@@ -118,9 +132,9 @@ def run_walk_forward(
                 continue
 
             for row in week_games:
+                neutral_site = bool(row["neutral_site"])
                 margin = ratings.margin(
-                    row["home_team_id"], row["away_team_id"],
-                    neutral_site=bool(row["neutral_site"]),
+                    row["home_team_id"], row["away_team_id"], neutral_site=neutral_site
                 )
                 if margin is None:
                     run.skipped_unrated_team += 1
@@ -128,7 +142,14 @@ def run_walk_forward(
                 run.predictions.append(GamePrediction(
                     game_id=row["game_id"], season=season, week=week,
                     home_team_id=row["home_team_id"], away_team_id=row["away_team_id"],
+                    neutral_site=neutral_site,
                     predicted_margin=margin,
                     actual_margin=float(row["home_points"]) - float(row["away_points"]),
+                    elo_home_rating=elo_rating_as_of(
+                        conn, row["home_team_id"], season, as_of_utc
+                    ),
+                    elo_away_rating=elo_rating_as_of(
+                        conn, row["away_team_id"], season, as_of_utc
+                    ),
                 ))
     return run

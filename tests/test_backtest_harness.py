@@ -170,3 +170,56 @@ class TestNeutralSite:
         assert home_pred.predicted_margin - neutral_pred.predicted_margin == pytest.approx(
             expected.home_field_advantage
         )
+
+
+def _elo_row(team_id, season, week, as_of_utc, rating):
+    return {
+        "season": season, "period": f"regular:week:{week:02d}", "week": week,
+        "season_type": "regular", "team_id": team_id, "source": "elo_cfbd",
+        "snapshot_scope": "weekly", "provenance_mode": "reconstructed",
+        "as_of_utc": as_of_utc, "rating": rating, "ranking": None,
+        "off_rating": None, "def_rating": None, "st_rating": None,
+        "sos": None, "second_order_wins": None,
+    }
+
+
+class TestEloRatingAttachment:
+    """Each GamePrediction carries CFBD's own weekly Elo rating for both
+    teams, looked up with the same leakage cutoff as the ridge fit -- see
+    features/elo_ratings.py. This is what backtest/moneyline.py's Elo-only
+    baseline scores against."""
+
+    def test_attaches_the_prior_weeks_elo_rating_to_each_prediction(self, conn):
+        _seed_team(conn, "a", "A")
+        _seed_team(conn, "b", "B")
+        _seed_game(conn, "g1", season=2020, week=1,
+                   kickoff_utc="2020-09-05T00:00:00+00:00", home="a", away="b")
+        _seed_game(conn, "g2", season=2020, week=2,
+                   kickoff_utc="2020-09-12T00:00:00+00:00", home="a", away="b")
+        store.insert_team_ratings(conn, [
+            _elo_row("a", 2020, 1, "2020-09-06T00:00:00+00:00", 1600.0),
+            _elo_row("b", 2020, 1, "2020-09-06T00:00:00+00:00", 1500.0),
+            # Week 2's own row must NOT be used to predict week 2's games.
+            _elo_row("a", 2020, 2, "2020-09-13T00:00:00+00:00", 1700.0),
+            _elo_row("b", 2020, 2, "2020-09-13T00:00:00+00:00", 1400.0),
+        ])
+
+        run = run_walk_forward(conn, [2020], min_games=1)
+        week2 = next(p for p in run.predictions if p.game_id == "g2")
+        assert week2.elo_home_rating == 1600.0
+        assert week2.elo_away_rating == 1500.0
+
+    def test_missing_elo_history_leaves_the_fields_none_not_fatal(self, conn):
+        _seed_team(conn, "a", "A")
+        _seed_team(conn, "b", "B")
+        _seed_game(conn, "g1", season=2020, week=1,
+                   kickoff_utc="2020-09-05T00:00:00+00:00", home="a", away="b")
+        _seed_game(conn, "g2", season=2020, week=2,
+                   kickoff_utc="2020-09-12T00:00:00+00:00", home="a", away="b")
+        # No Elo rows stored at all -- a real, common case (an FCS opponent,
+        # or CFBD Elo simply not backfilled for this season yet).
+
+        run = run_walk_forward(conn, [2020], min_games=1)
+        week2 = next(p for p in run.predictions if p.game_id == "g2")
+        assert week2.elo_home_rating is None
+        assert week2.elo_away_rating is None
