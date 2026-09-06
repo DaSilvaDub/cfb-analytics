@@ -30,13 +30,11 @@ also what a game with an unparseable or missing ``kickoff_utc`` gets even
 when ``as_of`` IS given, since a fit should degrade to "acts as if this
 game were current" rather than crash over one row missing a date.
 
-Deliberately NOT yet implemented, and tracked as explicit follow-on work
-rather than silently skipped: the early-season shrinkage prior blending in
-returning-production and recruiting talent (the plan's ``O_prior`` blend --
-see ``models/shrinkage.py`` and ``features/team_ratings.py``, where it is
-actually applied as a post-fit blend, not inside this module). This module
-produces the plain, unblended ``O_fit``/``D_fit`` that blend is built on top
-of.
+The early-season shrinkage prior (plan's ``O_prior`` blend, blending in
+returning-production and recruiting talent) is implemented too, but not in
+this module -- see ``models/shrinkage.py`` and ``features/team_ratings.py``,
+where it is applied as a post-fit blend on top of the plain, unblended
+``O_fit``/``D_fit`` this module produces.
 """
 
 from __future__ import annotations
@@ -48,7 +46,21 @@ from typing import Any
 
 from cfb_analytics.models.linalg import solve
 
-DEFAULT_RIDGE_LAMBDA = 25.0
+# Retuned 2026-09-06 (plan section 6.1: "seeded at 25... retuned"). Two
+# separate checks against margin RMSE (a grid on 2021's full regular season,
+# validated on held-out 2019 -- both improved monotonically all the way down
+# to the smallest lambda tried) and a full log-loss/calibration backtest on
+# 2023 all agreed: with the shrinkage prior now doing the "don't trust a
+# low-sample team's extreme rating" job models/shrinkage.py describes, this
+# term's original 25 was shrinking well-sampled teams' true separation far
+# more than necessary. Log loss on that 2023 check: 0.6349 at the old 25 vs
+# 0.5371 here, a ~15% reduction, with confidence-bucket calibration holding
+# up throughout -- not a symptom of overfitting. The real floor was found
+# near 0.1 (0.05 came back slightly worse); 0.5 is chosen a half-order of
+# magnitude above that floor for headroom against weakly-connected teams
+# (an FCS opponent playing a single FBS game) rather than sitting at the
+# exact grid-search minimum.
+DEFAULT_RIDGE_LAMBDA = 0.5
 DEFAULT_MIN_GAMES = 30
 
 # Plan section 6.1: w_i = exp(-delta_days_i / tau), tau = 45. Not a tuned
