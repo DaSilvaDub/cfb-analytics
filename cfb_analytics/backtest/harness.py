@@ -28,16 +28,34 @@ same games as the ridge model, which is what makes the comparison fair: a
 game the ridge model could not predict (e.g. insufficient season history)
 never produces a ``GamePrediction`` at all, so it never enters either
 model's metrics.
+
+Each week's ridge fit gets both of ``models/ridge.py``'s recency weighting
+(``as_of`` = that week's own cutoff) and ``features/team_ratings.py``'s
+early-season shrinkage-prior blend, exactly like ``fit_ratings_as_of`` --
+this module does not call that function directly (it already has its own
+history query, built for a slightly different leakage shape: same-week
+games grouped together, see the ``as_of_utc`` computation below), but it
+applies the identical treatment by calling the same underlying pieces. The
+previous season's final ratings are fit ONCE per season and reused across
+every week of it, not refit on every single week -- a full-season fit costs
+real time (~9s at FBS scale), and the previous season does not change from
+week to week within a season.
 """
 
 from __future__ import annotations
 
 import sqlite3
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Any
 
 from cfb_analytics.features.elo_ratings import elo_rating_as_of
+from cfb_analytics.features.team_ratings import (
+    apply_shrinkage_prior,
+    previous_season_final_ratings,
+)
 from cfb_analytics.models.ridge import DEFAULT_MIN_GAMES, DEFAULT_RIDGE_LAMBDA, fit_ratings
+from cfb_analytics.models.shrinkage import DEFAULT_COEFFICIENTS, ShrinkageCoefficients
 
 
 @dataclass(frozen=True)
@@ -88,6 +106,7 @@ def _row_to_history_game(row: Any) -> dict[str, Any]:
         "home_points": row["home_points"],
         "away_points": row["away_points"],
         "neutral_site": row["neutral_site"],
+        "kickoff_utc": row["kickoff_utc"],
     }
 
 
@@ -97,9 +116,17 @@ def run_walk_forward(
     *,
     ridge_lambda: float = DEFAULT_RIDGE_LAMBDA,
     min_games: int = DEFAULT_MIN_GAMES,
+    apply_shrinkage: bool = True,
+    coeffs: ShrinkageCoefficients = DEFAULT_COEFFICIENTS,
 ) -> WalkForwardRun:
     run = WalkForwardRun()
     for season in seasons:
+        previous_season_ratings = (
+            previous_season_final_ratings(conn, season, ridge_lambda=ridge_lambda,
+                                           min_games=min_games)
+            if apply_shrinkage
+            else None
+        )
         for week in _regular_season_weeks(conn, season):
             week_games = conn.execute(
                 """SELECT game_id, home_team_id, away_team_id, home_points,
@@ -116,7 +143,7 @@ def run_walk_forward(
 
             history_rows = conn.execute(
                 """SELECT home_team_id, away_team_id, home_points, away_points,
-                          neutral_site
+                          neutral_site, kickoff_utc
                    FROM games
                    WHERE source = 'cfbd' AND season = ? AND completed = 1
                      AND kickoff_utc < ?""",
@@ -126,7 +153,13 @@ def run_walk_forward(
                 [_row_to_history_game(row) for row in history_rows],
                 ridge_lambda=ridge_lambda,
                 min_games=min_games,
+                as_of=datetime.fromisoformat(as_of_utc),
             )
+            if apply_shrinkage:
+                ratings = apply_shrinkage_prior(
+                    conn, ratings, season,
+                    previous_season_ratings=previous_season_ratings, coeffs=coeffs,
+                )
             if ratings.status != "active":
                 run.skipped_insufficient_history += len(week_games)
                 continue

@@ -8,9 +8,16 @@ scoping described in its docstring, and does the store round-trip a fit.
 
 from __future__ import annotations
 
-from cfb_analytics.features.team_ratings import fit_ratings_as_of
+import pytest
+
+from cfb_analytics.features.team_ratings import (
+    apply_shrinkage_prior,
+    fit_ratings_as_of,
+    previous_season_final_ratings,
+)
 from cfb_analytics.ingest import store
-from cfb_analytics.models.ridge import DEFAULT_MIN_GAMES
+from cfb_analytics.models.ridge import DEFAULT_MIN_GAMES, RidgeRatings, TeamRating
+from cfb_analytics.models.shrinkage import ShrinkageCoefficients
 
 
 def _seed_team(conn, team_id, school):
@@ -134,3 +141,136 @@ class TestUpsertInternalTeamRatings:
         written = store.upsert_internal_team_ratings(
             conn, result, season=2026, as_of_utc="2026-12-01T00:00:00+00:00")
         assert written == 0
+
+
+def _seed_league(conn, season, teams=("a", "b", "c", "d"), rounds=3):
+    for team_id in teams:
+        _seed_team(conn, team_id, team_id.upper())
+    game_id = 0
+    for _round in range(rounds):
+        for i, home in enumerate(teams):
+            for away in teams[i + 1:]:
+                game_id += 1
+                _seed_game(
+                    conn, f"cfbd:{season}-{game_id}", season=season,
+                    kickoff_utc=f"{season}-09-{1 + game_id % 27:02d}T00:00:00+00:00",
+                    home=home, away=away,
+                )
+
+
+def _seed_talent(conn, season, team_id, talent_composite):
+    store.insert_team_talent(conn, [{
+        "season": season, "team_id": team_id, "availability_class": "preseason",
+        "talent_composite": talent_composite,
+    }])
+
+
+def _seed_returning(conn, season, team_id, percent_ppa):
+    store.insert_returning_production(conn, [{
+        "season": season, "team_id": team_id, "availability_class": "preseason",
+        "total_ppa": None, "passing_ppa": None, "receiving_ppa": None, "rushing_ppa": None,
+        "percent_ppa": percent_ppa, "percent_passing_ppa": None,
+        "percent_receiving_ppa": None, "percent_rushing_ppa": None,
+        "usage": None, "passing_usage": None, "receiving_usage": None, "rushing_usage": None,
+    }])
+
+
+class TestPreviousSeasonFinalRatings:
+    def test_none_when_the_prior_season_has_no_completed_games(self, conn):
+        _seed_league(conn, 2026)
+        assert previous_season_final_ratings(conn, 2026, min_games=1) is None
+
+    def test_an_active_fit_when_the_prior_season_has_enough_games(self, conn):
+        _seed_league(conn, 2025)
+        result = previous_season_final_ratings(conn, 2026, min_games=1)
+        assert result is not None
+        assert result.status == "active"
+        assert set(result.teams) == {"a", "b", "c", "d"}
+
+
+class TestApplyShrinkagePrior:
+    def _base_ratings(self):
+        return RidgeRatings(
+            status="active", n_games=10, ridge_lambda=25.0,
+            league_avg_points=24.0, home_field_advantage=3.0,
+            teams={
+                "a": TeamRating(offense=10.0, defense=-5.0, games=2),
+                "b": TeamRating(offense=-10.0, defense=5.0, games=2),
+            },
+        )
+
+    def test_a_non_active_result_passes_through_unchanged(self, conn):
+        insufficient = RidgeRatings(status="insufficient_history", n_games=3, ridge_lambda=25.0)
+        result = apply_shrinkage_prior(conn, insufficient, 2026)
+        assert result is insufficient
+
+    def test_with_no_prior_or_talent_data_shrinks_toward_zero(self, conn):
+        ratings = self._base_ratings()
+        result = apply_shrinkage_prior(conn, ratings, 2026, coeffs=ShrinkageCoefficients(k=4.0))
+        # n=2, k=4: the prior (0.0, since nothing is available) should pull
+        # the blended value about two-thirds of the way toward zero.
+        assert 0 < result.teams["a"].offense < ratings.teams["a"].offense
+        assert ratings.teams["b"].offense < result.teams["b"].offense < 0
+
+    def test_a_team_with_many_games_stays_close_to_its_own_fit(self, conn):
+        ratings = RidgeRatings(
+            status="active", n_games=200, ridge_lambda=25.0,
+            teams={"a": TeamRating(offense=10.0, defense=-5.0, games=1000)},
+        )
+        result = apply_shrinkage_prior(conn, ratings, 2026, coeffs=ShrinkageCoefficients(k=4.0))
+        assert result.teams["a"].offense == pytest.approx(10.0, abs=0.1)
+
+    def test_blends_toward_an_explicitly_passed_previous_season(self, conn):
+        ratings = self._base_ratings()
+        previous = RidgeRatings(
+            status="active", n_games=100, ridge_lambda=25.0,
+            teams={"a": TeamRating(offense=50.0, defense=-50.0, games=12)},
+        )
+        result = apply_shrinkage_prior(
+            conn, ratings, 2026, previous_season_ratings=previous,
+            coeffs=ShrinkageCoefficients(a=1.0, b=0.0, c=0.0, k=4.0),
+        )
+        # a's prior is now 50 (its full previous-season offense); the blend
+        # must move noticeably toward it relative to the no-prior case.
+        no_prior_result = apply_shrinkage_prior(
+            conn, ratings, 2026, coeffs=ShrinkageCoefficients(a=1.0, b=0.0, c=0.0, k=4.0))
+        assert result.teams["a"].offense > no_prior_result.teams["a"].offense
+
+    def test_blends_toward_talent_and_returning_production_zscores(self, conn):
+        _seed_team(conn, "a", "A")
+        _seed_team(conn, "b", "B")
+        _seed_talent(conn, 2026, "a", talent_composite=900.0)
+        _seed_talent(conn, 2026, "b", talent_composite=100.0)
+        _seed_returning(conn, 2026, "a", percent_ppa=0.9)
+        _seed_returning(conn, 2026, "b", percent_ppa=0.1)
+
+        ratings = self._base_ratings()
+        result = apply_shrinkage_prior(
+            conn, ratings, 2026, coeffs=ShrinkageCoefficients(a=0.0, b=1.0, c=1.0, k=4.0))
+        # "a" has the high talent/returning-production z-score (positive
+        # prior) and "b" the low one (negative prior); the high-talent team's
+        # blended offense should end up above the low-talent team's, more so
+        # than with no talent signal at all.
+        assert result.teams["a"].offense > result.teams["b"].offense
+
+
+class TestFitRatingsAsOfShrinkage:
+    def test_shrinkage_changes_the_fit_relative_to_the_raw_ridge_output(self, conn):
+        _seed_league(conn, 2026)
+        _seed_talent(conn, 2026, "a", talent_composite=900.0)
+
+        raw = fit_ratings_as_of(
+            conn, 2026, "2026-12-01T00:00:00+00:00", min_games=1, apply_shrinkage=False)
+        shrunk = fit_ratings_as_of(
+            conn, 2026, "2026-12-01T00:00:00+00:00", min_games=1, apply_shrinkage=True)
+
+        assert raw.teams["a"].offense != shrunk.teams["a"].offense
+
+    def test_default_is_to_apply_shrinkage(self, conn):
+        _seed_league(conn, 2026)
+        _seed_talent(conn, 2026, "a", talent_composite=900.0)
+
+        default_call = fit_ratings_as_of(conn, 2026, "2026-12-01T00:00:00+00:00", min_games=1)
+        explicit_true = fit_ratings_as_of(
+            conn, 2026, "2026-12-01T00:00:00+00:00", min_games=1, apply_shrinkage=True)
+        assert default_call.teams == explicit_true.teams

@@ -48,6 +48,7 @@ from cfb_analytics.backtest.metrics import (
     reliability_curve,
 )
 from cfb_analytics.models.ridge import DEFAULT_MIN_GAMES, DEFAULT_RIDGE_LAMBDA
+from cfb_analytics.models.shrinkage import DEFAULT_COEFFICIENTS, ShrinkageCoefficients
 
 # Excluded from the sigma_0 fit (COVID-disrupted, partial/irregular schedules
 # per plan section 8) but still predicted and reported, as a stress slice.
@@ -186,8 +187,13 @@ def run_moneyline_backtest(
     *,
     ridge_lambda: float = DEFAULT_RIDGE_LAMBDA,
     min_games: int = DEFAULT_MIN_GAMES,
+    apply_shrinkage: bool = True,
+    coeffs: ShrinkageCoefficients = DEFAULT_COEFFICIENTS,
 ) -> MoneylineBacktestReport:
-    run = run_walk_forward(conn, list(seasons), ridge_lambda=ridge_lambda, min_games=min_games)
+    run = run_walk_forward(
+        conn, list(seasons), ridge_lambda=ridge_lambda, min_games=min_games,
+        apply_shrinkage=apply_shrinkage, coeffs=coeffs,
+    )
 
     fit_predictions = [p for p in run.predictions if p.season not in STRESS_SEASONS]
     stress_predictions = [p for p in run.predictions if p.season in STRESS_SEASONS]

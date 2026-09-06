@@ -19,16 +19,25 @@ pairwise matchup in a 4-team synthetic league.
 
 from __future__ import annotations
 
+import math
+from datetime import datetime, timedelta
+
 import pytest
 
-from cfb_analytics.models.ridge import DEFAULT_RIDGE_LAMBDA, fit_ratings
+from cfb_analytics.models.ridge import (
+    DEFAULT_RIDGE_LAMBDA,
+    RECENCY_TAU_DAYS,
+    _recency_weight,
+    fit_ratings,
+)
 
 
-def game(home, away, home_points, away_points, neutral_site=False):
+def game(home, away, home_points, away_points, neutral_site=False, kickoff_utc=None):
     return {
         "home_team_id": home, "away_team_id": away,
         "home_points": home_points, "away_points": away_points,
         "neutral_site": neutral_site,
+        "kickoff_utc": kickoff_utc,
     }
 
 
@@ -253,3 +262,76 @@ class TestRidgeShrinkage:
         loose = fit_ratings(games, ridge_lambda=1.0, min_games=1)
         tight = fit_ratings(games, ridge_lambda=500.0, min_games=1)
         assert abs(tight.margin("Strong", "Weak")) < abs(loose.margin("Strong", "Weak"))
+
+
+class TestRecencyWeightFormula:
+    """Plan section 6.1: w_i = exp(-delta_days_i / tau), tau = 45. Tested
+    directly against the private helper rather than only indirectly through
+    a full fit, since the exact constant is what the plan specifies -- an
+    off-by-a-scale-factor bug here would still "work" but silently weight
+    everything wrong."""
+
+    def test_weight_at_the_cutoff_itself_is_full_weight(self):
+        as_of = datetime(2024, 1, 1)
+        row = game("a", "b", 10, 7, kickoff_utc=as_of.isoformat())
+        assert _recency_weight(row, as_of) == pytest.approx(1.0)
+
+    def test_weight_at_exactly_tau_days_old_matches_e_to_the_minus_one(self):
+        as_of = datetime(2024, 1, 1)
+        old = as_of - timedelta(days=RECENCY_TAU_DAYS)
+        row = game("a", "b", 10, 7, kickoff_utc=old.isoformat())
+        assert _recency_weight(row, as_of) == pytest.approx(math.exp(-1.0), abs=1e-9)
+
+    def test_a_game_missing_kickoff_utc_gets_full_weight(self):
+        as_of = datetime(2024, 1, 1)
+        assert _recency_weight(game("a", "b", 10, 7), as_of) == 1.0
+
+    def test_no_as_of_means_no_weighting_at_all(self):
+        row = game("a", "b", 10, 7, kickoff_utc="2024-01-01T00:00:00")
+        assert _recency_weight(row, None) == 1.0
+
+
+class TestRecencyWeightedFit:
+    def test_omitting_as_of_reproduces_the_unweighted_fit_exactly(self):
+        """Every test above this class relies on as_of defaulting to no
+        weighting at all -- this is the guarantee that makes that safe."""
+        games = synthetic_league(TestMarginRecovery.TRUE_RATINGS, rounds=15, hfa=3.0)
+        explicit_none = fit_ratings(games, min_games=1, ridge_lambda=1.0, as_of=None)
+        omitted = fit_ratings(games, min_games=1, ridge_lambda=1.0)
+        assert explicit_none.teams == omitted.teams
+        assert explicit_none.home_field_advantage == omitted.home_field_advantage
+
+    def test_recent_form_dominates_a_reversed_old_form(self):
+        """"strong" lost badly to everyone in an old round (300 days back,
+        far past tau=45) and beat everyone badly in a recent round (3 days
+        back). Unweighted, the two rounds are equal-weighted and roughly
+        cancel; weighted toward `as_of`, the recent form should dominate."""
+        as_of = datetime(2024, 1, 1)
+        old = (as_of - timedelta(days=300)).isoformat()
+        recent = (as_of - timedelta(days=3)).isoformat()
+        teams = ["strong", "b", "c", "d"]
+
+        games = []
+        for opp in teams[1:]:
+            games.append(game("strong", opp, 7, 42, kickoff_utc=old))
+            games.append(game(opp, "strong", 42, 7, kickoff_utc=old))
+        for opp in teams[1:]:
+            games.append(game("strong", opp, 42, 7, kickoff_utc=recent))
+            games.append(game(opp, "strong", 7, 42, kickoff_utc=recent))
+
+        unweighted = fit_ratings(games, min_games=1, ridge_lambda=1.0)
+        weighted = fit_ratings(games, min_games=1, ridge_lambda=1.0, as_of=as_of)
+
+        assert abs(unweighted.margin("strong", "b")) < 5.0
+        assert weighted.margin("strong", "b") > 20.0
+
+    def test_a_mix_of_dated_and_undated_games_does_not_crash(self):
+        """synthetic_league() games carry no kickoff_utc by default; giving
+        only SOME of them a real date (the rest falling back to full weight)
+        must still produce a normal, active fit."""
+        as_of = datetime(2024, 1, 1)
+        games = synthetic_league(TestMarginRecovery.TRUE_RATINGS, rounds=15, hfa=3.0)
+        dated = (as_of - timedelta(days=10)).isoformat()
+        games = [{**g, "kickoff_utc": dated} if i % 2 == 0 else g for i, g in enumerate(games)]
+        result = fit_ratings(games, min_games=1, ridge_lambda=1.0, as_of=as_of)
+        assert result.status == "active"

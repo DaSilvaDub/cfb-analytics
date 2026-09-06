@@ -20,27 +20,42 @@ side**. The MLB reference has no neutral-site concept; CFB does (bowl games,
 international games, many rivalry games), and `games.neutral_site` already
 distinguishes it.
 
+Recency weighting (plan section 6.1) is implemented: passing ``as_of``
+weights each game by ``exp(-delta_days / tau)``, ``tau = 45`` fixed by the
+plan, where ``delta_days`` is the gap between that game's kickoff and
+``as_of``. A game exactly at ``as_of`` gets full weight (1.0); one 45 days
+older gets ~37%; 90 days older, ~13%. Omitting ``as_of`` (the default)
+disables weighting entirely -- every observation gets weight 1.0, which is
+also what a game with an unparseable or missing ``kickoff_utc`` gets even
+when ``as_of`` IS given, since a fit should degrade to "acts as if this
+game were current" rather than crash over one row missing a date.
+
 Deliberately NOT yet implemented, and tracked as explicit follow-on work
-rather than silently skipped:
-
-* recency weighting within a fit window (the plan's ``w_i = exp(-dt/tau)``)
-* the early-season shrinkage prior blending in returning-production and
-  recruiting talent (the plan's ``O_prior`` blend)
-
-Both matter most in exactly the early-season, high-uncertainty games this
-pipeline's parlay product is built to be cautious about, so they are real
-gaps, not deferred by way of being unimportant.
+rather than silently skipped: the early-season shrinkage prior blending in
+returning-production and recruiting talent (the plan's ``O_prior`` blend --
+see ``models/shrinkage.py`` and ``features/team_ratings.py``, where it is
+actually applied as a post-fit blend, not inside this module). This module
+produces the plain, unblended ``O_fit``/``D_fit`` that blend is built on top
+of.
 """
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Any
 
 from cfb_analytics.models.linalg import solve
 
 DEFAULT_RIDGE_LAMBDA = 25.0
 DEFAULT_MIN_GAMES = 30
+
+# Plan section 6.1: w_i = exp(-delta_days_i / tau), tau = 45. Not a tuned
+# value -- the plan states this constant directly, unlike ridge_lambda
+# ("seeded at 25... retuned") or the shrinkage coefficients (explicitly
+# "fitted... by minimising out-of-sample margin error").
+RECENCY_TAU_DAYS = 45.0
 
 
 def _field(game: Any, name: str) -> Any:
@@ -49,15 +64,30 @@ def _field(game: Any, name: str) -> Any:
     return getattr(game, name, None)
 
 
+def _recency_weight(game: Any, as_of: datetime | None) -> float:
+    if as_of is None:
+        return 1.0
+    raw = _field(game, "kickoff_utc")
+    if raw is None:
+        return 1.0
+    try:
+        kickoff = raw if isinstance(raw, datetime) else datetime.fromisoformat(str(raw))
+    except ValueError:
+        return 1.0
+    delta_days = (as_of - kickoff).total_seconds() / 86400.0
+    return math.exp(-delta_days / RECENCY_TAU_DAYS)
+
+
 @dataclass(frozen=True)
 class _Observation:
     scoring_team: str
     opponent_team: str
     is_home: bool
     points: float
+    weight: float
 
 
-def _observations(games: list[Any]) -> list[_Observation]:
+def _observations(games: list[Any], *, as_of: datetime | None = None) -> list[_Observation]:
     """Two scoring observations per game, or none for a row missing a score.
 
     A neutral-site game (``neutral_site`` truthy) sets ``is_home=False`` for
@@ -78,8 +108,9 @@ def _observations(games: list[Any]) -> list[_Observation]:
         except (TypeError, ValueError):
             continue
         neutral = bool(_field(game, "neutral_site"))
-        observations.append(_Observation(home, away, not neutral, home_points))
-        observations.append(_Observation(away, home, False, away_points))
+        weight = _recency_weight(game, as_of)
+        observations.append(_Observation(home, away, not neutral, home_points, weight))
+        observations.append(_Observation(away, home, False, away_points, weight))
     return observations
 
 
@@ -122,13 +153,22 @@ def fit_ratings(
     *,
     ridge_lambda: float = DEFAULT_RIDGE_LAMBDA,
     min_games: int = DEFAULT_MIN_GAMES,
+    as_of: datetime | None = None,
 ) -> RidgeRatings:
+    """Fit ratings from ``games``.
+
+    ``as_of`` enables recency weighting (see the module docstring): pass the
+    fit's cutoff instant (typically the same ``as_of_utc`` the caller used to
+    select which games are even eligible) and older games count for less.
+    Omit it for the old, unweighted behavior -- every existing caller that
+    does not pass it sees no change.
+    """
     if ridge_lambda < 0:
         raise ValueError("ridge_lambda cannot be negative")
     if min_games < 1:
         raise ValueError("min_games must be at least 1")
 
-    observations = _observations(games)
+    observations = _observations(games, as_of=as_of)
     game_count = len(observations) // 2
     if game_count < min_games:
         return RidgeRatings(
@@ -148,9 +188,9 @@ def fit_ratings(
         indices = [0, 1, offense_index[obs.scoring_team], defense_index[obs.opponent_team]]
         values = [1.0, 1.0 if obs.is_home else 0.0, 1.0, -1.0]
         for a, va in zip(indices, values, strict=True):
-            xty[a] += va * obs.points
+            xty[a] += obs.weight * va * obs.points
             for b, vb in zip(indices, values, strict=True):
-                xtx[a][b] += va * vb
+                xtx[a][b] += obs.weight * va * vb
 
     # A tiny, fixed regularization on EVERY diagonal entry (mu, home_field,
     # and every offense/defense term) guards against an exactly-singular
