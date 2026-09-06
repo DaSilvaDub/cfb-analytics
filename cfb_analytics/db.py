@@ -575,4 +575,17 @@ def open_db(
         conn.rollback()
         raise
     finally:
-        conn.close()
+        try:
+            # WAL mode (see _connect) keeps recent commits in a `-wal`
+            # sidecar file until something checkpoints them back into the
+            # main file. SQLite is documented to auto-checkpoint on the last
+            # connection close, but a caller that copies this file directly
+            # (a backup, or the daily-ingest workflow publishing the store to
+            # its `data` branch) must not depend on that happening at exactly
+            # the right moment on every OS/filesystem -- an explicit,
+            # unconditional TRUNCATE checkpoint here is the only guarantee
+            # that "the main file on disk" and "the database as of the last
+            # commit" are the same thing the instant this function returns.
+            conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        finally:
+            conn.close()

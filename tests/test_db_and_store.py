@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import shutil
+import sqlite3
+
 import pytest
 
 from cfb_analytics import db
@@ -157,3 +160,47 @@ class TestMigration002Backfill:
         # 02:30Z Sunday is 10:30pm ET Saturday: it belongs to the Saturday slate.
         assert row["football_date"] == "2026-09-05"
         conn.close()
+
+
+class TestWalCheckpointOnClose:
+    """Regression guard for a real production bug: the daily-ingest workflow
+    publishes ``data/cfb.sqlite3`` to a `data` branch with a plain file copy,
+    not through sqlite3 itself. In WAL mode (see db._connect), a copy of ONLY
+    the main file can miss every commit still sitting in the `-wal` sidecar
+    unless something has checkpointed it back in first. `open_db()` must do
+    that unconditionally on its way out, so a bare file copy right after the
+    context manager exits is always a complete, self-contained snapshot.
+    """
+
+    def test_a_raw_copy_of_the_main_file_alone_has_every_committed_row(self, tmp_path):
+        path = tmp_path / "checkpoint_test.sqlite3"
+        with db.open_db(path) as conn:
+            store.upsert_team(
+                conn, {"team_id": "h", "school": "Home U", "alias": "H", "market": "H"})
+
+        # The exact operation the workflow's "Publish database" step performs:
+        # copy the main file only, deliberately ignoring any -wal/-shm sidecar.
+        copy_path = tmp_path / "published_copy.sqlite3"
+        shutil.copy(path, copy_path)
+
+        published = sqlite3.connect(copy_path)
+        try:
+            tables = published.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'table'"
+            ).fetchall()
+            assert tables, "published copy has no tables -- exactly the data-loss bug"
+            row = published.execute(
+                "SELECT school FROM teams WHERE team_id = 'h'"
+            ).fetchone()
+            assert row is not None and row[0] == "Home U"
+        finally:
+            published.close()
+
+    def test_no_wal_sidecar_file_survives_close(self, tmp_path):
+        path = tmp_path / "checkpoint_test2.sqlite3"
+        with db.open_db(path) as conn:
+            store.upsert_team(
+                conn, {"team_id": "h", "school": "Home U", "alias": "H", "market": "H"})
+
+        wal_path = path.with_name(path.name + "-wal")
+        assert not wal_path.exists() or wal_path.stat().st_size == 0

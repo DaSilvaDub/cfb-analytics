@@ -130,6 +130,31 @@ jobs:
           if [ ! -f data/cfb.sqlite3 ]; then
             echo "no database to publish"; exit 0
           fi
+
+          # WAL mode (see db._connect) keeps recent commits in a `-wal`
+          # sidecar file until something checkpoints them into the main
+          # file. open_db() already does this unconditionally on every
+          # close, but this step reads data/cfb.sqlite3 as a raw file, not
+          # through sqlite3, so it must not simply trust that already
+          # happened. Then refuse to publish outright if the result looks
+          # empty -- this exact failure mode (a valid SQLite header, zero
+          # tables) previously reached the data branch with no error from
+          # anything. See tests/test_db_and_store.py::TestWalCheckpointOnClose.
+          cat > "$RUNNER_TEMP/checkpoint_and_verify.py" <<'PYEOF'
+          import sqlite3
+          import sys
+          conn = sqlite3.connect("data/cfb.sqlite3")
+          conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+          tables = conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
+          if not tables:
+              print("REFUSING TO PUBLISH: database has zero tables", file=sys.stderr)
+              sys.exit(1)
+          games = conn.execute("SELECT COUNT(*) FROM games").fetchone()[0]
+          print(f"integrity check ok: {len(tables)} tables, {games} games")
+          conn.close()
+          PYEOF
+          python "$RUNNER_TEMP/checkpoint_and_verify.py"
+
           # Single-commit orphan branch, force-pushed. The database is itself an
           # append-only history, so keeping git history of the binary too would
           # grow the repo without adding information.
