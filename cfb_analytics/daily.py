@@ -279,6 +279,34 @@ def _run_internal_ratings(conn: sqlite3.Connection, report: DailyReport, season:
         report.outcomes.append(SourceOutcome("internal_ratings", "failed", str(exc)[:200]))
 
 
+def _run_internal_elo(conn: sqlite3.Connection, report: DailyReport, season: int) -> None:
+    """Fit and persist the internal Elo ratings as of right now.
+
+    Same degradation shape as ``_run_internal_ratings``: no external
+    credential to check, so its only non-"ok" outcomes are genuinely
+    insufficient history or an outright fit failure.
+    """
+    try:
+        from cfb_analytics.features.elo_internal import fit_internal_elo_as_of
+        from cfb_analytics.ingest.store import upsert_internal_elo_ratings
+
+        as_of_utc = utc_now_iso()
+        ratings = fit_internal_elo_as_of(conn, season, as_of_utc)
+        if ratings.status != "active":
+            report.outcomes.append(SourceOutcome(
+                "internal_elo", "ok",
+                f"{ratings.status} ({ratings.n_games} games so far this season)"))
+            return
+        written = upsert_internal_elo_ratings(
+            conn, ratings, season=season, as_of_utc=as_of_utc
+        )
+        report.outcomes.append(SourceOutcome(
+            "internal_elo", "ok",
+            f"fit {ratings.n_games} games, wrote {written} team ratings", rows=written))
+    except CfbAnalyticsError as exc:
+        report.outcomes.append(SourceOutcome("internal_elo", "failed", str(exc)[:200]))
+
+
 def run_daily(
     conn: sqlite3.Connection,
     *,
@@ -287,6 +315,7 @@ def run_daily(
     with_weather: bool = True,
     with_player_passing: bool = True,
     with_internal_ratings: bool = True,
+    with_internal_elo: bool = True,
     bootstrap: bool = True,
     now: datetime | None = None,
 ) -> DailyReport:
@@ -313,6 +342,9 @@ def run_daily(
 
     if with_internal_ratings:
         _run_internal_ratings(conn, report, year)
+
+    if with_internal_elo:
+        _run_internal_elo(conn, report, year)
 
     report.slates = slates_in_window(conn, now=moment)
     if report.slates and with_weather:

@@ -12,7 +12,10 @@ from cfb_analytics.ingest import store
 
 
 def _seed_team(conn, team_id, school):
-    store.upsert_team(conn, {"team_id": team_id, "school": school, "alias": None, "market": None})
+    store.upsert_team(conn, {
+        "team_id": team_id, "school": school, "alias": None, "market": None,
+        "classification": "fbs",
+    })
 
 
 def _seed_season(conn, season, teams=("a", "b", "c", "d"), weeks=6):
@@ -133,8 +136,8 @@ class TestEloOnlyBaseline:
 
         text = run_moneyline_backtest(conn, seasons=(2019,), min_games=1).as_text()
         assert "log loss" in text.lower()
-        assert ("beats the elo-only baseline" in text.lower()
-                or "does not beat the elo-only baseline" in text.lower())
+        assert ("ridge beats elo-only" in text.lower()
+                or "ridge does not beat elo-only" in text.lower())
 
     def test_partial_elo_coverage_is_counted_not_silently_dropped(self, conn):
         """One team never gets an Elo row (e.g. an FCS opponent CFBD's Elo
@@ -147,3 +150,34 @@ class TestEloOnlyBaseline:
         report = run_moneyline_backtest(conn, seasons=(2019,), min_games=1)
         assert report.skipped_elo_unrated > 0
         assert report.elo_seasons.n_games < report.seasons.n_games
+
+
+class TestInternalElo:
+    def test_internal_elo_slice_is_populated_for_a_seeded_season(self, conn):
+        _seed_season(conn, 2019)
+        report = run_moneyline_backtest(conn, seasons=(2019,), min_games=1)
+        assert report.internal_elo_seasons is not None
+        assert report.internal_elo_seasons.n_games > 0
+
+    def test_internal_elo_slice_never_exceeds_the_ridge_slices_game_count(self, conn):
+        _seed_season(conn, 2019)
+        report = run_moneyline_backtest(conn, seasons=(2019,), min_games=1)
+        assert report.internal_elo_seasons.n_games <= report.seasons.n_games
+
+    def test_report_text_includes_a_ridge_vs_internal_elo_comparison(self, conn):
+        _seed_season(conn, 2019)
+        text = run_moneyline_backtest(conn, seasons=(2019,), min_games=1).as_text()
+        assert "internal elo" in text.lower()
+        assert ("ridge beats internal elo" in text.lower()
+                or "ridge does not beat internal elo" in text.lower())
+
+    def test_custom_elo_k_and_hfa_are_threaded_through(self, conn):
+        _seed_season(conn, 2019)
+        default_report = run_moneyline_backtest(conn, seasons=(2019,), min_games=1)
+        custom_report = run_moneyline_backtest(
+            conn, seasons=(2019,), min_games=1, elo_k=5.0, elo_hfa=0.0)
+        # A much smaller K (slower-moving ratings) and no home-field term at
+        # all should produce a materially different internal-Elo log loss --
+        # if it did not, the parameters were not actually being used.
+        assert (default_report.internal_elo_seasons.log_loss
+                != custom_report.internal_elo_seasons.log_loss)

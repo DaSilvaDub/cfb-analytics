@@ -30,6 +30,7 @@ from dataclasses import replace
 from datetime import datetime
 
 from cfb_analytics.features.asof import AsOfReader
+from cfb_analytics.features.preseason import returning_ppa_zscores, talent_zscores
 from cfb_analytics.models.ridge import (
     DEFAULT_MIN_GAMES,
     DEFAULT_RIDGE_LAMBDA,
@@ -42,7 +43,6 @@ from cfb_analytics.models.shrinkage import (
     ShrinkageCoefficients,
     blend_toward_prior,
     prior_rating,
-    zscore,
 )
 
 SOURCE = "cfbd"
@@ -128,24 +128,6 @@ def previous_season_final_ratings(
     return ratings if ratings.status == "active" else None
 
 
-def _talent_zscores(conn: sqlite3.Connection, season: int) -> dict[str, float]:
-    rows = conn.execute(
-        """SELECT team_id, talent_composite FROM team_talent
-           WHERE season = ? AND talent_composite IS NOT NULL""",
-        (season,),
-    ).fetchall()
-    return zscore({row["team_id"]: float(row["talent_composite"]) for row in rows})
-
-
-def _returning_ppa_zscores(conn: sqlite3.Connection, season: int) -> dict[str, float]:
-    rows = conn.execute(
-        """SELECT team_id, percent_ppa FROM returning_production
-           WHERE season = ? AND percent_ppa IS NOT NULL""",
-        (season,),
-    ).fetchall()
-    return zscore({row["team_id"]: float(row["percent_ppa"]) for row in rows})
-
-
 def apply_shrinkage_prior(
     conn: sqlite3.Connection,
     ratings: RidgeRatings,
@@ -170,8 +152,8 @@ def apply_shrinkage_prior(
         if previous_season_ratings is not None
         else previous_season_final_ratings(conn, season)
     )
-    talent_z = _talent_zscores(conn, season)
-    returning_z = _returning_ppa_zscores(conn, season)
+    talent_z = talent_zscores(conn, season)
+    returning_z = returning_ppa_zscores(conn, season)
 
     blended: dict[str, TeamRating] = {}
     for team_id, rating in ratings.teams.items():

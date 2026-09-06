@@ -40,6 +40,14 @@ previous season's final ratings are fit ONCE per season and reused across
 every week of it, not refit on every single week -- a full-season fit costs
 real time (~9s at FBS scale), and the previous season does not change from
 week to week within a season.
+
+Each week's fit also runs ``features/elo_internal.py``'s internal Elo model
+in parallel (``internal_elo_home_prob``/``internal_elo_away_prob`` on each
+prediction, already a probability -- Elo's own output, no margin-to-prob
+conversion needed). Unlike ridge, this is cheap enough (Elo is a single
+O(games) sequential pass, not an O(n^3) matrix solve) that refitting it
+every week costs milliseconds, not seconds -- it does not meaningfully
+change this backtest's runtime.
 """
 
 from __future__ import annotations
@@ -49,11 +57,17 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
+from cfb_analytics.features.elo_internal import (
+    fit_internal_elo_as_of,
+    previous_season_final_elo,
+)
 from cfb_analytics.features.elo_ratings import elo_rating_as_of
 from cfb_analytics.features.team_ratings import (
     apply_shrinkage_prior,
     previous_season_final_ratings,
 )
+from cfb_analytics.models.elo import DEFAULT_K as DEFAULT_ELO_K
+from cfb_analytics.models.elo import HFA_ELO_POINTS
 from cfb_analytics.models.ridge import DEFAULT_MIN_GAMES, DEFAULT_RIDGE_LAMBDA, fit_ratings
 from cfb_analytics.models.shrinkage import DEFAULT_COEFFICIENTS, ShrinkageCoefficients
 
@@ -70,6 +84,7 @@ class GamePrediction:
     actual_margin: float
     elo_home_rating: float | None
     elo_away_rating: float | None
+    internal_elo_win_prob: float | None
 
     @property
     def home_won(self) -> bool:
@@ -118,6 +133,8 @@ def run_walk_forward(
     min_games: int = DEFAULT_MIN_GAMES,
     apply_shrinkage: bool = True,
     coeffs: ShrinkageCoefficients = DEFAULT_COEFFICIENTS,
+    elo_k: float = DEFAULT_ELO_K,
+    elo_hfa: float = HFA_ELO_POINTS,
 ) -> WalkForwardRun:
     run = WalkForwardRun()
     for season in seasons:
@@ -126,6 +143,9 @@ def run_walk_forward(
                                            min_games=min_games)
             if apply_shrinkage
             else None
+        )
+        previous_season_elo = previous_season_final_elo(
+            conn, season, k=elo_k, hfa=elo_hfa, min_games=min_games
         )
         for week in _regular_season_weeks(conn, season):
             week_games = conn.execute(
@@ -164,6 +184,11 @@ def run_walk_forward(
                 run.skipped_insufficient_history += len(week_games)
                 continue
 
+            elo_ratings_for_week = fit_internal_elo_as_of(
+                conn, season, as_of_utc, k=elo_k, hfa=elo_hfa, min_games=min_games,
+                previous_season_ratings=previous_season_elo,
+            )
+
             for row in week_games:
                 neutral_site = bool(row["neutral_site"])
                 margin = ratings.margin(
@@ -183,6 +208,9 @@ def run_walk_forward(
                     ),
                     elo_away_rating=elo_rating_as_of(
                         conn, row["away_team_id"], season, as_of_utc
+                    ),
+                    internal_elo_win_prob=elo_ratings_for_week.probability(
+                        row["home_team_id"], row["away_team_id"], neutral_site=neutral_site
                     ),
                 ))
     return run

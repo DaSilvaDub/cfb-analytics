@@ -18,6 +18,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Any, Literal
 
+from cfb_analytics.models.elo import EloRatings
 from cfb_analytics.models.ridge import RidgeRatings
 from cfb_analytics.sources.outlier import OddsRow
 from cfb_analytics.utils import stable_id, utc_now_iso
@@ -336,6 +337,46 @@ def upsert_internal_team_ratings(
             ridge_lambda, home_field_advantage, league_avg_points,
             n_games_in_fit, generated_utc)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        payload,
+    )
+    return len(payload)
+
+
+def upsert_internal_elo_ratings(
+    conn: sqlite3.Connection,
+    ratings: EloRatings,
+    *,
+    season: int,
+    as_of_utc: str,
+    model: str = "internal_elo",
+) -> int:
+    """Persist one internal Elo fit, one row per team (including the FCS
+    pooling identifier, ``models.elo.POOL_TEAM_ID`` -- it has no FK to
+    ``teams`` for exactly that reason, see the migration).
+
+    Same semantics as ``upsert_internal_team_ratings``: a no-op unless
+    ``ratings.status == 'active'``, and ``INSERT OR REPLACE`` since refitting
+    the identical ``(season, as_of_utc, model)`` is an expected, idempotent
+    re-run, not a duplicate to guard against.
+    """
+    if ratings.status != "active":
+        return 0
+    now = utc_now_iso()
+    payload = [
+        (
+            season, as_of_utc, team_id, model,
+            state.rating, state.games,
+            ratings.k, ratings.hfa, ratings.n_games, now,
+        )
+        for team_id, state in ratings.teams.items()
+    ]
+    if not payload:
+        return 0
+    conn.executemany(
+        """INSERT OR REPLACE INTO internal_elo_ratings
+           (season, as_of_utc, team_id, model, rating, team_games,
+            k_factor, home_field_advantage, n_games_in_fit, generated_utc)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         payload,
     )
     return len(payload)

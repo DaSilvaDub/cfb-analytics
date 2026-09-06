@@ -509,6 +509,41 @@ CREATE INDEX IF NOT EXISTS idx_internal_ratings_team
     ON internal_team_ratings(team_id, season, as_of_utc);
 """
 
+# A new table rather than widening internal_team_ratings (migration 009's
+# own comment anticipated Elo joining it, but its shape does not fit: Elo
+# has one rating per team, not an offense/defense split, and its own
+# ridge_lambda/league_avg_points columns are meaningless for Elo). Loosening
+# those NOT NULL constraints to fit both models would need a full table
+# rebuild in SQLite anyway (no ALTER ... DROP CONSTRAINT), for a table that
+# would then need nullable columns depending on which model wrote the row --
+# a dedicated table is the same pattern already used for every other
+# new capability in this store (weather, players, internal_team_ratings
+# itself), not an exception to it.
+MIGRATION_010 = """
+CREATE TABLE IF NOT EXISTS internal_elo_ratings (
+    season          INTEGER NOT NULL,
+    -- The exact leakage cutoff used for this fit: only games with
+    -- kickoff_utc strictly before this were used.
+    as_of_utc       TEXT NOT NULL,
+    team_id         TEXT NOT NULL,
+    -- No FK to teams(team_id): the FCS-pooling synthetic identifier
+    -- (models.elo.POOL_TEAM_ID) is a legitimate row here and is never a
+    -- real team.
+    model           TEXT NOT NULL CHECK (model IN ('internal_elo')),
+    rating          REAL NOT NULL,
+    team_games      INTEGER NOT NULL,
+    k_factor        REAL,
+    home_field_advantage REAL,
+    -- Total games used across the WHOLE league fit (not just this team's own
+    -- games), so a low-data early-season fit is visible on every row.
+    n_games_in_fit  INTEGER NOT NULL,
+    generated_utc   TEXT NOT NULL,
+    PRIMARY KEY (season, as_of_utc, team_id, model)
+);
+CREATE INDEX IF NOT EXISTS idx_internal_elo_ratings_team
+    ON internal_elo_ratings(team_id, season, as_of_utc);
+"""
+
 MIGRATIONS: tuple[tuple[int, str, str, Callable[[sqlite3.Connection], None] | None], ...] = (
     (1, "outlier_ingestion_core", MIGRATION_001, None),
     (2, "games_football_date", MIGRATION_002, _backfill_football_date),
@@ -519,6 +554,7 @@ MIGRATIONS: tuple[tuple[int, str, str, Callable[[sqlite3.Connection], None] | No
     (7, "game_venue_id_and_weather", MIGRATION_007, _backfill_game_venue_id),
     (8, "players_and_passing", MIGRATION_008, None),
     (9, "internal_team_ratings", MIGRATION_009, None),
+    (10, "internal_elo_ratings", MIGRATION_010, None),
 )
 
 

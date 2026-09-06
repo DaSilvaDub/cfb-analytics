@@ -243,6 +243,29 @@ def _cmd_fit_ratings(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_fit_elo(args: argparse.Namespace) -> int:
+    """Fit and persist internal Elo ratings as of a cutoff.
+
+    Defaults ``--as-of`` to right now, same reasoning as ``fit-ratings``.
+    """
+    from cfb_analytics.features.elo_internal import fit_internal_elo_as_of
+    from cfb_analytics.ingest.store import upsert_internal_elo_ratings
+    from cfb_analytics.utils import utc_now_iso
+
+    as_of_utc = args.as_of or utc_now_iso()
+    paths.ensure_dirs()
+    with db.open_db() as conn:
+        ratings = fit_internal_elo_as_of(conn, args.season, as_of_utc)
+        written = upsert_internal_elo_ratings(
+            conn, ratings, season=args.season, as_of_utc=as_of_utc
+        )
+    print(
+        f"internal elo fit: season={args.season} as_of={as_of_utc} "
+        f"status={ratings.status} n_games={ratings.n_games} teams_written={written}"
+    )
+    return 0
+
+
 def _cmd_schedule(args: argparse.Namespace) -> int:
     from collections import Counter
     from datetime import datetime
@@ -465,6 +488,7 @@ def _cmd_daily(args: argparse.Namespace) -> int:
             with_weather=not args.no_weather,
             with_player_passing=not args.no_player_passing,
             with_internal_ratings=not args.no_internal_ratings,
+            with_internal_elo=not args.no_internal_elo,
             bootstrap=not args.no_bootstrap,
         )
     text = report.as_text()
@@ -563,6 +587,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     fit_ratings.set_defaults(func=_cmd_fit_ratings)
 
+    fit_elo = sub.add_parser("fit-elo", help="fit and persist internal Elo ratings")
+    fit_elo.add_argument("--season", type=int, required=True)
+    fit_elo.add_argument("--as-of", default=None, help="ISO cutoff timestamp (default: now)")
+    fit_elo.set_defaults(func=_cmd_fit_elo)
+
     backtest_cmd = sub.add_parser(
         "backtest", help="walk-forward moneyline backtest of the internal ridge model"
     )
@@ -600,6 +629,8 @@ def build_parser() -> argparse.ArgumentParser:
                        help="skip incremental per-game passing-stat capture")
     daily.add_argument("--no-internal-ratings", action="store_true",
                        help="skip fitting internal ridge team-strength ratings")
+    daily.add_argument("--no-internal-elo", action="store_true",
+                       help="skip fitting internal Elo ratings")
     daily.add_argument("--no-bootstrap", action="store_true",
                        help="do not auto-load this season's schedule when the store is empty")
     daily.set_defaults(func=_cmd_daily)

@@ -523,3 +523,59 @@ class TestInternalRatingsLeg:
             conn, season=2026, with_outlier=False, with_player_passing=False,
             with_internal_ratings=False, now=datetime(2026, 9, 4, 12, tzinfo=FOOTBALL_TZ))
         assert not [o for o in report.outcomes if o.name == "internal_ratings"]
+
+
+class TestInternalEloLeg:
+    """Same degradation shape as TestInternalRatingsLeg: no credential to
+    check, so 'ok' (with or without enough history) or 'failed' (a bug)."""
+
+    def test_reports_ok_with_no_games_stored_yet(self, conn):
+        report = daily.DailyReport(started_utc="x")
+        daily._run_internal_elo(conn, report, 2026)
+        outcome = next(o for o in report.outcomes if o.name == "internal_elo")
+        assert outcome.status == "ok"
+        assert "insufficient_history" in outcome.detail
+
+    def test_active_fit_persists_a_row_per_team(self, conn):
+        season = 2020
+        teams = ["a", "b", "c", "d"]
+        for team_id in teams:
+            store.upsert_team(conn, {"team_id": team_id, "school": team_id.upper(),
+                                      "alias": None, "market": None,
+                                      "classification": "fbs"})
+        game_id = 0
+        # 6 rounds x 6 pairs = 36 games, clearing Elo's default 30-game floor.
+        for _round in range(6):
+            for i, home in enumerate(teams):
+                for away in teams[i + 1:]:
+                    game_id += 1
+                    store.upsert_cfbd_game(conn, {
+                        "game_id": f"cfbd:{game_id}", "season": season, "week": 1,
+                        "season_type": "regular",
+                        "kickoff_utc": f"{season}-09-{1 + game_id % 27:02d}T00:00:00+00:00",
+                        "football_date": f"{season}-09-01",
+                        "neutral_site": 0, "conference_game": 0,
+                        "home_team_id": home, "away_team_id": away,
+                        "venue_name": None, "venue_id": None, "status": "final",
+                        "home_points": 30, "away_points": 10, "completed": 1,
+                        "source": "cfbd",
+                    })
+
+        report = daily.DailyReport(started_utc="x")
+        daily._run_internal_elo(conn, report, season)
+
+        outcome = next(o for o in report.outcomes if o.name == "internal_elo")
+        assert outcome.status == "ok"
+        # +1: the FCS pooling identifier is always seeded (see
+        # models.elo.POOL_TEAM_ID) whether or not it actually played here.
+        assert outcome.rows == len(teams) + 1
+        stored = conn.execute(
+            "SELECT COUNT(*) AS n FROM internal_elo_ratings WHERE season = ?", (season,)
+        ).fetchone()["n"]
+        assert stored == len(teams) + 1
+
+    def test_run_daily_skips_the_leg_when_disabled(self, conn):
+        report = daily.run_daily(
+            conn, season=2026, with_outlier=False, with_player_passing=False,
+            with_internal_elo=False, now=datetime(2026, 9, 4, 12, tzinfo=FOOTBALL_TZ))
+        assert not [o for o in report.outcomes if o.name == "internal_elo"]
