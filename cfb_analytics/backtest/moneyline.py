@@ -35,6 +35,16 @@ confidence trustworthy, and does it actually beat a simple Elo baseline --
 but it is NOT a full promotion decision by itself: ``config/promotion.json``
 also requires beating a market and an SP+ baseline, neither of which exist
 yet. That is a tracked gap, not an oversight.
+
+Finally, it reports the plan's own three-model ENSEMBLE (section 6.4):
+``P_ridge`` (``Phi(M/sigma)``), ``P_elo`` (the internal Elo model, NOT the
+CFBD baseline -- the baseline is a comparison point, never an ensemble
+input), and ``P_logit`` (``features/ensemble.py``'s IRLS logistic
+regression). The pooling weights ``v`` are fit once, by grid search
+minimizing log loss on the non-stress fit predictions
+(``backtest/ensemble_fit.py``), then applied to both the fit and stress
+slices -- the same fit-then-apply shape ``sigma_0`` and the shrinkage/lambda
+constants already use elsewhere in this module and ``models/``.
 """
 
 from __future__ import annotations
@@ -44,6 +54,7 @@ from dataclasses import dataclass
 
 from cfb_analytics.backtest.calibration import calibrate_sigma, margin_to_prob
 from cfb_analytics.backtest.elo_baseline import elo_win_probability
+from cfb_analytics.backtest.ensemble_fit import fit_ensemble_weights
 from cfb_analytics.backtest.harness import GamePrediction, run_walk_forward
 from cfb_analytics.backtest.metrics import (
     BucketResult,
@@ -56,8 +67,12 @@ from cfb_analytics.backtest.metrics import (
 )
 from cfb_analytics.models.elo import DEFAULT_K as DEFAULT_ELO_K
 from cfb_analytics.models.elo import HFA_ELO_POINTS
+from cfb_analytics.models.ensemble import pool_probabilities
 from cfb_analytics.models.ridge import DEFAULT_MIN_GAMES, DEFAULT_RIDGE_LAMBDA
 from cfb_analytics.models.shrinkage import DEFAULT_COEFFICIENTS, ShrinkageCoefficients
+
+# Plan section 6.4's three ensemble members. Order matters only for display.
+ENSEMBLE_MEMBER_NAMES = ("ridge", "internal_elo", "logit")
 
 # Excluded from the sigma_0 fit (COVID-disrupted, partial/irregular schedules
 # per plan section 8) but still predicted and reported, as a stress slice.
@@ -90,6 +105,9 @@ class MoneylineBacktestReport:
     internal_elo_seasons: SliceMetrics | None
     internal_elo_stress: SliceMetrics | None
     skipped_internal_elo_unrated: int
+    ensemble_weights: dict[str, float] | None
+    ensemble_seasons: SliceMetrics | None
+    ensemble_stress: SliceMetrics | None
 
     def as_text(self) -> str:
         lines = [
@@ -127,6 +145,22 @@ class MoneylineBacktestReport:
             lines.append("  (no games had an internal Elo rating for both teams)")
         if self.internal_elo_stress is not None:
             lines += ["", _slice_text(self.internal_elo_stress)]
+        lines += ["", "== three-model ensemble (plan section 6.4) =="]
+        if self.ensemble_weights is not None:
+            weight_text = ", ".join(
+                f"{name}={weight:.2f}" for name, weight in self.ensemble_weights.items()
+            )
+            lines.append(f"  fitted weights: {weight_text}")
+        if self.ensemble_seasons is not None:
+            lines.append(_slice_text(self.ensemble_seasons))
+            comparison = _comparison_line(
+                "ensemble", self.ensemble_seasons, "ridge", self.seasons
+            )
+            lines.append(f"    {comparison}")
+        else:
+            lines.append("  (no games had any ensemble member's prediction available)")
+        if self.ensemble_stress is not None:
+            lines += ["", _slice_text(self.ensemble_stress)]
         lines += [
             "",
             "  NOTE: market and SP+-only baselines are still not computable (no leakage-safe",
@@ -223,6 +257,35 @@ def _internal_elo_probs(predictions: list[GamePrediction]) -> tuple[list[Predict
     return probs, skipped
 
 
+def _member_probs(prediction: GamePrediction, sigma_0: float) -> dict[str, float]:
+    """Every ensemble member's probability for one game, omitting whichever
+    are unavailable (internal Elo's own insufficient-history weeks, P_logit
+    before it has cleared its own min_n) rather than fabricating one --
+    ``pool_probabilities`` renormalizes among whatever is actually present.
+    Ridge is always present: once a ``GamePrediction`` exists at all, its
+    margin (and so ``P_ridge``) is always defined.
+    """
+    probs = {"ridge": margin_to_prob(prediction.predicted_margin, sigma_0)}
+    if prediction.internal_elo_win_prob is not None:
+        probs["internal_elo"] = prediction.internal_elo_win_prob
+    if prediction.logit_win_prob is not None:
+        probs["logit"] = prediction.logit_win_prob
+    return probs
+
+
+def _ensemble_predictions(
+    predictions: list[GamePrediction], sigma_0: float, weights: dict[str, float]
+) -> list[Prediction]:
+    result: list[Prediction] = []
+    for prediction in predictions:
+        member_probs = _member_probs(prediction, sigma_0)
+        available = {name: w for name, w in weights.items() if name in member_probs}
+        if not available or sum(available.values()) <= 0:
+            continue
+        result.append((pool_probabilities(member_probs, available), prediction.home_won))
+    return result
+
+
 def run_moneyline_backtest(
     conn: sqlite3.Connection,
     seasons: tuple[int, ...] = DEFAULT_SEASONS,
@@ -233,6 +296,7 @@ def run_moneyline_backtest(
     coeffs: ShrinkageCoefficients = DEFAULT_COEFFICIENTS,
     elo_k: float = DEFAULT_ELO_K,
     elo_hfa: float = HFA_ELO_POINTS,
+    ensemble_grid_step: float = 0.05,
 ) -> MoneylineBacktestReport:
     run = run_walk_forward(
         conn, list(seasons), ridge_lambda=ridge_lambda, min_games=min_games,
@@ -279,6 +343,32 @@ def run_moneyline_backtest(
         else None
     )
 
+    ensemble_fit_member_probs = [_member_probs(p, sigma_0) for p in fit_predictions]
+    ensemble_fit_outcomes = [p.home_won for p in fit_predictions]
+    ensemble_weights = (
+        fit_ensemble_weights(
+            ensemble_fit_member_probs, ensemble_fit_outcomes, ENSEMBLE_MEMBER_NAMES,
+            grid_step=ensemble_grid_step,
+        )
+        if ensemble_fit_member_probs
+        else None
+    )
+    ensemble_seasons_metrics = None
+    ensemble_stress_metrics = None
+    if ensemble_weights is not None:
+        ensemble_fit_probs = _ensemble_predictions(fit_predictions, sigma_0, ensemble_weights)
+        if ensemble_fit_probs:
+            ensemble_seasons_metrics = _score_slice(
+                "ensemble, same seasons/games as ridge", ensemble_fit_probs
+            )
+        ensemble_stress_probs = _ensemble_predictions(
+            stress_predictions, sigma_0, ensemble_weights
+        )
+        if ensemble_stress_probs:
+            ensemble_stress_metrics = _score_slice(
+                "ensemble, 2020 stress slice", ensemble_stress_probs
+            )
+
     return MoneylineBacktestReport(
         sigma_0=sigma_0,
         n_games_calibrated=len(fit_predictions),
@@ -292,4 +382,7 @@ def run_moneyline_backtest(
         internal_elo_seasons=internal_elo_seasons_metrics,
         internal_elo_stress=internal_elo_stress_metrics,
         skipped_internal_elo_unrated=internal_elo_fit_skipped + internal_elo_stress_skipped,
+        ensemble_weights=ensemble_weights,
+        ensemble_seasons=ensemble_seasons_metrics,
+        ensemble_stress=ensemble_stress_metrics,
     )

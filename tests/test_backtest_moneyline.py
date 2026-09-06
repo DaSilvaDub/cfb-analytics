@@ -7,6 +7,8 @@ than silently pretending to be a promotion verdict.
 
 from __future__ import annotations
 
+import pytest
+
 from cfb_analytics.backtest.moneyline import run_moneyline_backtest
 from cfb_analytics.ingest import store
 
@@ -181,3 +183,38 @@ class TestInternalElo:
         # if it did not, the parameters were not actually being used.
         assert (default_report.internal_elo_seasons.log_loss
                 != custom_report.internal_elo_seasons.log_loss)
+
+
+class TestThreeModelEnsemble:
+    def test_fitted_weights_are_reported_and_sum_to_one(self, conn):
+        _seed_season(conn, 2019)
+        report = run_moneyline_backtest(conn, seasons=(2019,), min_games=1)
+        assert report.ensemble_weights is not None
+        assert sum(report.ensemble_weights.values()) == pytest.approx(1.0)
+        assert set(report.ensemble_weights) == {"ridge", "internal_elo", "logit"}
+
+    def test_ensemble_slice_is_populated(self, conn):
+        _seed_season(conn, 2019)
+        report = run_moneyline_backtest(conn, seasons=(2019,), min_games=1)
+        assert report.ensemble_seasons is not None
+        assert report.ensemble_seasons.n_games > 0
+
+    def test_ensemble_never_exceeds_the_ridge_slices_game_count(self, conn):
+        _seed_season(conn, 2019)
+        report = run_moneyline_backtest(conn, seasons=(2019,), min_games=1)
+        assert report.ensemble_seasons.n_games <= report.seasons.n_games
+
+    def test_report_text_includes_the_fitted_weights_and_a_comparison(self, conn):
+        _seed_season(conn, 2019)
+        text = run_moneyline_backtest(conn, seasons=(2019,), min_games=1).as_text()
+        assert "fitted weights" in text.lower()
+        assert "three-model ensemble" in text.lower()
+        assert ("ensemble beats ridge" in text.lower()
+                or "ensemble does not beat ridge" in text.lower())
+
+    def test_custom_grid_step_is_accepted(self, conn):
+        _seed_season(conn, 2019)
+        report = run_moneyline_backtest(
+            conn, seasons=(2019,), min_games=1, ensemble_grid_step=0.2)
+        assert report.ensemble_weights is not None
+        assert sum(report.ensemble_weights.values()) == pytest.approx(1.0)
