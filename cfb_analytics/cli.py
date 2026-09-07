@@ -472,6 +472,61 @@ def _cmd_board(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_futures(args: argparse.Namespace) -> int:
+    """Emit one point-in-time, shadow-only season futures projection as JSON."""
+    from dataclasses import asdict
+    from datetime import UTC, datetime
+
+    from cfb_analytics.errors import SchemaError
+    from cfb_analytics.features.futures import project_team_futures_from_db
+
+    try:
+        as_of = datetime.fromisoformat(args.as_of)
+    except ValueError as exc:
+        raise SchemaError("--as-of must be a parseable ISO timestamp") from exc
+    if as_of.tzinfo is None or as_of.utcoffset() is None:
+        raise SchemaError("--as-of must include a UTC offset (for example, +00:00 or Z)")
+    canonical_as_of = as_of.astimezone(UTC).isoformat()
+    input_manifest: dict[str, object] = {}
+
+    with db.open_db() as conn:
+        projection = project_team_futures_from_db(
+            conn,
+            args.team_id,
+            args.season,
+            as_of_utc=canonical_as_of,
+            portal_composite=args.portal_net_composite,
+            nil_tier=args.nil_tier,
+            nil_budget_millions=args.nil_budget_millions,
+            qb_tier=args.qb_tier,
+            qb_continuity=args.qb_continuity,
+            posted_lines=args.posted_lines or [],
+            input_manifest=input_manifest,
+        )
+
+    payload = {
+        "schema_version": 1,
+        "model": "season_futures_v1",
+        "model_status": "uncalibrated_shadow",
+        "is_actionable": False,
+        "as_of_utc": canonical_as_of,
+        "season": args.season,
+        "inputs": {
+            "provenance": "caller_supplied_unverified",
+            "portal_net_composite": args.portal_net_composite,
+            "nil_tier": args.nil_tier,
+            "nil_budget_millions": args.nil_budget_millions,
+            "qb_tier": args.qb_tier,
+            "qb_continuity": args.qb_continuity,
+            "posted_lines": args.posted_lines or [],
+        },
+        "database_inputs": input_manifest,
+        "projection": asdict(projection),
+    }
+    print(json.dumps(payload, allow_nan=False, indent=2, sort_keys=True))
+    return 0
+
+
 def _cmd_daily(args: argparse.Namespace) -> int:
     """The scheduled job: ingest what is credentialed, then rebuild the market."""
     from cfb_analytics.daily import run_daily
@@ -619,6 +674,58 @@ def build_parser() -> argparse.ArgumentParser:
         help="only show sides at or above this fair probability",
     )
     board.set_defaults(func=_cmd_board)
+
+    from cfb_analytics.models.futures import NILTier, QBContinuity, QBTier
+
+    futures = sub.add_parser(
+        "futures",
+        help="emit an uncalibrated, shadow-only season futures projection",
+    )
+    futures.add_argument("--team-id", required=True, help="canonical CFBD team ID")
+    futures.add_argument("--season", type=int, required=True)
+    futures.add_argument(
+        "--as-of",
+        required=True,
+        help="required ISO point-in-time cutoff; never defaults to now",
+    )
+    futures.add_argument(
+        "--portal-net-composite",
+        type=float,
+        required=True,
+        help="externally sourced transfer-portal net composite",
+    )
+    nil_source = futures.add_mutually_exclusive_group(required=True)
+    nil_source.add_argument(
+        "--nil-tier",
+        choices=tuple(tier.value for tier in NILTier),
+        help="externally sourced NIL tier",
+    )
+    nil_source.add_argument(
+        "--nil-budget-millions",
+        type=float,
+        help="externally sourced NIL budget estimate in millions",
+    )
+    futures.add_argument(
+        "--qb-tier",
+        required=True,
+        choices=tuple(tier.value for tier in QBTier),
+        help="externally assessed quarterback tier",
+    )
+    futures.add_argument(
+        "--qb-continuity",
+        required=True,
+        choices=tuple(state.value for state in QBContinuity),
+        help="externally assessed quarterback continuity",
+    )
+    futures.add_argument(
+        "--posted-line",
+        dest="posted_lines",
+        type=float,
+        action="append",
+        default=None,
+        help="posted regular-season win total; repeat for multiple lines",
+    )
+    futures.set_defaults(func=_cmd_futures)
 
     daily = sub.add_parser("daily", help="scheduled job: ingest available sources, rebuild market")
     daily.add_argument("--season", type=int, default=None, help="season year (default: current)")

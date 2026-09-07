@@ -849,6 +849,7 @@ class TestFuturesFeatureLayerIntegration:
     def test_project_team_futures_from_db(self, conn) -> None:
         self._seed_db(conn)
         ratings = {"cfbd:akron": -15.0, "cfbd:michigan": 18.0}
+        manifest: dict[str, object] = {}
         proj = project_team_futures_from_db(
             conn,
             "cfbd:ohio_st",
@@ -859,12 +860,31 @@ class TestFuturesFeatureLayerIntegration:
             nil_tier=NILTier.TIER_1_ELITE,
             qb_tier=QBTier.TIER_1_ELITE,
             qb_continuity=QBContinuity.RETURNING_STARTER_SAME_SYSTEM,
+            input_manifest=manifest,
         )
 
         assert proj.team_id == "cfbd:ohio_st"
         assert proj.adjusted_rating.adjusted_power_rating > 20.0
         assert len(proj.schedule_projections) == 2
         assert proj.expected_wins > 1.2
+        assert manifest["team_talent"]["snapshot_id"]
+        assert manifest["returning_production"]["snapshot_id"]
+        assert manifest["team_season"] == {
+            "team_id": "cfbd:ohio_st",
+            "season": 2026,
+            "source": "cfbd",
+            "conference": "Big Ten",
+        }
+        schedule_manifest = manifest["schedule"]
+        assert [game["game_id"] for game in schedule_manifest] == [
+            "cfbd:game_1",
+            "cfbd:game_2",
+        ]
+        assert all(game["ingested_utc"] for game in schedule_manifest)
+        assert all(
+            game["opponent_rating"]["resolution"] == "caller_supplied_unverified"
+            for game in schedule_manifest
+        )
 
     def test_load_team_schedule_as_of_filtering(self, conn) -> None:
         self._seed_db(conn)
