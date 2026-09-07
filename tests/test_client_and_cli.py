@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 import pytest
 
 from cfb_analytics import cli, paths
@@ -88,7 +90,7 @@ class TestCliParser:
         assert commands == {"init-db", "doctor", "schedule", "status", "ingest",
                             "backfill-cfbd", "coverage", "market", "board", "daily",
                             "backfill-fundamentals", "backfill-roster", "backfill-passing",
-                            "backfill-elo", "fit-ratings", "fit-elo", "backtest"}
+                            "backfill-elo", "fit-ratings", "fit-elo", "backtest", "futures"}
 
     def test_unimplemented_phases_are_absent(self):
         """`--help` must not advertise anything that does not run."""
@@ -100,8 +102,134 @@ class TestCliParser:
         with pytest.raises(SystemExit):
             cli.build_parser().parse_args(["ingest"])
 
+    def test_futures_requires_an_explicit_as_of_cutoff(self):
+        with pytest.raises(SystemExit):
+            cli.build_parser().parse_args(
+                [
+                    "futures",
+                    "--team-id", "cfbd:1",
+                    "--season", "2026",
+                    "--portal-net-composite", "0",
+                    "--nil-budget-millions", "10",
+                    "--qb-tier", "unknown",
+                    "--qb-continuity", "unknown",
+                ]
+            )
+
 
 class TestCliCommands:
+    def test_futures_rejects_a_timezone_naive_cutoff(self, capsys):
+        result = cli.main(
+            [
+                "futures",
+                "--team-id", "cfbd:1",
+                "--season", "2026",
+                "--as-of", "2026-08-15T00:00:00",
+                "--portal-net-composite", "0",
+                "--nil-budget-millions", "10",
+                "--qb-tier", "unknown",
+                "--qb-continuity", "unknown",
+            ]
+        )
+
+        assert result == 2
+        assert "must include a UTC offset" in capsys.readouterr().err
+
+    def test_futures_emits_versioned_non_actionable_json(self, capsys, monkeypatch):
+        from cfb_analytics.models.futures import (
+            NILTier,
+            RosterTalentInputs,
+            ScheduledOpponent,
+            project_season_futures,
+        )
+
+        captured = {}
+
+        def fake_project(conn, team_id, season, **kwargs):
+            captured.update(team_id=team_id, season=season, **kwargs)
+            kwargs["input_manifest"]["fixture"] = {"snapshot_id": "fixture:1"}
+            inputs = RosterTalentInputs(
+                team_id=team_id,
+                recruiting_composite=700.0,
+                portal_composite=kwargs["portal_composite"],
+                nil_tier=NILTier.from_budget(kwargs["nil_budget_millions"]),
+                returning_production=0.60,
+                qb_tier=kwargs["qb_tier"],
+                qb_continuity=kwargs["qb_continuity"],
+                conference="Big Ten",
+            )
+            return project_season_futures(
+                inputs,
+                [ScheduledOpponent("cfbd:2", 0.0)],
+                posted_lines=kwargs["posted_lines"],
+            )
+
+        monkeypatch.setattr(
+            "cfb_analytics.features.futures.project_team_futures_from_db", fake_project
+        )
+        cli.main(["init-db"])
+        capsys.readouterr()
+
+        result = cli.main(
+            [
+                "futures",
+                "--team-id", "cfbd:1",
+                "--season", "2026",
+                "--as-of", "2026-08-15T00:00:00+00:00",
+                "--portal-net-composite", "2.5",
+                "--nil-budget-millions", "15",
+                "--qb-tier", "tier_2_quality_starter",
+                "--qb-continuity", "returning_starter_same_system",
+                "--posted-line", "0.5",
+            ]
+        )
+
+        assert result == 0
+        payload = json.loads(capsys.readouterr().out)
+        assert payload["schema_version"] == 1
+        assert payload["model_status"] == "uncalibrated_shadow"
+        assert payload["is_actionable"] is False
+        assert payload["as_of_utc"] == "2026-08-15T00:00:00+00:00"
+        assert payload["inputs"]["provenance"] == "caller_supplied_unverified"
+        assert payload["inputs"]["portal_net_composite"] == 2.5
+        assert payload["inputs"]["nil_budget_millions"] == 15.0
+        assert payload["database_inputs"] == {"fixture": {"snapshot_id": "fixture:1"}}
+        assert payload["projection"]["model_status"] == "uncalibrated_shadow"
+        assert payload["projection"]["win_total_evaluations"]["0.5"]["is_actionable"] is False
+        assert captured == {
+            "team_id": "cfbd:1",
+            "season": 2026,
+            "as_of_utc": "2026-08-15T00:00:00+00:00",
+            "portal_composite": 2.5,
+            "nil_tier": None,
+            "nil_budget_millions": 15.0,
+            "qb_tier": "tier_2_quality_starter",
+            "qb_continuity": "returning_starter_same_system",
+            "posted_lines": [0.5],
+            "input_manifest": {"fixture": {"snapshot_id": "fixture:1"}},
+        }
+
+        captured.clear()
+        result = cli.main(
+            [
+                "futures",
+                "--team-id", "cfbd:1",
+                "--season", "2026",
+                "--as-of", "2026-08-14T20:00:00-04:00",
+                "--portal-net-composite", "2.5",
+                "--nil-budget-millions", "15",
+                "--qb-tier", "tier_2_quality_starter",
+                "--qb-continuity", "returning_starter_same_system",
+            ]
+        )
+
+        assert result == 0
+        no_line_payload = json.loads(capsys.readouterr().out)
+        assert no_line_payload["as_of_utc"] == "2026-08-15T00:00:00+00:00"
+        assert no_line_payload["inputs"]["posted_lines"] == []
+        assert no_line_payload["projection"]["win_total_evaluations"] == {}
+        assert captured["posted_lines"] == []
+
     def test_init_db_creates_the_store_and_reports_what_it_applied(self, capsys):
         assert cli.main(["init-db"]) == 0
         assert paths.database_path().exists()

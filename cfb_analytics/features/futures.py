@@ -41,7 +41,10 @@ def _preferred_rating_row(
                 as_of_field="as_of_utc",
             )
             return dict(latest) if latest is not None else None
-        return max(source_rows, key=lambda row: str(row["as_of_utc"]))
+        return max(
+            source_rows,
+            key=lambda row: (str(row["as_of_utc"]), str(row.get("snapshot_id", ""))),
+        )
     return None
 
 
@@ -59,6 +62,7 @@ def load_team_roster_inputs(
     base_power_rating: float | None = None,
     true_talent_composite: float | None = None,
     strength_of_schedule: float | None = None,
+    input_manifest: dict[str, Any] | None = None,
 ) -> RosterTalentInputs:
     """Build RosterTalentInputs from database records and optional caller overrides.
 
@@ -75,10 +79,10 @@ def load_team_roster_inputs(
         _ = reader.kickoff
 
     talent_row = conn.execute(
-        """SELECT season, availability_class, talent_composite
+        """SELECT snapshot_id, season, availability_class, ingested_utc, talent_composite
            FROM team_talent
            WHERE team_id = ? AND season = ? AND availability_class = 'preseason'
-           ORDER BY ingested_utc DESC LIMIT 1""",
+           ORDER BY ingested_utc DESC, snapshot_id DESC LIMIT 1""",
         (team_id, season),
     ).fetchone()
     if talent_row is None:
@@ -91,11 +95,11 @@ def load_team_roster_inputs(
     recruiting_comp = float(talent_row["talent_composite"])
 
     ret_row = conn.execute(
-        """SELECT season, availability_class, percent_ppa
+        """SELECT snapshot_id, season, availability_class, ingested_utc, percent_ppa
            FROM returning_production
            WHERE team_id = ? AND season = ? AND availability_class = 'preseason'
              AND percent_ppa IS NOT NULL
-           ORDER BY ingested_utc DESC LIMIT 1""",
+           ORDER BY ingested_utc DESC, snapshot_id DESC LIMIT 1""",
         (team_id, season),
     ).fetchone()
     if ret_row is None:
@@ -120,11 +124,22 @@ def load_team_roster_inputs(
         raise SchemaError(f"No conference affiliation for team {team_id!r} in season {season}")
     conference = str(team_row["conference"])
 
+    if input_manifest is not None:
+        input_manifest["team_talent"] = dict(talent_row)
+        input_manifest["returning_production"] = dict(ret_row)
+        input_manifest["team_season"] = {
+            "team_id": team_id,
+            "season": season,
+            "source": "cfbd",
+            "conference": conference,
+        }
+
     if strength_of_schedule is not None:
         sos = strength_of_schedule
     else:
         sos_rows = conn.execute(
-            """SELECT sos, source, snapshot_scope, as_of_utc
+            """SELECT snapshot_id, period, sos, source, snapshot_scope,
+                      provenance_mode, as_of_utc, ingested_utc
                FROM team_ratings
                WHERE team_id = ? AND season = ? AND sos IS NOT NULL""",
             (team_id, season),
@@ -143,6 +158,18 @@ def load_team_roster_inputs(
                 f"No admissible strength-of-schedule row for team {team_id!r} in season {season}"
             )
         sos = float(sos_row["sos"])
+        if input_manifest is not None:
+            input_manifest["strength_of_schedule"] = {
+                **sos_row,
+                "value": sos,
+                "resolution": "database_rating",
+            }
+
+    if input_manifest is not None and "strength_of_schedule" not in input_manifest:
+        input_manifest["strength_of_schedule"] = {
+            "value": sos,
+            "resolution": "caller_supplied",
+        }
 
     if nil_tier is None:
         if nil_budget_millions is None:
@@ -186,6 +213,7 @@ def load_team_schedule(
     reader_game_id: str = "futures-schedule-lookup",
     opponent_ratings: Mapping[str, float] | None = None,
     default_opp_rating: float | None = None,
+    input_manifest: dict[str, Any] | None = None,
 ) -> list[ScheduledOpponent]:
     """Load regular season schedule for team_id from the ``games`` table.
 
@@ -199,7 +227,7 @@ def load_team_schedule(
            FROM games
            WHERE source = 'cfbd' AND season = ?
              AND (home_team_id = ? OR away_team_id = ?)
-           ORDER BY kickoff_utc ASC""",
+           ORDER BY kickoff_utc ASC, game_id ASC""",
         (season, team_id, team_id),
     ).fetchall()
 
@@ -213,6 +241,7 @@ def load_team_schedule(
 
     ratings = dict(opponent_ratings or {})
     schedule: list[ScheduledOpponent] = []
+    schedule_manifest: list[dict[str, Any]] = []
 
     for g in games_list:
         # Ignore postseason, bowl, and conference championship games for regular season win totals
@@ -227,9 +256,14 @@ def load_team_schedule(
 
         if opp_id in ratings:
             opp_rating = ratings[opp_id]
+            rating_manifest: dict[str, Any] = {
+                "resolution": "caller_supplied_unverified",
+                "value": opp_rating,
+            }
         else:
             rating_rows = conn.execute(
-                """SELECT rating, source, snapshot_scope, as_of_utc
+                """SELECT snapshot_id, period, rating, source, snapshot_scope,
+                          provenance_mode, as_of_utc, ingested_utc
                    FROM team_ratings
                    WHERE team_id = ? AND season = ? AND rating IS NOT NULL""",
                 (opp_id, season),
@@ -254,6 +288,12 @@ def load_team_schedule(
                     opp_rating = round((raw_rating - 1500.0) / 25.0, 2)
                 else:
                     opp_rating = raw_rating
+                rating_manifest = {
+                    **opp_row,
+                    "raw_value": raw_rating,
+                    "value": opp_rating,
+                    "resolution": "database_rating",
+                }
             else:
                 team_meta = conn.execute(
                     """SELECT classification FROM team_seasons
@@ -266,8 +306,19 @@ def load_team_schedule(
                     and str(team_meta["classification"]).lower() == "fcs"
                 ):
                     opp_rating = -25.0
+                    rating_manifest = {
+                        "resolution": "fcs_classification_fallback",
+                        "source": "cfbd",
+                        "season": season,
+                        "classification": str(team_meta["classification"]),
+                        "value": opp_rating,
+                    }
                 elif default_opp_rating is not None:
                     opp_rating = default_opp_rating
+                    rating_manifest = {
+                        "resolution": "caller_supplied_default_unverified",
+                        "value": opp_rating,
+                    }
                 else:
                     raise SchemaError(
                         f"No admissible opponent rating for {opp_id!r} in season {season}"
@@ -298,6 +349,24 @@ def load_team_schedule(
                 known_result=known_result,
             )
         )
+        schedule_manifest.append(
+            {
+                "game_id": str(g["game_id"]),
+                "week": g.get("week"),
+                "kickoff_utc": g.get("kickoff_utc"),
+                "ingested_utc": g.get("ingested_utc"),
+                "opponent_id": opp_id,
+                "is_home": is_home,
+                "completed": bool(g.get("completed", 0)),
+                "home_points": g.get("home_points"),
+                "away_points": g.get("away_points"),
+                "known_result": known_result,
+                "opponent_rating": rating_manifest,
+            }
+        )
+
+    if input_manifest is not None:
+        input_manifest["schedule"] = schedule_manifest
 
     return schedule
 
@@ -317,6 +386,7 @@ def project_team_futures_from_db(
     posted_lines: list[float] | None = None,
     true_talent_composite: float | None = None,
     strength_of_schedule: float | None = None,
+    input_manifest: dict[str, Any] | None = None,
 ) -> SeasonFuturesProjection:
     """End-to-end integration: query database and generate SeasonFuturesProjection."""
     if as_of_utc is None:
@@ -328,6 +398,7 @@ def project_team_futures_from_db(
         season,
         as_of_utc=as_of_utc,
         opponent_ratings=opponent_ratings,
+        input_manifest=input_manifest,
     )
     if not schedule:
         raise SchemaError(
@@ -342,6 +413,15 @@ def project_team_futures_from_db(
         if strength_of_schedule is not None
         else sum(game.opponent_power_rating for game in schedule) / len(schedule)
     )
+    if input_manifest is not None:
+        input_manifest["strength_of_schedule"] = {
+            "value": resolved_sos,
+            "resolution": (
+                "caller_supplied"
+                if strength_of_schedule is not None
+                else "derived_schedule_opponent_rating_mean"
+            ),
+        }
     inputs = load_team_roster_inputs(
         conn,
         team_id,
@@ -354,6 +434,7 @@ def project_team_futures_from_db(
         qb_continuity=qb_continuity,
         true_talent_composite=true_talent_composite,
         strength_of_schedule=resolved_sos,
+        input_manifest=input_manifest,
     )
 
     return project_season_futures(
