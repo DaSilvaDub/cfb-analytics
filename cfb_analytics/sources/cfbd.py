@@ -320,6 +320,18 @@ def parse_team_aliases(row: dict[str, Any]) -> list[dict[str, Any]]:
     return rows
 
 
+def cfbd_game_status(completed: Any) -> str:
+    """CFBD's two-value game status vocabulary, derived from its ``completed`` flag.
+
+    Kept in one place because ``ingest.store.upsert_cfbd_game`` has to apply the
+    same rule for callers that build a row without going through ``parse_game``.
+    Note this vocabulary is CFBD's own: the Outlier feed writes "pregame"/"final"
+    into the same games.status column, so anything filtering on status must
+    handle both dialects.
+    """
+    return "completed" if completed else "scheduled"
+
+
 def parse_game(row: dict[str, Any]) -> dict[str, Any]:
     kickoff = to_utc_iso(row.get("startDate"))
     if kickoff is None:
@@ -353,7 +365,7 @@ def parse_game(row: dict[str, Any]) -> dict[str, Any]:
         # 10,465 games) and would attach the wrong city's weather. CFBD
         # supplies venueId on every game, so the id is the join key.
         "venue_id": _string_or_none(row.get("venueId")),
-        "status": "completed" if completed else "scheduled",
+        "status": cfbd_game_status(completed),
         "home_points": home_points,
         "away_points": away_points,
         "completed": 1 if completed else 0,
@@ -642,11 +654,11 @@ def parse_game_player_passing(game_row: dict[str, Any]) -> list[dict[str, Any]]:
                 if athlete_id is None or athlete_id.startswith("-"):
                     continue
                 cell = by_player.setdefault(athlete_id, {
-                    "player_id": f"cfbd:{athlete_id}",
-                    "name": _string_or_none(athlete.get("name")),
+                        "player_id": f"cfbd:{athlete_id}",
+                        "name": _string_or_none(athlete.get("name")),
                     "completions": None, "attempts": None, "yards": None,
                     "avg_yards": None, "touchdowns": None, "interceptions": None,
-                    "qbr": None,
+                        "qbr": None,
                 })
                 stat = athlete.get("stat")
                 if type_name == "C/ATT":
