@@ -1141,8 +1141,15 @@ class TestFuturesFeatureLayerIntegration:
             2026,
             opponent_ratings={"cfbd:akron": -15.0, "cfbd:michigan": 18.0},
         )
-        # Only regular season game 1 and game 2 should be loaded
-        assert len(schedule) == 2
+        # Only the two regular-season games load; the week-14 championship game
+        # is excluded. Assert on (opponent, week) pairs rather than a bare count:
+        # Michigan is the opponent in BOTH week 13 and the CCG, so len() == 2 also
+        # passes if game 1 is wrongly dropped and the CCG wrongly kept. Order is
+        # guaranteed by the ORDER BY kickoff_utc ASC in load_team_schedule.
+        assert [(g.opponent_id, g.game_week) for g in schedule] == [
+            ("cfbd:akron", 1),
+            ("cfbd:michigan", 13),
+        ]
 
     def test_completed_games_are_deterministic_in_win_total(self, conn) -> None:
         self._seed_db(conn)
