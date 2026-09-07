@@ -19,10 +19,14 @@ from __future__ import annotations
 import sqlite3
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
+from typing import TYPE_CHECKING
 
 from cfb_analytics import config
 from cfb_analytics.errors import CfbAnalyticsError
 from cfb_analytics.utils import FOOTBALL_TZ, football_date, utc_now_iso
+
+if TYPE_CHECKING:
+    from cfb_analytics.scoring import CandidateScore
 
 
 @dataclass
@@ -46,6 +50,8 @@ class DailyReport:
     movement_rows: int = 0
     games: int = 0
     weather_rows: int = 0
+    candidates_scored: int = 0
+    candidate_scores: list[CandidateScore] = field(default_factory=list)
     bootstrapped: bool = False
 
     @property
@@ -76,6 +82,7 @@ class DailyReport:
             f"  consensus rows   : {self.market_rows}",
             f"  movement rows    : {self.movement_rows}",
             f"  weather rows     : {self.weather_rows}",
+            f"  candidates scored: {self.candidates_scored}",
         ]
         if config.is_shadow_mode():
             lines.append(f"\n  {config.SHADOW_STAMP}")
@@ -99,9 +106,7 @@ def slates_in_window(conn: sqlite3.Connection, *, now: datetime | None = None) -
 
 def games_for_season(conn: sqlite3.Connection, season: int) -> int:
     return int(
-        conn.execute(
-            "SELECT COUNT(*) AS n FROM games WHERE season = ?", (season,)
-        ).fetchone()["n"]
+        conn.execute("SELECT COUNT(*) AS n FROM games WHERE season = ?", (season,)).fetchone()["n"]
     )
 
 
@@ -122,9 +127,13 @@ def _bootstrap_if_empty(conn: sqlite3.Connection, report: DailyReport, season: i
     if games_for_season(conn, season) > 0:
         return
     if not config.has_cfbd_key():
-        report.outcomes.append(SourceOutcome(
-            "bootstrap", "skipped",
-            f"store has no {season} games and no {config.CFBD_ENV_VAR} to fetch them"))
+        report.outcomes.append(
+            SourceOutcome(
+                "bootstrap",
+                "skipped",
+                f"store has no {season} games and no {config.CFBD_ENV_VAR} to fetch them",
+            )
+        )
         return
     try:
         from cfb_analytics.ingest.cfbd_ingest import backfill_years
@@ -132,20 +141,26 @@ def _bootstrap_if_empty(conn: sqlite3.Connection, report: DailyReport, season: i
 
         summary = backfill_years(conn, CFBDClient(), start_year=season, end_year=season)
         report.bootstrapped = True
-        report.outcomes.append(SourceOutcome(
-            "bootstrap", "ok",
-            f"store was empty for {season}; loaded {summary.games} games, "
-            f"{summary.teams} teams, {summary.venues} venues",
-            rows=summary.games))
+        report.outcomes.append(
+            SourceOutcome(
+                "bootstrap",
+                "ok",
+                f"store was empty for {season}; loaded {summary.games} games, "
+                f"{summary.teams} teams, {summary.venues} venues",
+                rows=summary.games,
+            )
+        )
     except CfbAnalyticsError as exc:
         report.outcomes.append(SourceOutcome("bootstrap", "failed", str(exc)[:200]))
 
 
 def _run_cfbd_lines(conn: sqlite3.Connection, report: DailyReport, season: int) -> None:
     if not config.has_cfbd_key():
-        report.outcomes.append(SourceOutcome(
-            "cfbd", "skipped",
-            f"no {config.CFBD_ENV_VAR} configured. {config.CFBD_HOW}"))
+        report.outcomes.append(
+            SourceOutcome(
+                "cfbd", "skipped", f"no {config.CFBD_ENV_VAR} configured. {config.CFBD_HOW}"
+            )
+        )
         return
     try:
         from cfb_analytics.ingest.cfbd_lines import ingest_lines
@@ -153,17 +168,27 @@ def _run_cfbd_lines(conn: sqlite3.Connection, report: DailyReport, season: int) 
 
         summary = ingest_lines(conn, CFBDClient(), season)
         report.movement_rows += summary.movement_rows
-        report.outcomes.append(SourceOutcome(
-            "cfbd", "ok",
-            f"{summary.odds_rows} odds rows, {summary.movement_rows} movement rows, "
-            f"{summary.games_matched} stored games priced "
-            f"(feed carries {summary.games_seen} season-wide)",
-            rows=summary.odds_rows))
+        report.outcomes.append(
+            SourceOutcome(
+                "cfbd",
+                "ok",
+                f"{summary.odds_rows} odds rows, {summary.movement_rows} movement rows, "
+                f"{summary.games_matched} stored games priced "
+                f"(feed carries {summary.games_seen} season-wide)",
+                rows=summary.odds_rows,
+            )
+        )
     except CfbAnalyticsError as exc:
         report.outcomes.append(SourceOutcome("cfbd", "failed", str(exc)[:200]))
 
 
-def _run_outlier(conn: sqlite3.Connection, report: DailyReport, slates: list[str]) -> None:
+def _run_outlier(
+    conn: sqlite3.Connection,
+    report: DailyReport,
+    slates: list[str],
+    *,
+    with_props: bool = False,
+) -> None:
     """Outlier is best-effort in a scheduled context.
 
     Its access token lives 24 hours and is refreshed by an interactive
@@ -180,15 +205,28 @@ def _run_outlier(conn: sqlite3.Connection, report: DailyReport, slates: list[str
 
         client = OutlierClient()
         total = 0
+        prop_total = 0
         for slate in slates:
-            total += ingest_slate(conn, client, slate).odds_rows
-        report.outcomes.append(SourceOutcome(
-            "outlier", "ok", f"{total} odds rows across {len(slates)} slate(s)", rows=total))
+            summary = ingest_slate(conn, client, slate, with_props=with_props)
+            total += summary.odds_rows
+            prop_total += summary.team_prop_rows
+        report.outcomes.append(
+            SourceOutcome(
+                "outlier",
+                "ok",
+                f"{total} odds rows and {prop_total} team-prop rows across {len(slates)} slate(s)",
+                rows=total + prop_total,
+            )
+        )
     except AuthRequiredError:
-        report.outcomes.append(SourceOutcome(
-            "outlier", "skipped",
-            "session expired (access token lives 24h). Refresh it locally in the "
-            "outlier project; unattended refresh needs email OTP."))
+        report.outcomes.append(
+            SourceOutcome(
+                "outlier",
+                "skipped",
+                "session expired (access token lives 24h). Refresh it locally in the "
+                "outlier project; unattended refresh needs email OTP.",
+            )
+        )
     except CfbAnalyticsError as exc:
         report.outcomes.append(SourceOutcome("outlier", "failed", str(exc)[:200]))
 
@@ -222,9 +260,13 @@ def _run_player_passing(conn: sqlite3.Connection, report: DailyReport, season: i
     stay a deliberate, separate `backfill-roster` action.
     """
     if not config.has_cfbd_key():
-        report.outcomes.append(SourceOutcome(
-            "player_passing", "skipped",
-            f"no {config.CFBD_ENV_VAR} configured. {config.CFBD_HOW}"))
+        report.outcomes.append(
+            SourceOutcome(
+                "player_passing",
+                "skipped",
+                f"no {config.CFBD_ENV_VAR} configured. {config.CFBD_HOW}",
+            )
+        )
         return
     try:
         from cfb_analytics.ingest.cfbd_players import ingest_game_passing, weeks_missing_passing
@@ -232,8 +274,9 @@ def _run_player_passing(conn: sqlite3.Connection, report: DailyReport, season: i
 
         missing = weeks_missing_passing(conn, season)
         if not missing:
-            report.outcomes.append(SourceOutcome(
-                "player_passing", "ok", "already current for every completed week"))
+            report.outcomes.append(
+                SourceOutcome("player_passing", "ok", "already current for every completed week")
+            )
             return
 
         client = CFBDClient()
@@ -241,10 +284,14 @@ def _run_player_passing(conn: sqlite3.Connection, report: DailyReport, season: i
         for week in missing:
             summary = ingest_game_passing(conn, client, season, week)
             total_rows += summary.rows_written
-        report.outcomes.append(SourceOutcome(
-            "player_passing", "ok",
-            f"{total_rows} passing rows across {len(missing)} newly-completed week(s)",
-            rows=total_rows))
+        report.outcomes.append(
+            SourceOutcome(
+                "player_passing",
+                "ok",
+                f"{total_rows} passing rows across {len(missing)} newly-completed week(s)",
+                rows=total_rows,
+            )
+        )
     except CfbAnalyticsError as exc:
         report.outcomes.append(SourceOutcome("player_passing", "failed", str(exc)[:200]))
 
@@ -265,16 +312,23 @@ def _run_internal_ratings(conn: sqlite3.Connection, report: DailyReport, season:
         as_of_utc = utc_now_iso()
         ratings = fit_ratings_as_of(conn, season, as_of_utc)
         if ratings.status != "active":
-            report.outcomes.append(SourceOutcome(
-                "internal_ratings", "ok",
-                f"{ratings.status} ({ratings.n_games} games so far this season)"))
+            report.outcomes.append(
+                SourceOutcome(
+                    "internal_ratings",
+                    "ok",
+                    f"{ratings.status} ({ratings.n_games} games so far this season)",
+                )
+            )
             return
-        written = upsert_internal_team_ratings(
-            conn, ratings, season=season, as_of_utc=as_of_utc
+        written = upsert_internal_team_ratings(conn, ratings, season=season, as_of_utc=as_of_utc)
+        report.outcomes.append(
+            SourceOutcome(
+                "internal_ratings",
+                "ok",
+                f"fit {ratings.n_games} games, wrote {written} team ratings",
+                rows=written,
+            )
         )
-        report.outcomes.append(SourceOutcome(
-            "internal_ratings", "ok",
-            f"fit {ratings.n_games} games, wrote {written} team ratings", rows=written))
     except CfbAnalyticsError as exc:
         report.outcomes.append(SourceOutcome("internal_ratings", "failed", str(exc)[:200]))
 
@@ -293,18 +347,53 @@ def _run_internal_elo(conn: sqlite3.Connection, report: DailyReport, season: int
         as_of_utc = utc_now_iso()
         ratings = fit_internal_elo_as_of(conn, season, as_of_utc)
         if ratings.status != "active":
-            report.outcomes.append(SourceOutcome(
-                "internal_elo", "ok",
-                f"{ratings.status} ({ratings.n_games} games so far this season)"))
+            report.outcomes.append(
+                SourceOutcome(
+                    "internal_elo",
+                    "ok",
+                    f"{ratings.status} ({ratings.n_games} games so far this season)",
+                )
+            )
             return
-        written = upsert_internal_elo_ratings(
-            conn, ratings, season=season, as_of_utc=as_of_utc
+        written = upsert_internal_elo_ratings(conn, ratings, season=season, as_of_utc=as_of_utc)
+        report.outcomes.append(
+            SourceOutcome(
+                "internal_elo",
+                "ok",
+                f"fit {ratings.n_games} games, wrote {written} team ratings",
+                rows=written,
+            )
         )
-        report.outcomes.append(SourceOutcome(
-            "internal_elo", "ok",
-            f"fit {ratings.n_games} games, wrote {written} team ratings", rows=written))
     except CfbAnalyticsError as exc:
         report.outcomes.append(SourceOutcome("internal_elo", "failed", str(exc)[:200]))
+
+
+def _run_candidate_scoring(
+    conn: sqlite3.Connection,
+    report: DailyReport,
+    slates: list[str],
+    season: int,
+    now: datetime,
+) -> None:
+    """Score Model 3 team props and devigged consensus fair odds across daily slates."""
+    try:
+        from cfb_analytics.scoring import score_daily_slates
+        from cfb_analytics.utils import to_utc_iso
+
+        as_of_utc = to_utc_iso(now) or utc_now_iso()
+        scored = score_daily_slates(conn, slates, season=season, as_of_utc=as_of_utc)
+        report.candidate_scores = scored
+        report.candidates_scored = len(scored)
+        report.outcomes.append(
+            SourceOutcome(
+                "scoring",
+                "ok",
+                f"{len(scored)} team prop candidates evaluated across {len(slates)} slate(s)",
+                rows=len(scored),
+            )
+        )
+    except CfbAnalyticsError as exc:
+        report.outcomes.append(SourceOutcome("scoring", "failed", str(exc)[:200]))
 
 
 def run_daily(
@@ -316,6 +405,8 @@ def run_daily(
     with_player_passing: bool = True,
     with_internal_ratings: bool = True,
     with_internal_elo: bool = True,
+    with_props: bool = False,
+    with_scoring: bool = False,
     bootstrap: bool = True,
     now: datetime | None = None,
 ) -> DailyReport:
@@ -332,10 +423,11 @@ def run_daily(
 
     slates = slates_in_window(conn, now=moment)
     if with_outlier and slates:
-        _run_outlier(conn, report, slates)
+        _run_outlier(conn, report, slates, with_props=with_props)
     elif with_outlier:
-        report.outcomes.append(SourceOutcome(
-            "outlier", "skipped", "no stored slates inside the operating window"))
+        report.outcomes.append(
+            SourceOutcome("outlier", "skipped", "no stored slates inside the operating window")
+        )
 
     if with_player_passing:
         _run_player_passing(conn, report, year)
@@ -358,5 +450,8 @@ def run_daily(
             report.market_rows += summary.consensus_rows
             report.movement_rows += summary.movement_rows
             report.games += summary.games
+
+        if with_scoring:
+            _run_candidate_scoring(conn, report, report.slates, year, moment)
 
     return report

@@ -46,6 +46,14 @@ PROPOSITION_TO_MARKET = {
     "TOTAL": "TOTAL",
 }
 
+TEAM_PROP_TO_MARKET = {
+    "POINTS": "team_total_points",
+    "OFFENSIVE_YARDS": "team_offensive_yards",
+    "RECEIVING_YARDS": "team_receiving_yards",
+    "RUSHING_YARDS": "team_rushing_yards",
+}
+TEAM_PROP_SIDES = frozenset({"OVER", "UNDER"})
+
 
 @dataclass(frozen=True)
 class OddsRow:
@@ -70,8 +78,46 @@ class OddsRow:
     @property
     def snapshot_id(self) -> str:
         return stable_id(
-            self.source, self.game_id, self.book, self.market, self.side,
-            self.line, self.price_american, self.captured_utc,
+            self.source,
+            self.game_id,
+            self.book,
+            self.market,
+            self.side,
+            self.line,
+            self.price_american,
+            self.captured_utc,
+        )
+
+
+@dataclass(frozen=True)
+class TeamPropOddsRow:
+    """One explicitly team-scoped Outlier price."""
+
+    game_id: str
+    team_id: str
+    market_id: str | None
+    book: str
+    market: str
+    side: str
+    line: float
+    price_american: int
+    price_decimal: float | None
+    is_primary: bool
+    captured_utc: str
+    source: str = "outlier"
+
+    @property
+    def snapshot_id(self) -> str:
+        return stable_id(
+            self.source,
+            self.game_id,
+            self.team_id,
+            self.book,
+            self.market,
+            self.side,
+            self.line,
+            self.price_american,
+            self.captured_utc,
         )
 
 
@@ -220,6 +266,71 @@ def parse_odds_rows(
     return rows
 
 
+def parse_team_prop_rows(
+    game_id: str,
+    markets: list[dict[str, Any]],
+    captured_utc: str,
+    team_id_map: dict[str, str],
+) -> list[TeamPropOddsRow]:
+    """Parse only supported, full-game, explicitly team-owned props.
+
+    Period markets, unknown teams, unsupported propositions, non OVER/UNDER
+    outcomes, and incomplete prices are intentionally dropped. A market row is
+    never inferred to be a team prop from its proposition name alone.
+    """
+    unique: dict[tuple[str, str, str, float, str], TeamPropOddsRow] = {}
+    for market in markets:
+        if str(market.get("marketType") or "").upper() != "TEAM_PROP":
+            continue
+        canonical_market = TEAM_PROP_TO_MARKET.get(str(market.get("proposition") or "").upper())
+        if canonical_market is None:
+            continue
+        if market.get("periods") or market.get("periodLabel"):
+            continue
+        group = str(market.get("marketGroupId") or "GAME").upper()
+        if group != "GAME":
+            continue
+        feed_team_id = str(market.get("teamId") or "")
+        canonical_team_id = team_id_map.get(feed_team_id)
+        if not canonical_team_id:
+            continue
+        outcomes = market.get("outcomes")
+        if not isinstance(outcomes, list):
+            continue
+        for outcome in outcomes:
+            if not isinstance(outcome, dict):
+                continue
+            side = str(outcome.get("position") or outcome.get("label") or "").upper()
+            line = _as_float(outcome.get("line"))
+            if side not in TEAM_PROP_SIDES or line is None:
+                continue
+            for entry in outcome.get("odds") or []:
+                if not isinstance(entry, dict):
+                    continue
+                book = str(entry.get("book") or "").strip().upper()
+                american = _as_int(entry.get("american"))
+                if not book or american is None:
+                    continue
+                decimal_price = _as_float(entry.get("decimal"))
+                if decimal_price is None:
+                    decimal_price = american_to_decimal(american)
+                row = TeamPropOddsRow(
+                    game_id=game_id,
+                    team_id=canonical_team_id,
+                    market_id=str(market.get("marketId")) if market.get("marketId") else None,
+                    book=book,
+                    market=canonical_market,
+                    side=side,
+                    line=line,
+                    price_american=american,
+                    price_decimal=decimal_price,
+                    is_primary=bool(outcome.get("primary")),
+                    captured_utc=captured_utc,
+                )
+                unique[(canonical_team_id, canonical_market, side, line, book)] = row
+    return list(unique.values())
+
+
 def parse_event(event: dict[str, Any]) -> dict[str, Any]:
     """Normalise one schedule event. Raises rather than defaulting a kickoff time."""
     event_id = event.get("eventId")
@@ -299,12 +410,33 @@ def parse_injury_rows(
 
 _POSITION_GROUPS = {
     "QB": "QB",
-    "RB": "SKILL", "FB": "SKILL", "WR": "SKILL", "TE": "SKILL",
-    "OL": "OL", "OT": "OL", "OG": "OL", "C": "OL", "G": "OL", "T": "OL",
-    "DL": "DL", "DE": "DL", "DT": "DL", "NT": "DL", "EDGE": "DL",
-    "LB": "LB", "ILB": "LB", "OLB": "LB", "MLB": "LB",
-    "CB": "DB", "S": "DB", "FS": "DB", "SS": "DB", "DB": "DB",
-    "K": "ST", "P": "ST", "LS": "ST",
+    "RB": "SKILL",
+    "FB": "SKILL",
+    "WR": "SKILL",
+    "TE": "SKILL",
+    "OL": "OL",
+    "OT": "OL",
+    "OG": "OL",
+    "C": "OL",
+    "G": "OL",
+    "T": "OL",
+    "DL": "DL",
+    "DE": "DL",
+    "DT": "DL",
+    "NT": "DL",
+    "EDGE": "DL",
+    "LB": "LB",
+    "ILB": "LB",
+    "OLB": "LB",
+    "MLB": "LB",
+    "CB": "DB",
+    "S": "DB",
+    "FS": "DB",
+    "SS": "DB",
+    "DB": "DB",
+    "K": "ST",
+    "P": "ST",
+    "LS": "ST",
 }
 
 
