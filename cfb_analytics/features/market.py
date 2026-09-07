@@ -37,6 +37,13 @@ FLAG_STALE_PRICES = "stale_prices"
 FLAG_ARBITRAGE = "negative_hold"
 FLAG_ONE_SIDED = "no_two_sided_book"
 FLAG_PARTIAL_BOOKS = "partial_book_coverage"
+# devig.shin() silently returns the multiplicative devig for any book whose
+# own hold is negative (no informed-money interpretation exists for an arbed
+# book). FLAG_ARBITRAGE only fires off the median hold across books, so one
+# rogue negative-hold book among several sane ones would blend a disguised
+# multiplicative estimate into the "shin" consensus with no signal. This flag
+# catches that per-book case even when the median book is fine.
+FLAG_SHIN_FALLBACK = "shin_fallback_to_multiplicative"
 FLAG_PLACEHOLDER_DROPPED = "placeholder_price_dropped"
 
 # Books post prices like -100000 to mean "no action", not "99.9% likely".
@@ -143,6 +150,7 @@ def build_consensus(
     sharp_books: Sequence[str] = (),
     min_books_for_consensus: int = 3,
     min_sharp_books: int = 2,
+    methods: Sequence[str] = devig.STORED_METHODS,
 ) -> MarketConsensus | None:
     """Collapse many books' prices on one market into a fair-probability view.
 
@@ -229,16 +237,24 @@ def build_consensus(
     if len(two_sided) < len(per_book):
         flags.append(FLAG_PARTIAL_BOOKS)
 
-    fair_by_method: dict[str, dict[str, list[float]]] = {m: {} for m in devig.METHODS}
+    fair_by_method: dict[str, dict[str, list[float]]] = {m: {} for m in methods}
     holds: list[float] = []
+    shin_fell_back = False
     for quotes in two_sided.values():
         ordered = [quotes[name] for name in side_names]
         try:
-            book_probs = devig.devig_all(ordered)
+            h = devig.hold(ordered)
         except DevigError:
             continue
-        holds.append(devig.hold(ordered))
-        for method, values in book_probs.items():
+        holds.append(h)
+        if h < 0 and "shin" in methods:
+            # This book's shin() call will return multiplicative in disguise.
+            shin_fell_back = True
+        for method in methods:
+            try:
+                values = devig.devig(ordered, method)
+            except DevigError:
+                continue
             for index, name in enumerate(side_names):
                 fair_by_method[method].setdefault(name, []).append(values[index])
 
@@ -252,17 +268,28 @@ def build_consensus(
     book_hold = statistics.median(holds)
     if book_hold < 0:
         flags.append(FLAG_ARBITRAGE)
+    if shin_fell_back:
+        flags.append(FLAG_SHIN_FALLBACK)
 
-    # Median across books is taken per side, so the set can drift off 1.0;
-    # renormalise so the published probabilities remain a distribution.
+    # Median across books is taken per side, then renormalised so the published
+    # probabilities remain a proper probability distribution.
     all_probs: dict[str, list[float]] = {}
     for method, by_name in fair_by_method.items():
         if len(by_name) != len(side_names):
             continue
-        medians = [statistics.median(by_name[name]) for name in side_names]
-        total = math.fsum(medians)
-        if total > 0:
-            all_probs[method] = [value / total for value in medians]
+        if any(len(by_name[name]) == 0 for name in side_names):
+            continue
+        n_book_quotes = len(by_name[side_names[0]])
+        if not all(len(by_name[name]) == n_book_quotes for name in side_names):
+            continue
+        probs_by_book = [
+            [by_name[name][b_idx] for name in side_names]
+            for b_idx in range(n_book_quotes)
+        ]
+        try:
+            all_probs[method] = devig.aggregate_probabilities(probs_by_book, aggregator="median")
+        except DevigError:
+            continue
 
     priced_sides = side_names
     consensus_prices: dict[str, int] = {}
