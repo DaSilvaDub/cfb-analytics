@@ -3,6 +3,7 @@ from __future__ import annotations
 import pytest
 
 from cfb_analytics.features import market
+from cfb_analytics.models import devig
 
 
 def price(book, side, american, line=0.0):
@@ -103,6 +104,32 @@ class TestConsensusMath:
         spread = market.summarise_probability_spread(result, "HOME")
         assert spread is not None and spread >= 0.0
 
+    def test_supports_expanded_methods(self):
+        rows = [
+            price("DRAFTKINGS", "HOME", -250), price("DRAFTKINGS", "AWAY", 200),
+            price("FANDUEL", "HOME", -260), price("FANDUEL", "AWAY", 210),
+            price("CAESARS", "HOME", -270), price("CAESARS", "AWAY", 220),
+        ]
+        result = build(rows, methods=devig.METHODS)
+        assert result is not None
+        assert set(result.side("HOME").probs) == set(devig.METHODS)
+        for m in devig.METHODS:
+            assert 0.0 < result.side("HOME").probs[m] < 1.0
+
+    def test_tolerates_additive_failure_without_dropping_other_methods(self):
+        # Even if a book has a quote where additive margin exceeds quote,
+        # other methods and other books still resolve.
+        rows = [
+            price("BOOK1", "HOME", -250), price("BOOK1", "AWAY", 200),
+            price("BOOK2", "HOME", -260), price("BOOK2", "AWAY", 210),
+            price("BOOK3", "HOME", -270), price("BOOK3", "AWAY", 220),
+        ]
+        result = build(rows, methods=("multiplicative", "shin", "power", "additive", "odds_ratio"))
+        assert result is not None
+        assert "multiplicative" in result.side("HOME").probs
+        assert "shin" in result.side("HOME").probs
+        assert "power" in result.side("HOME").probs
+
 
 class TestMedianInProbabilitySpace:
     """Median of American odds directly is meaningless: -110 and +110 are
@@ -126,6 +153,22 @@ class TestMedianInProbabilitySpace:
         result = build(rows, min_books_for_consensus=1)
         assert market.FLAG_ARBITRAGE in result.flags
         assert result.hold < 0
+
+    def test_one_rogue_negative_hold_book_flags_shin_fallback_even_if_median_is_fine(self):
+        """devig.shin() silently returns multiplicative for any book whose own
+        hold is negative. FLAG_ARBITRAGE only looks at the median hold across
+        books, so a single rogue book here would otherwise blend a disguised
+        multiplicative estimate into the "shin" consensus with no signal."""
+        rows = [
+            price("A", "HOME", 110), price("A", "AWAY", 110),  # negative hold
+            price("B", "HOME", -110), price("B", "AWAY", -110),
+            price("C", "HOME", -110), price("C", "AWAY", -110),
+            price("D", "HOME", -110), price("D", "AWAY", -110),
+        ]
+        result = build(rows)
+        assert result.hold is not None and result.hold > 0, "median hold should stay healthy"
+        assert market.FLAG_ARBITRAGE not in result.flags
+        assert market.FLAG_SHIN_FALLBACK in result.flags
 
     def test_two_one_sided_books_are_not_arbitrage(self):
         """Different books quoting opposite sides is NOT a negative hold.
