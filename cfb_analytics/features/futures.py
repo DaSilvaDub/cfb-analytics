@@ -63,8 +63,8 @@ def load_team_roster_inputs(
     """Build RosterTalentInputs from database records and optional caller overrides.
 
     Pulls recruiting talent composite from ``team_talent``, returning production
-    from ``returning_production``, conference from ``teams`` or ``team_seasons``,
-    and strength of schedule from ``team_ratings``.
+    from ``returning_production``, historical conference from ``team_seasons``,
+    and strength of schedule from ``team_ratings`` or a caller override.
     """
     reader = (
         AsOfReader(game_id="futures-roster-lookup", kickoff_utc=as_of_utc, season=season)
@@ -112,12 +112,9 @@ def load_team_roster_inputs(
     ret_prod = ReturningProduction(percent_ppa_offense=float(ret_row["percent_ppa"]))
 
     team_row = conn.execute(
-        """SELECT COALESCE(ts.conference, t.conference) AS conference
-           FROM teams AS t
-           LEFT JOIN team_seasons AS ts
-             ON ts.team_id = t.team_id AND ts.season = ? AND ts.source = 'cfbd'
-           WHERE t.team_id = ?""",
-        (season, team_id),
+        """SELECT conference FROM team_seasons
+           WHERE team_id = ? AND season = ? AND source = 'cfbd'""",
+        (team_id, season),
     ).fetchone()
     if team_row is None or not team_row["conference"]:
         raise SchemaError(f"No conference affiliation for team {team_id!r} in season {season}")
@@ -259,12 +256,9 @@ def load_team_schedule(
                     opp_rating = raw_rating
             else:
                 team_meta = conn.execute(
-                    """SELECT COALESCE(ts.classification, t.classification) AS classification
-                       FROM teams AS t
-                       LEFT JOIN team_seasons AS ts
-                         ON ts.team_id = t.team_id AND ts.season = ? AND ts.source = 'cfbd'
-                       WHERE t.team_id = ?""",
-                    (season, opp_id),
+                    """SELECT classification FROM team_seasons
+                       WHERE team_id = ? AND season = ? AND source = 'cfbd'""",
+                    (opp_id, season),
                 ).fetchone()
                 if (
                     team_meta
