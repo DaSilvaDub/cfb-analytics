@@ -20,6 +20,7 @@ from typing import Any, Literal
 
 from cfb_analytics.models.elo import EloRatings
 from cfb_analytics.models.ridge import RidgeRatings
+from cfb_analytics.sources.cfbd import cfbd_game_status
 from cfb_analytics.sources.outlier import OddsRow, TeamPropOddsRow
 from cfb_analytics.utils import stable_id, utc_now_iso
 
@@ -73,6 +74,9 @@ def upsert_team(conn: sqlite3.Connection, team: dict[str, Any]) -> None:
     now = utc_now_iso()
     payload = {
         "cfbd_id": None,
+        "school": None,
+        "alias": None,
+        "market": None,
         "conference": None,
         "classification": None,
         "venue_id": None,
@@ -116,6 +120,18 @@ def resolve_venue_id_by_name(conn: sqlite3.Connection, venue_name: str | None) -
 
 
 def upsert_game(conn: sqlite3.Connection, game: dict[str, Any]) -> None:
+    now = utc_now_iso()
+    payload = {
+        "football_date": None,
+        "day_of_week": None,
+        "venue_name": None,
+        "network": None,
+        "status": None,
+        **game,
+        "venue_id": game.get("venue_id")
+        or resolve_venue_id_by_name(conn, game.get("venue_name")),
+        "ingested_utc": now,
+    }
     conn.execute(
         """INSERT INTO games (game_id, season, kickoff_utc, football_date, day_of_week,
                               home_team_id, away_team_id, venue_name, venue_id, network,
@@ -131,16 +147,38 @@ def upsert_game(conn: sqlite3.Connection, game: dict[str, Any]) -> None:
              venue_name  = COALESCE(excluded.venue_name, games.venue_name),
              venue_id    = COALESCE(excluded.venue_id, games.venue_id),
              ingested_utc = excluded.ingested_utc""",
-        {
-            **game,
-            "venue_id": game.get("venue_id")
-            or resolve_venue_id_by_name(conn, game.get("venue_name")),
-            "ingested_utc": utc_now_iso(),
-        },
+        payload,
     )
 
 
 def upsert_cfbd_game(conn: sqlite3.Connection, game: dict[str, Any]) -> None:
+    now = utc_now_iso()
+    status = game.get("status")
+    if status is None:
+        status = cfbd_game_status(game.get("completed"))
+    payload = {
+        "week": None,
+        "season_type": "regular",
+        "football_date": None,
+        "neutral_site": 0,
+        "conference_game": 0,
+        "venue_name": None,
+        "home_points": None,
+        "away_points": None,
+        "completed": 0,
+        "source": "cfbd",
+        "has_week": 1 if "week" in game else 0,
+        "has_season_type": 1 if "season_type" in game else 0,
+        "has_neutral_site": 1 if "neutral_site" in game else 0,
+        "has_conference_game": 1 if "conference_game" in game else 0,
+        "has_status": 1 if "status" in game or "completed" in game else 0,
+        "has_completed": 1 if "completed" in game else 0,
+        **game,
+        "status": status,
+        "venue_id": game.get("venue_id")
+        or resolve_venue_id_by_name(conn, game.get("venue_name")),
+        "ingested_utc": now,
+    }
     conn.execute(
         """INSERT INTO games (game_id, season, week, season_type, kickoff_utc, football_date,
                               neutral_site, conference_game, home_team_id, away_team_id,
@@ -152,27 +190,49 @@ def upsert_cfbd_game(conn: sqlite3.Connection, game: dict[str, Any]) -> None:
                    :source, :ingested_utc)
            ON CONFLICT(game_id) DO UPDATE SET
              season = excluded.season,
-             week = excluded.week,
-             season_type = excluded.season_type,
+             week = CASE WHEN :has_week = 1 THEN excluded.week ELSE games.week END,
+             season_type = CASE WHEN :has_season_type = 1
+                                THEN excluded.season_type ELSE games.season_type END,
              kickoff_utc = excluded.kickoff_utc,
-             football_date = excluded.football_date,
-             neutral_site = excluded.neutral_site,
-             conference_game = excluded.conference_game,
+             football_date = COALESCE(excluded.football_date, games.football_date),
+             neutral_site = CASE WHEN :has_neutral_site = 1
+                                 THEN excluded.neutral_site ELSE games.neutral_site END,
+             conference_game = CASE WHEN :has_conference_game = 1
+                                    THEN excluded.conference_game ELSE games.conference_game END,
              home_team_id = excluded.home_team_id,
              away_team_id = excluded.away_team_id,
              venue_name = COALESCE(excluded.venue_name, games.venue_name),
              venue_id = COALESCE(excluded.venue_id, games.venue_id),
-             status = excluded.status,
+             status = CASE WHEN :has_status = 1 THEN excluded.status ELSE games.status END,
              home_points = COALESCE(excluded.home_points, games.home_points),
              away_points = COALESCE(excluded.away_points, games.away_points),
-             completed = excluded.completed,
+             completed = CASE WHEN :has_completed = 1
+                              THEN excluded.completed ELSE games.completed END,
              source = excluded.source,
              ingested_utc = excluded.ingested_utc""",
-        {**game, "ingested_utc": utc_now_iso()},
+        payload,
     )
 
 
 def upsert_venue(conn: sqlite3.Connection, venue: dict[str, Any]) -> None:
+    # Deliberately no default for "name": venues.name is NOT NULL, and SQLite
+    # validates the proposed row BEFORE ON CONFLICT resolution (the same trap the
+    # teams.school comment in db.py documents), so a None here raises
+    # IntegrityError instead of coalescing to the stored value. Omitting it keeps
+    # a missing name a clear missing-binding error at the Python layer. Every
+    # caller supplies one -- parse_venue drops feed rows that have no name.
+    payload = {
+        "city": None,
+        "state": None,
+        "latitude": None,
+        "longitude": None,
+        "elevation_m": None,
+        "surface": None,
+        "dome": None,
+        "capacity": None,
+        "timezone": None,
+        **venue,
+    }
     conn.execute(
         """INSERT INTO venues
            (venue_id, name, city, state, latitude, longitude, elevation_m, surface,
@@ -190,11 +250,18 @@ def upsert_venue(conn: sqlite3.Connection, venue: dict[str, Any]) -> None:
              dome = COALESCE(excluded.dome, venues.dome),
              capacity = COALESCE(excluded.capacity, venues.capacity),
              timezone = COALESCE(excluded.timezone, venues.timezone)""",
-        venue,
+        payload,
     )
 
 
 def upsert_team_season(conn: sqlite3.Connection, row: dict[str, Any]) -> None:
+    payload = {
+        "conference": None,
+        "division": None,
+        "classification": None,
+        "venue_id": None,
+        **row,
+    }
     conn.execute(
         """INSERT INTO team_seasons
            (team_id, season, source, conference, division, classification, venue_id)
@@ -204,7 +271,7 @@ def upsert_team_season(conn: sqlite3.Connection, row: dict[str, Any]) -> None:
              division = COALESCE(excluded.division, team_seasons.division),
              classification = COALESCE(excluded.classification, team_seasons.classification),
              venue_id = COALESCE(excluded.venue_id, team_seasons.venue_id)""",
-        row,
+        payload,
     )
 
 
