@@ -553,6 +553,77 @@ CREATE INDEX IF NOT EXISTS idx_games_source_slate ON games(source, football_date
 """
 
 
+MIGRATION_012 = """
+-- Team-prop market state is deliberately separate from the gameline consensus
+-- tables.  A team id is part of the market identity: HOME OVER 27.5 and AWAY
+-- OVER 27.5 are different markets even when every other field is identical.
+CREATE TABLE IF NOT EXISTS team_prop_odds_snapshots (
+    snapshot_id     TEXT PRIMARY KEY,
+    game_id         TEXT NOT NULL REFERENCES games(game_id),
+    team_id         TEXT NOT NULL REFERENCES teams(team_id),
+    market_id       TEXT,
+    book            TEXT NOT NULL,
+    captured_utc    TEXT NOT NULL,
+    market          TEXT NOT NULL CHECK (market IN (
+        'team_total_points',
+        'team_offensive_yards',
+        'team_receiving_yards',
+        'team_rushing_yards'
+    )),
+    side            TEXT NOT NULL CHECK (side IN ('OVER', 'UNDER')),
+    line            REAL NOT NULL,
+    price_american  INTEGER NOT NULL,
+    price_decimal   REAL,
+    is_primary      INTEGER NOT NULL DEFAULT 0,
+    source          TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_team_prop_odds_identity
+    ON team_prop_odds_snapshots(
+        game_id, team_id, market, line, side, captured_utc
+    );
+
+CREATE TABLE IF NOT EXISTS team_prop_consensus (
+    game_id          TEXT NOT NULL REFERENCES games(game_id),
+    team_id          TEXT NOT NULL REFERENCES teams(team_id),
+    market           TEXT NOT NULL CHECK (market IN (
+        'team_total_points',
+        'team_offensive_yards',
+        'team_receiving_yards',
+        'team_rushing_yards'
+    )),
+    line             REAL NOT NULL,
+    side             TEXT NOT NULL CHECK (side IN ('OVER', 'UNDER')),
+    as_of_utc        TEXT NOT NULL,
+    n_books          INTEGER NOT NULL CHECK (n_books >= 0),
+    consensus_price  INTEGER,
+    best_price       INTEGER,
+    best_book        TEXT,
+    hold             REAL,
+    prob_multiplicative REAL,
+    prob_shin        REAL,
+    prob_power       REAL,
+    flags            TEXT,
+    PRIMARY KEY (game_id, team_id, market, line, side, as_of_utc)
+);
+CREATE INDEX IF NOT EXISTS idx_team_prop_consensus_asof
+    ON team_prop_consensus(game_id, team_id, market, as_of_utc);
+
+CREATE TABLE IF NOT EXISTS team_prop_movement (
+    game_id       TEXT NOT NULL REFERENCES games(game_id),
+    team_id       TEXT NOT NULL REFERENCES teams(team_id),
+    market        TEXT NOT NULL,
+    side          TEXT NOT NULL CHECK (side IN ('OVER', 'UNDER')),
+    as_of_utc     TEXT NOT NULL,
+    open_line     REAL,
+    current_line  REAL,
+    rlm_flag      INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (game_id, team_id, market, side, as_of_utc)
+);
+CREATE INDEX IF NOT EXISTS idx_team_prop_movement_asof
+    ON team_prop_movement(game_id, team_id, market, as_of_utc);
+"""
+
+
 def _merge_outlier_identities(conn: sqlite3.Connection) -> None:
     """Fold Outlier-keyed rows onto the canonical CFBD game and team ids.
 
@@ -602,7 +673,8 @@ def _merge_outlier_identities(conn: sqlite3.Connection) -> None:
         if not home or not away:
             continue
         match = resolver.game(
-            home_team_id=home, away_team_id=away,
+            home_team_id=home,
+            away_team_id=away,
             football_date=str(row["football_date"]),
         )
         # An orientation disagreement would relabel HOME/AWAY prices onto the
@@ -652,8 +724,14 @@ def _merge_outlier_identities(conn: sqlite3.Connection) -> None:
             [
                 (
                     stable_id(
-                        row["source"], new_game, row["book"], row["market"], row["side"],
-                        row["line"], row["price_american"], row["captured_utc"],
+                        row["source"],
+                        new_game,
+                        row["book"],
+                        row["market"],
+                        row["side"],
+                        row["line"],
+                        row["price_american"],
+                        row["captured_utc"],
                     ),
                     new_game,
                     row["snapshot_id"],
@@ -705,6 +783,7 @@ MIGRATIONS: tuple[tuple[int, str, str, Callable[[sqlite3.Connection], None] | No
     (9, "internal_team_ratings", MIGRATION_009, None),
     (10, "internal_elo_ratings", MIGRATION_010, None),
     (11, "canonical_game_identity", MIGRATION_011, _merge_outlier_identities),
+    (12, "team_prop_market_identity", MIGRATION_012, None),
 )
 
 

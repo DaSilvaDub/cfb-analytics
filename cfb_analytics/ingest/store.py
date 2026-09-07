@@ -20,7 +20,7 @@ from typing import Any, Literal
 
 from cfb_analytics.models.elo import EloRatings
 from cfb_analytics.models.ridge import RidgeRatings
-from cfb_analytics.sources.outlier import OddsRow
+from cfb_analytics.sources.outlier import OddsRow, TeamPropOddsRow
 from cfb_analytics.utils import stable_id, utc_now_iso
 
 
@@ -43,7 +43,8 @@ class RunRecorder:
 
     def __exit__(self, exc_type, exc, tb) -> Literal[False]:
         status = "ok" if exc_type is None else "failed"
-        detail = None if exc is None else f"{exc_type.__name__}: {exc}"[:500]
+        error_name = exc_type.__name__ if exc_type is not None else "Exception"
+        detail = None if exc is None else f"{error_name}: {exc}"[:500]
         self.conn.execute(
             "UPDATE runs SET finished_utc = ?, status = ?, error = ? WHERE run_id = ?",
             (utc_now_iso(), status, detail, self.run_id),
@@ -258,9 +259,23 @@ def insert_team_ratings(conn: sqlite3.Connection, rows: Iterable[dict[str, Any]]
     fail the CHECK and vanish silently under ``INSERT OR IGNORE``.
     """
     columns = (
-        "snapshot_id", "season", "period", "week", "season_type", "team_id", "source",
-        "snapshot_scope", "provenance_mode", "as_of_utc", "ingested_utc",
-        "rating", "ranking", "off_rating", "def_rating", "st_rating", "sos",
+        "snapshot_id",
+        "season",
+        "period",
+        "week",
+        "season_type",
+        "team_id",
+        "source",
+        "snapshot_scope",
+        "provenance_mode",
+        "as_of_utc",
+        "ingested_utc",
+        "rating",
+        "ranking",
+        "off_rating",
+        "def_rating",
+        "st_rating",
+        "sos",
         "second_order_wins",
     )
     return _insert_snapshots(conn, "team_ratings", columns, rows)
@@ -268,31 +283,63 @@ def insert_team_ratings(conn: sqlite3.Connection, rows: Iterable[dict[str, Any]]
 
 def insert_team_advanced(conn: sqlite3.Connection, rows: Iterable[dict[str, Any]]) -> int:
     columns = (
-        "snapshot_id", "season", "week", "team_id", "side", "as_of_utc",
-        "ingested_utc", "provenance_mode", "garbage_excluded", "plays", "drives",
-        "ppa", "total_ppa", "success_rate", "explosiveness",
-        "points_per_opportunity", "havoc", "line_yards", "stuff_rate",
-        "passing_ppa", "rushing_ppa", "passing_success_rate",
+        "snapshot_id",
+        "season",
+        "week",
+        "team_id",
+        "side",
+        "as_of_utc",
+        "ingested_utc",
+        "provenance_mode",
+        "garbage_excluded",
+        "plays",
+        "drives",
+        "ppa",
+        "total_ppa",
+        "success_rate",
+        "explosiveness",
+        "points_per_opportunity",
+        "havoc",
+        "line_yards",
+        "stuff_rate",
+        "passing_ppa",
+        "rushing_ppa",
+        "passing_success_rate",
         "rushing_success_rate",
     )
     return _insert_snapshots(conn, "team_season_advanced", columns, rows)
 
 
-def insert_returning_production(
-    conn: sqlite3.Connection, rows: Iterable[dict[str, Any]]
-) -> int:
+def insert_returning_production(conn: sqlite3.Connection, rows: Iterable[dict[str, Any]]) -> int:
     columns = (
-        "snapshot_id", "season", "team_id", "availability_class", "ingested_utc",
-        "total_ppa", "passing_ppa", "receiving_ppa", "rushing_ppa", "percent_ppa",
-        "percent_passing_ppa", "percent_receiving_ppa", "percent_rushing_ppa",
-        "usage", "passing_usage", "receiving_usage", "rushing_usage",
+        "snapshot_id",
+        "season",
+        "team_id",
+        "availability_class",
+        "ingested_utc",
+        "total_ppa",
+        "passing_ppa",
+        "receiving_ppa",
+        "rushing_ppa",
+        "percent_ppa",
+        "percent_passing_ppa",
+        "percent_receiving_ppa",
+        "percent_rushing_ppa",
+        "usage",
+        "passing_usage",
+        "receiving_usage",
+        "rushing_usage",
     )
     return _insert_snapshots(conn, "returning_production", columns, rows)
 
 
 def insert_team_talent(conn: sqlite3.Connection, rows: Iterable[dict[str, Any]]) -> int:
     columns = (
-        "snapshot_id", "season", "team_id", "availability_class", "ingested_utc",
+        "snapshot_id",
+        "season",
+        "team_id",
+        "availability_class",
+        "ingested_utc",
         "talent_composite",
     )
     return _insert_snapshots(conn, "team_talent", columns, rows)
@@ -322,10 +369,18 @@ def upsert_internal_team_ratings(
     now = utc_now_iso()
     payload = [
         (
-            season, as_of_utc, team_id, model,
-            rating.offense, rating.defense, rating.games,
-            ratings.ridge_lambda, ratings.home_field_advantage,
-            ratings.league_avg_points, ratings.n_games, now,
+            season,
+            as_of_utc,
+            team_id,
+            model,
+            rating.offense,
+            rating.defense,
+            rating.games,
+            ratings.ridge_lambda,
+            ratings.home_field_advantage,
+            ratings.league_avg_points,
+            ratings.n_games,
+            now,
         )
         for team_id, rating in ratings.teams.items()
     ]
@@ -364,9 +419,16 @@ def upsert_internal_elo_ratings(
     now = utc_now_iso()
     payload = [
         (
-            season, as_of_utc, team_id, model,
-            state.rating, state.games,
-            ratings.k, ratings.hfa, ratings.n_games, now,
+            season,
+            as_of_utc,
+            team_id,
+            model,
+            state.rating,
+            state.games,
+            ratings.k,
+            ratings.hfa,
+            ratings.n_games,
+            now,
         )
         for team_id, state in ratings.teams.items()
     ]
@@ -385,9 +447,18 @@ def upsert_internal_elo_ratings(
 def insert_odds(conn: sqlite3.Connection, rows: Iterable[OddsRow]) -> int:
     payload = [
         (
-            row.snapshot_id, row.game_id, row.market_id, row.book, row.captured_utc,
-            row.market, row.side, row.line, row.price_american, row.price_decimal,
-            1 if row.is_primary else 0, row.source,
+            row.snapshot_id,
+            row.game_id,
+            row.market_id,
+            row.book,
+            row.captured_utc,
+            row.market,
+            row.side,
+            row.line,
+            row.price_american,
+            row.price_decimal,
+            1 if row.is_primary else 0,
+            row.source,
         )
         for row in rows
     ]
@@ -398,6 +469,39 @@ def insert_odds(conn: sqlite3.Connection, rows: Iterable[OddsRow]) -> int:
            (snapshot_id, game_id, market_id, book, captured_utc, market, side,
             line, price_american, price_decimal, is_primary, source)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        payload,
+    )
+    return cursor.rowcount if cursor.rowcount and cursor.rowcount > 0 else 0
+
+
+def insert_team_prop_odds(
+    conn: sqlite3.Connection, rows: Iterable[TeamPropOddsRow]
+) -> int:
+    payload = [
+        (
+            row.snapshot_id,
+            row.game_id,
+            row.team_id,
+            row.market_id,
+            row.book,
+            row.captured_utc,
+            row.market,
+            row.side,
+            row.line,
+            row.price_american,
+            row.price_decimal,
+            1 if row.is_primary else 0,
+            row.source,
+        )
+        for row in rows
+    ]
+    if not payload:
+        return 0
+    cursor = conn.executemany(
+        """INSERT OR IGNORE INTO team_prop_odds_snapshots
+           (snapshot_id, game_id, team_id, market_id, book, captured_utc,
+            market, side, line, price_american, price_decimal, is_primary, source)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         payload,
     )
     return cursor.rowcount if cursor.rowcount and cursor.rowcount > 0 else 0

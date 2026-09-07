@@ -23,6 +23,7 @@ import sqlite3
 from dataclasses import dataclass, field
 
 from cfb_analytics.errors import SchemaError, SourceError
+from cfb_analytics.features.team_props import build_team_prop_consensus
 from cfb_analytics.ingest import store
 from cfb_analytics.ingest.identity import CanonicalResolver, EventResolution
 from cfb_analytics.sources.outlier import (
@@ -30,6 +31,7 @@ from cfb_analytics.sources.outlier import (
     parse_event,
     parse_injury_rows,
     parse_odds_rows,
+    parse_team_prop_rows,
 )
 from cfb_analytics.utils import utc_now_iso
 
@@ -42,6 +44,8 @@ class IngestSummary:
     aliases_written: int = 0
     odds_rows: int = 0
     injury_rows: int = 0
+    team_prop_rows: int = 0
+    team_prop_consensus_rows: int = 0
     books: set[str] = field(default_factory=set)
     market_failures: list[str] = field(default_factory=list)
     injury_failures: list[str] = field(default_factory=list)
@@ -60,6 +64,8 @@ class IngestSummary:
             f"  team aliases    : {self.aliases_written}",
             f"  odds rows       : {self.odds_rows}  across {len(self.books)} books",
             f"  injury rows     : {self.injury_rows}",
+            f"  team prop rows  : {self.team_prop_rows}",
+            f"  prop consensus  : {self.team_prop_consensus_rows}",
         ]
         if self.books:
             lines.append(f"  books           : {', '.join(sorted(self.books))}")
@@ -86,6 +92,7 @@ def ingest_slate(
     *,
     with_odds: bool = True,
     with_injuries: bool = True,
+    with_props: bool = False,
     limit: int | None = None,
 ) -> IngestSummary:
     summary = IngestSummary(slate_date=slate_date)
@@ -123,8 +130,10 @@ def ingest_slate(
             if not resolution.ok:
                 summary.unresolved_events.append(resolution.reason)
                 run.record_health(
-                    "outlier", f"resolve:{record['game_id']}",
-                    ok=False, detail=resolution.reason,
+                    "outlier",
+                    f"resolve:{record['game_id']}",
+                    ok=False,
+                    detail=resolution.reason,
                 )
                 continue
             summary.games_matched += 1
@@ -138,8 +147,10 @@ def ingest_slate(
             _ingest_odds(conn, client, resolved, captured_utc, summary, run)
         if with_injuries:
             _ingest_injuries(conn, client, resolved, captured_utc, summary, run)
+        if with_props:
+            _ingest_team_props(conn, client, resolved, captured_utc, summary, run)
 
-        run.add_rows(summary.odds_rows + summary.injury_rows)
+        run.add_rows(summary.odds_rows + summary.injury_rows + summary.team_prop_rows)
         conn.commit()
 
     return summary
@@ -147,8 +158,8 @@ def ingest_slate(
 
 def _ingest_odds(conn, client, resolved, captured_utc, summary, run) -> None:
     for record, resolution in resolved:
-        event_id = record["game_id"]          # Outlier's id: what the API wants.
-        canonical_id = resolution.game_id     # cfbd:<id>: what the store wants.
+        event_id = record["game_id"]  # Outlier's id: what the API wants.
+        canonical_id = resolution.game_id  # cfbd:<id>: what the store wants.
         try:
             markets = client.fetch_event_markets(event_id, "GAMELINE")
         except SourceError as exc:
@@ -171,18 +182,44 @@ def _ingest_injuries(conn, client, resolved, captured_utc, summary, run) -> None
             ("away", resolution.away_team_id),
         )
         for side, canonical_team in sides:
-            feed_team_id = record[side]["team_id"]   # Outlier's id: for the API.
+            feed_team_id = record[side]["team_id"]  # Outlier's id: for the API.
             try:
                 players = client.fetch_team_injuries(feed_team_id)
             except SourceError as exc:
                 summary.injury_failures.append(f"{feed_team_id}: {exc}")
-                run.record_health(
-                    "outlier", f"injuries:{feed_team_id}", ok=False, detail=str(exc)
-                )
+                run.record_health("outlier", f"injuries:{feed_team_id}", ok=False, detail=str(exc))
                 continue
             rows = parse_injury_rows(canonical_game, canonical_team, players, captured_utc)
             summary.injury_rows += store.insert_availability(conn, rows)
             run.record_health("outlier", f"injuries:{feed_team_id}", ok=True, rows=len(rows))
+    conn.commit()
+
+
+def _ingest_team_props(conn, client, resolved, captured_utc, summary, run) -> None:
+    canonical_games: list[str] = []
+    for record, resolution in resolved:
+        event_id = record["game_id"]
+        canonical_game = resolution.game_id
+        team_id_map = {
+            record["home"]["team_id"]: resolution.home_team_id,
+            record["away"]["team_id"]: resolution.away_team_id,
+        }
+        team_id_map = {key: value for key, value in team_id_map.items() if value}
+        try:
+            markets = client.fetch_event_markets(event_id, "TEAM_PROP")
+        except SourceError as exc:
+            summary.market_failures.append(f"{event_id} TEAM_PROP: {exc}")
+            run.record_health("outlier", f"team_props:{event_id}", ok=False, detail=str(exc))
+            continue
+        rows = parse_team_prop_rows(canonical_game, markets, captured_utc, team_id_map)
+        written = store.insert_team_prop_odds(conn, rows)
+        summary.team_prop_rows += written
+        summary.books.update(row.book for row in rows)
+        canonical_games.append(canonical_game)
+        run.record_health("outlier", f"team_props:{event_id}", ok=True, rows=written)
+    summary.team_prop_consensus_rows = build_team_prop_consensus(
+        conn, canonical_games, as_of_utc=captured_utc
+    )
     conn.commit()
 
 
@@ -207,8 +244,12 @@ def _alias_rows(record: dict, resolution: EventResolution) -> list[dict[str, str
         for field_name, alias_type in (("market", "market"), ("alias", "abbreviation")):
             value = team.get(field_name)
             if value:
-                rows.append({
-                    "team_id": canonical_team, "source": "outlier",
-                    "alias": str(value), "alias_type": alias_type,
-                })
+                rows.append(
+                    {
+                        "team_id": canonical_team,
+                        "source": "outlier",
+                        "alias": str(value),
+                        "alias_type": alias_type,
+                    }
+                )
     return rows

@@ -61,8 +61,7 @@ def _cmd_doctor(args: argparse.Namespace) -> int:
         print("    cfbd      : OK   (key configured)")
     else:
         print(f"    cfbd      : BLOCKED - set {config.CFBD_ENV_VAR}. {config.CFBD_HOW}")
-    print("    espn      : dropped - ESPN publishes no CFB depth chart "
-          "(see sources/__init__)")
+    print("    espn      : dropped - ESPN publishes no CFB depth chart (see sources/__init__)")
     print("    weather   : OK   (Open-Meteo; no credential required)")
     return 0
 
@@ -80,6 +79,7 @@ def _cmd_ingest(args: argparse.Namespace) -> int:
             args.date,
             with_odds=not args.no_odds,
             with_injuries=not args.no_injuries,
+            with_props=bool(getattr(args, "with_props", False)),
             limit=args.limit,
         )
     print(summary.as_text())
@@ -230,9 +230,7 @@ def _cmd_fit_ratings(args: argparse.Namespace) -> int:
     ridge_lambda = args.ridge_lambda if args.ridge_lambda is not None else DEFAULT_RIDGE_LAMBDA
     paths.ensure_dirs()
     with db.open_db() as conn:
-        ratings = fit_ratings_as_of(
-            conn, args.season, as_of_utc, ridge_lambda=ridge_lambda
-        )
+        ratings = fit_ratings_as_of(conn, args.season, as_of_utc, ridge_lambda=ridge_lambda)
         written = upsert_internal_team_ratings(
             conn, ratings, season=args.season, as_of_utc=as_of_utc
         )
@@ -474,7 +472,6 @@ def _cmd_board(args: argparse.Namespace) -> int:
     return 0
 
 
-
 def _cmd_daily(args: argparse.Namespace) -> int:
     """The scheduled job: ingest what is credentialed, then rebuild the market."""
     from cfb_analytics.daily import run_daily
@@ -489,6 +486,8 @@ def _cmd_daily(args: argparse.Namespace) -> int:
             with_player_passing=not args.no_player_passing,
             with_internal_ratings=not args.no_internal_ratings,
             with_internal_elo=not args.no_internal_elo,
+            with_props=bool(getattr(args, "with_props", False)),
+            with_scoring=bool(getattr(args, "with_scoring", False)),
             bootstrap=not args.no_bootstrap,
         )
     text = report.as_text()
@@ -527,6 +526,9 @@ def build_parser() -> argparse.ArgumentParser:
     ingest.add_argument("--date", required=True, help="slate date, YYYY-MM-DD")
     ingest.add_argument("--no-odds", action="store_true", help="skip gameline odds")
     ingest.add_argument("--no-injuries", action="store_true", help="skip the injury feed")
+    ingest.add_argument(
+        "--with-props", action="store_true", help="ingest supported full-game team props"
+    )
     ingest.add_argument("--limit", type=int, default=None, help="cap events (for smoke tests)")
     ingest.set_defaults(func=_cmd_ingest)
 
@@ -579,9 +581,7 @@ def build_parser() -> argparse.ArgumentParser:
         "fit-ratings", help="fit and persist internal ridge team-strength ratings"
     )
     fit_ratings.add_argument("--season", type=int, required=True)
-    fit_ratings.add_argument(
-        "--as-of", default=None, help="ISO cutoff timestamp (default: now)"
-    )
+    fit_ratings.add_argument("--as-of", default=None, help="ISO cutoff timestamp (default: now)")
     fit_ratings.add_argument(
         "--ridge-lambda", type=float, default=None, help="override the default ridge penalty"
     )
@@ -596,12 +596,13 @@ def build_parser() -> argparse.ArgumentParser:
         "backtest", help="walk-forward moneyline backtest of the internal ridge model"
     )
     backtest_cmd.add_argument(
-        "--start-year", type=int, default=None,
-        help="first season, inclusive (default: 2014, the full stored history)"
+        "--start-year",
+        type=int,
+        default=None,
+        help="first season, inclusive (default: 2014, the full stored history)",
     )
     backtest_cmd.add_argument(
-        "--end-year", type=int, default=None,
-        help="last season, inclusive (default: 2025)"
+        "--end-year", type=int, default=None, help="last season, inclusive (default: 2025)"
     )
     backtest_cmd.set_defaults(func=_cmd_backtest)
 
@@ -621,18 +622,36 @@ def build_parser() -> argparse.ArgumentParser:
 
     daily = sub.add_parser("daily", help="scheduled job: ingest available sources, rebuild market")
     daily.add_argument("--season", type=int, default=None, help="season year (default: current)")
-    daily.add_argument("--no-outlier", action="store_true",
-                       help="skip the Outlier leg (its token expires after 24h)")
-    daily.add_argument("--no-weather", action="store_true",
-                       help="skip the Open-Meteo leg")
-    daily.add_argument("--no-player-passing", action="store_true",
-                       help="skip incremental per-game passing-stat capture")
-    daily.add_argument("--no-internal-ratings", action="store_true",
-                       help="skip fitting internal ridge team-strength ratings")
-    daily.add_argument("--no-internal-elo", action="store_true",
-                       help="skip fitting internal Elo ratings")
-    daily.add_argument("--no-bootstrap", action="store_true",
-                       help="do not auto-load this season's schedule when the store is empty")
+    daily.add_argument(
+        "--no-outlier",
+        action="store_true",
+        help="skip the Outlier leg (its token expires after 24h)",
+    )
+    daily.add_argument("--no-weather", action="store_true", help="skip the Open-Meteo leg")
+    daily.add_argument(
+        "--no-player-passing",
+        action="store_true",
+        help="skip incremental per-game passing-stat capture",
+    )
+    daily.add_argument(
+        "--no-internal-ratings",
+        action="store_true",
+        help="skip fitting internal ridge team-strength ratings",
+    )
+    daily.add_argument(
+        "--no-internal-elo", action="store_true", help="skip fitting internal Elo ratings"
+    )
+    daily.add_argument(
+        "--with-props", action="store_true", help="ingest supported full-game team props"
+    )
+    daily.add_argument(
+        "--with-scoring", action="store_true", help="evaluate opt-in team-prop candidates"
+    )
+    daily.add_argument(
+        "--no-bootstrap",
+        action="store_true",
+        help="do not auto-load this season's schedule when the store is empty",
+    )
     daily.set_defaults(func=_cmd_daily)
 
     return parser
