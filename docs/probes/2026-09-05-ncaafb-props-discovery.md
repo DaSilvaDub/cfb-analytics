@@ -1,5 +1,12 @@
 # Outlier NCAAFB Props & Insights Discovery Probe Report
 
+> **2026-09-07 audit correction:** This run used offline replay and therefore
+> does not satisfy R1's authenticated-live-evidence gate. Legacy replay cache
+> entries did not preserve HTTP status, so the 200 statuses below are not valid
+> evidence of endpoint behavior. Treat the gate as `NOT_SATISFIED` until the
+> corrected probe is run live and records response status and provenance. Do
+> not proceed to prop schema, ingestion, or executable scoring on this report.
+
 - **Probe Execution Date:** 2026-09-06T07:54:18+00:00
 - **Target Slate Date:** 2026-09-05 (US Eastern calendar date)
 - **Probe Script:** `scripts/probe_ncaafb_outlier.py` (v1.0.0, Git Commit: `d6d1102`, Branch: `feat/outlier-props-insights`)

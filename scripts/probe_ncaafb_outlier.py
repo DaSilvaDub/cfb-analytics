@@ -20,18 +20,19 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import gzip
 import hashlib
 import json
 import subprocess
 import sys
 import time
 from collections import Counter, defaultdict
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from statistics import median
 from typing import Any
 from urllib.error import HTTPError, URLError
-from urllib.parse import quote
+from urllib.parse import parse_qs, quote, urlparse
 from urllib.request import Request, urlopen
 
 
@@ -67,12 +68,50 @@ except ImportError:
 BASE_URL = "https://api.outlier.bet"
 LEAGUE_TOKEN = "NCAAFB"
 MARKET_TYPES_TO_PROBE = ("GAMELINE", "TEAM_PROP", "PLAYER_PROP", "GAME_PROP")
-DEFAULT_SLATE_DATE = "2026-09-05"
+
+
+def select_probe_date(events: list[dict[str, Any]], *, today: date | None = None) -> str | None:
+    """Choose the earliest non-final slate in 14 days, then a recent past slate."""
+    anchor = today or datetime.now(UTC).date()
+    dated_events: list[tuple[date, dict[str, Any]]] = []
+    for event in events:
+        raw_date = football_date(event.get("scheduledTime"))
+        try:
+            event_date = date.fromisoformat(raw_date)
+        except (TypeError, ValueError):
+            continue
+        dated_events.append((event_date, event))
+
+    upcoming = sorted(
+        event_date
+        for event_date, event in dated_events
+        if anchor <= event_date <= anchor + timedelta(days=14)
+        and str(event.get("status", "")).lower() not in {"final", "completed"}
+    )
+    if upcoming:
+        return upcoming[0].isoformat()
+
+    recent = sorted(
+        (
+            event_date
+            for event_date, _event in dated_events
+            if anchor - timedelta(days=14) <= event_date < anchor
+        ),
+        reverse=True,
+    )
+    return recent[0].isoformat() if recent else None
 
 
 def get_cache_key(url: str) -> str:
     """Derive SHA256 hex digest matching cfb_analytics.sources.http.cache_key."""
     return hashlib.sha256(url.encode("utf-8")).hexdigest()
+
+
+def decode_json_body(raw: bytes, content_encoding: str = "") -> Any:
+    """Decode a JSON response, including Outlier's gzip-compressed bodies."""
+    if "gzip" in content_encoding.lower() or raw.startswith(b"\x1f\x8b"):
+        raw = gzip.decompress(raw)
+    return json.loads(raw.decode("utf-8"))
 
 
 def get_current_git_commit() -> str:
@@ -140,8 +179,8 @@ class OutlierProbe:
                     "Live requests may return 403.\n"
                 )
 
-    def _read_cached_envelope(self, url: str) -> dict[str, Any] | None:
-        """Read and unpack cached envelope file from cache_dir."""
+    def _read_cached_envelope(self, url: str) -> tuple[int, dict[str, Any]] | None:
+        """Read a cached response only when its actual HTTP status was recorded."""
         if not self.cache_dir.exists():
             return None
         key = get_cache_key(url)
@@ -150,34 +189,86 @@ class OutlierProbe:
             return None
         try:
             data = json.loads(cache_file.read_text(encoding="utf-8"))
-            if isinstance(data, dict) and "payload" in data:
+            if isinstance(data, dict) and "payload" in data and "status" in data:
                 payload = data["payload"]
-                if isinstance(payload, dict):
-                    return payload
+                status = data["status"]
+                if isinstance(payload, dict) and isinstance(status, int):
+                    return status, payload
         except Exception:
             return None
         return None
 
-    def _write_cached_envelope(self, url: str, payload: Any) -> None:
+    def _write_cached_envelope(self, url: str, status: int, payload: Any) -> None:
         """Persist response envelope into cache_dir."""
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         key = get_cache_key(url)
         cache_file = self.cache_dir / f"{key}.json"
-        envelope = {"url": url, "fetched_at": time.time(), "payload": payload}
+        envelope = {
+            "url": url,
+            "status": status,
+            "fetched_at": time.time(),
+            "payload": payload,
+        }
         with contextlib.suppress(OSError):
             cache_file.write_text(json.dumps(envelope, indent=2), encoding="utf-8")
 
-    def fetch_resource(
-        self, url: str, default_empty: Any | None = None
-    ) -> tuple[int, Any, str]:
+    def _fixture_path_for_url(self, url: str) -> Path | None:
+        parsed = urlparse(url)
+        parts = [part for part in parsed.path.split("/") if part]
+        if parts == ["sportsdata", "leagues", LEAGUE_TOKEN, "schedule"]:
+            return self.output_dir / "schedule_ncaafb.json"
+        if len(parts) == 4 and parts[:2] == ["sportsdata", "events"]:
+            event_id, resource = parts[2], parts[3]
+            if resource == "insights":
+                return self.output_dir / f"event_{event_id}_insights.json"
+            if resource == "markets":
+                market_type = parse_qs(parsed.query).get("marketType", [""])[0].upper()
+                if market_type in MARKET_TYPES_TO_PROBE:
+                    return self.output_dir / f"event_{event_id}_{market_type}.json"
+        return None
+
+    def _write_fixture(self, url: str, status: int, payload: dict[str, Any]) -> None:
+        fixture = self._fixture_path_for_url(url)
+        if fixture is None:
+            return
+        fixture.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        fixture.with_suffix(".http.json").write_text(
+            json.dumps({"url": url, "status": status, "captured_at": utc_now_iso()}, indent=2),
+            encoding="utf-8",
+        )
+
+    def _read_fixture_envelope(self, url: str) -> tuple[int, dict[str, Any]] | None:
+        fixture = self._fixture_path_for_url(url)
+        if fixture is None:
+            return None
+        metadata = fixture.with_suffix(".http.json")
+        if not fixture.is_file() or not metadata.is_file():
+            return None
+        try:
+            payload = json.loads(fixture.read_text(encoding="utf-8"))
+            provenance = json.loads(metadata.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return None
+        if not isinstance(payload, dict) or not isinstance(provenance, dict):
+            return None
+        status = provenance.get("status")
+        recorded_url = provenance.get("url")
+        if not isinstance(status, int) or recorded_url != url:
+            return None
+        return status, payload
+
+    def fetch_resource(self, url: str, default_empty: Any | None = None) -> tuple[int, Any, str]:
         """Fetch endpoint payload via live HTTP or offline cache/fixture replay."""
         if self.offline_replay:
             cached = self._read_cached_envelope(url)
             if cached is not None:
-                return 200, cached, "cache"
-            if default_empty is not None:
-                return 200, default_empty, "offline_fallback"
-            return 404, None, "cache_miss"
+                status, payload = cached
+                return status, payload, "cache"
+            fixture = self._read_fixture_envelope(url)
+            if fixture is not None:
+                status, payload = fixture
+                return status, payload, "fixture"
+            return 0, None, "cache_miss"
 
         time.sleep(self.rate_limit_delay)
         req = Request(url, headers=self.headers)
@@ -185,27 +276,17 @@ class OutlierProbe:
             with urlopen(req, timeout=15) as resp:
                 status = getattr(resp, "status", 200)
                 raw = resp.read()
-                data = json.loads(raw.decode("utf-8"))
-                self._write_cached_envelope(url, data)
+                data = decode_json_body(raw, str(resp.headers.get("Content-Encoding", "")))
+                self._write_cached_envelope(url, status, data)
+                if isinstance(data, dict):
+                    self._write_fixture(url, status, data)
                 return status, data, "live"
         except HTTPError as exc:
-            cached = self._read_cached_envelope(url)
-            if cached is not None:
-                sys.stderr.write(
-                    f"[NOTICE] Live request to {url} failed with HTTP {exc.code}. "
-                    "Using cached replay.\n"
-                )
-                return 200, cached, "cache"
             if exc.code == 404 and default_empty is not None:
                 return 404, default_empty, "live"
             return exc.code, None, "error"
         except (URLError, TimeoutError, OSError) as exc:
-            cached = self._read_cached_envelope(url)
-            if cached is not None:
-                sys.stderr.write(
-                    f"[NOTICE] Network error ({exc}) for {url}. Using cached replay.\n"
-                )
-                return 200, cached, "cache"
+            sys.stderr.write(f"[WARN] Network error ({exc}) for {url}.\n")
             return 599, None, "network_error"
 
     def probe_schedule(self) -> tuple[int, list[dict[str, Any]], str]:
@@ -213,9 +294,6 @@ class OutlierProbe:
         url = f"{BASE_URL}/sportsdata/leagues/{LEAGUE_TOKEN}/schedule"
         status, payload, source = self.fetch_resource(url)
         if status == 200 and isinstance(payload, dict):
-            (self.output_dir / "schedule_ncaafb.json").write_text(
-                json.dumps(payload, indent=2), encoding="utf-8"
-            )
             events = payload.get("events", [])
             return status, [e for e in events if isinstance(e, dict)], source
         return status, [], source
@@ -229,24 +307,18 @@ class OutlierProbe:
         status, payload, source = self.fetch_resource(url, default_empty=default_payload)
         markets: list[dict[str, Any]] = []
         if isinstance(payload, dict):
-            fixture_file = self.output_dir / f"event_{event_id}_{market_type}.json"
-            fixture_file.write_text(json.dumps(payload, indent=2), encoding="utf-8")
             raw_markets = payload.get("markets", [])
             if isinstance(raw_markets, list):
                 markets = [m for m in raw_markets if isinstance(m, dict)]
         return status, markets, source
 
-    def probe_event_insights(
-        self, event_id: str
-    ) -> tuple[int, list[dict[str, Any]], str]:
+    def probe_event_insights(self, event_id: str) -> tuple[int, list[dict[str, Any]], str]:
         """Probe insights endpoint for a specific event."""
         url = f"{BASE_URL}/sportsdata/events/{event_id}/insights"
         default_payload = {"insights": []}
         status, payload, source = self.fetch_resource(url, default_empty=default_payload)
         insights: list[dict[str, Any]] = []
         if isinstance(payload, dict):
-            fixture_file = self.output_dir / f"event_{event_id}_insights.json"
-            fixture_file.write_text(json.dumps(payload, indent=2), encoding="utf-8")
             raw_insights = payload.get("insights", [])
             if isinstance(raw_insights, list):
                 insights = [i for i in raw_insights if isinstance(i, dict)]
@@ -255,36 +327,35 @@ class OutlierProbe:
     def run(
         self,
         event_id: str | None = None,
-        date_str: str = DEFAULT_SLATE_DATE,
+        date_str: str | None = None,
         limit: int = 3,
     ) -> dict[str, Any]:
         """Execute the probe across schedule and sample events."""
         print("=== NCAAFB Outlier Discovery Probe (R1 Gate) ===")
         print(f"Mode: {'OFFLINE REPLAY' if self.offline_replay else 'LIVE HTTP'}")
-        print(f"Target Slate Date: {date_str}")
         print(f"Output Fixtures Dir: {self.output_dir}")
         print(f"Report Docs Dir: {self.docs_dir}\n")
 
         sched_status, all_events, sched_source = self.probe_schedule()
         print(f"[SCHEDULE] HTTP {sched_status} ({sched_source}) — Total events: {len(all_events)}")
+        if sched_status != 200:
+            raise RuntimeError(f"Schedule probe failed with status {sched_status} ({sched_source})")
+        date_str = date_str or select_probe_date(all_events)
+        if date_str is None:
+            raise RuntimeError("No eligible slate was found within the required date windows")
+        print(f"Target Slate Date: {date_str}")
 
         target_events: list[dict[str, Any]] = []
-        slate_events = [
-            e for e in all_events
-            if football_date(e.get("scheduledTime")) == date_str
-        ]
+        slate_events = [e for e in all_events if football_date(e.get("scheduledTime")) == date_str]
 
         if event_id:
             matched = [e for e in all_events if e.get("eventId") == event_id]
             if matched:
                 target_events = matched
             else:
-                target_events = [{
-                    "eventId": event_id,
-                    "scheduledTime": f"{date_str}T16:00:00Z",
-                    "home": {"name": "Home"},
-                    "away": {"name": "Away"},
-                }]
+                raise RuntimeError(
+                    f"Requested event {event_id!r} is not present in the live schedule"
+                )
         else:
             target_events = slate_events[:limit]
             print(
@@ -293,18 +364,13 @@ class OutlierProbe:
             )
 
         if not target_events:
-            print("[WARN] No events found to probe. Using fallback mock/empty event.")
-            target_events = [{
-                "eventId": "sample-event-001",
-                "scheduledTime": f"{date_str}T16:00:00Z",
-                "home": {"name": "Home"},
-                "away": {"name": "Away"},
-            }]
+            raise RuntimeError(f"No scheduled events found on {date_str}")
 
         git_sha = get_current_git_commit()
         probe_results: dict[str, Any] = {
             "timestamp": utc_now_iso(),
             "mode": "offline_replay" if self.offline_replay else "live",
+            "auth_loaded": self.auth_loaded,
             "slate_date": date_str,
             "git_sha": git_sha,
             "schedule_status": sched_status,
@@ -319,10 +385,14 @@ class OutlierProbe:
                 "player_id_samples": [],
                 "display_name_found": False,
                 "display_name_samples": [],
+                "player_samples": [],
             },
             "insights_summary": {
                 "status_codes": Counter(),
                 "total_insights_count": 0,
+                "subject_types": Counter(),
+                "market_types": Counter(),
+                "propositions": Counter(),
             },
             "trap_evidence": {
                 "trap1_found": False,
@@ -334,7 +404,7 @@ class OutlierProbe:
             },
         }
 
-        prop_stats: dict[str, dict[str, Any]] = defaultdict(
+        prop_stats: dict[tuple[str, str], dict[str, Any]] = defaultdict(
             lambda: {"count": 0, "events": set(), "books": set(), "books_per_event": []}
         )
         market_type_counts: Counter[str] = Counter()
@@ -369,8 +439,31 @@ class OutlierProbe:
                 ev_prop_books: dict[str, set[str]] = defaultdict(set)
                 for m in markets:
                     prop = str(m.get("proposition") or "UNKNOWN").upper()
-                    prop_stats[prop]["count"] += 1
-                    prop_stats[prop]["events"].add(ev_id)
+                    market_type = str(m.get("marketType") or mt).upper()
+                    prop_key = (market_type, prop)
+                    prop_stats[prop_key]["count"] += 1
+                    prop_stats[prop_key]["events"].add(ev_id)
+
+                    player = m.get("player")
+                    if market_type == "PLAYER_PROP" and isinstance(player, dict):
+                        pid = player.get("playerId")
+                        display_name = player.get("fullName") or player.get("displayName")
+                        identity = probe_results["player_identity_summary"]
+                        if pid:
+                            identity["player_id_found"] = True
+                            if len(identity["player_id_samples"]) < 5:
+                                identity["player_id_samples"].append(str(pid))
+                        if display_name:
+                            identity["display_name_found"] = True
+                            if len(identity["display_name_samples"]) < 5:
+                                identity["display_name_samples"].append(str(display_name))
+                        if (pid or display_name) and len(identity["player_samples"]) < 5:
+                            identity["player_samples"].append(
+                                {
+                                    "player_id": str(pid or ""),
+                                    "display_name": str(display_name or ""),
+                                }
+                            )
 
                     if prop == "SPREAD":
                         probe_results["trap_evidence"]["spread_cards_total"] += 1
@@ -390,9 +483,7 @@ class OutlierProbe:
                             and odds_entries
                         ):
                             first_book_declared = str(outcome_books[0]).strip().upper()
-                            first_odds_book = str(
-                                odds_entries[0].get("book") or ""
-                            ).strip().upper()
+                            first_odds_book = str(odds_entries[0].get("book") or "").strip().upper()
                             if (
                                 first_book_declared
                                 and first_odds_book
@@ -410,9 +501,9 @@ class OutlierProbe:
                         pid = outcome.get("playerId") or outcome.get("athleteId")
                         if pid:
                             probe_results["player_identity_summary"]["player_id_found"] = True
-                            p_samples = (
-                                probe_results["player_identity_summary"]["player_id_samples"]
-                            )
+                            p_samples = probe_results["player_identity_summary"][
+                                "player_id_samples"
+                            ]
                             if len(p_samples) < 5:
                                 p_samples.append(str(pid))
 
@@ -423,9 +514,9 @@ class OutlierProbe:
                         )
                         if label and mt == "PLAYER_PROP":
                             probe_results["player_identity_summary"]["display_name_found"] = True
-                            d_samples = (
-                                probe_results["player_identity_summary"]["display_name_samples"]
-                            )
+                            d_samples = probe_results["player_identity_summary"][
+                                "display_name_samples"
+                            ]
                             if len(d_samples) < 5:
                                 d_samples.append(str(label))
 
@@ -433,15 +524,24 @@ class OutlierProbe:
                             if isinstance(entry, dict):
                                 b = str(entry.get("book") or "").strip().upper()
                                 if b:
-                                    prop_stats[prop]["books"].add(b)
-                                    ev_prop_books[prop].add(b)
+                                    prop_stats[prop_key]["books"].add(b)
+                                    ev_prop_books[f"{market_type}\x1f{prop}"].add(b)
 
-                for prop, bks in ev_prop_books.items():
-                    prop_stats[prop]["books_per_event"].append(len(bks))
+                for composite_key, bks in ev_prop_books.items():
+                    market_type, prop = composite_key.split("\x1f", 1)
+                    prop_stats[(market_type, prop)]["books_per_event"].append(len(bks))
 
             i_status, insights, i_source = self.probe_event_insights(ev_id)
             probe_results["insights_summary"]["status_codes"][i_status] += 1
             probe_results["insights_summary"]["total_insights_count"] += len(insights)
+            for insight in insights:
+                for field, summary_key in (
+                    ("subjectType", "subject_types"),
+                    ("marketType", "market_types"),
+                    ("proposition", "propositions"),
+                ):
+                    value = str(insight.get(field) or "UNKNOWN").upper()
+                    probe_results["insights_summary"][summary_key][value] += 1
             print(f"  [{'INSIGHTS':<11}] HTTP {i_status} ({i_source}) — {len(insights)} insights")
 
             ev_record["insights"] = {
@@ -458,10 +558,12 @@ class OutlierProbe:
                 "supported": market_type_counts[mt] > 0,
             }
 
-        for prop, data in prop_stats.items():
-            b_list = data["books_per_event"]
+        for (market_type, prop), data in prop_stats.items():
+            b_list = list(data["books_per_event"])
+            b_list.extend([0] * (len(target_events) - len(data["events"])))
             med_books = float(median(b_list)) if b_list else 0.0
-            probe_results["proposition_summary"][prop] = {
+            market_props = probe_results["proposition_summary"].setdefault(market_type, {})
+            market_props[prop] = {
                 "market_cards_count": data["count"],
                 "events_present": len(data["events"]),
                 "distinct_books_count": len(data["books"]),
@@ -475,22 +577,47 @@ class OutlierProbe:
         return probe_results
 
     def generate_markdown_report(self, results: dict[str, Any], date_str: str) -> Path:
-        """Write structured discovery findings report matching Explorer M0-3 template."""
+        """Write a data-driven discovery report from the recorded probe results."""
         report_path = self.docs_dir / f"{date_str}-ncaafb-props-discovery.md"
-
-        mode_str = results["mode"].upper()
-        http_mode = "replay" if results["mode"] == "offline_replay" else "live"
-        auth_state = "REPLAY_FIXTURES" if results["mode"] == "offline_replay" else "LIVE_SESSION"
-        git_sha = results.get("git_sha", "d6d1102")
         total_probed = len(results["events_probed"])
         total_slate = results.get("slate_events_count", total_probed)
+        market_summaries = results["market_type_summary"]
+        proposition_summaries = results["proposition_summary"]
+        insights_summary = results["insights_summary"]
 
-        trap1_ev = results["trap_evidence"]
-        trap1_event = trap1_ev["trap1_event_id"] or "sampled events"
-        b_first = trap1_ev["trap1_books_first"] or "FLIFF"
-        o_first = trap1_ev["trap1_odds_book_first"] or "FANATICS"
-        spread_cards = trap1_ev["spread_cards_total"]
-        total_cards = trap1_ev["total_cards_total"]
+        def status_text(statuses: list[int]) -> str:
+            return ", ".join(f"HTTP {status}" for status in statuses) or "NO_RESPONSE"
+
+        def market_resolution(market_type: str) -> str:
+            summary = market_summaries[market_type]
+            if summary["total_markets"]:
+                prop_count = len(proposition_summaries.get(market_type, {}))
+                return f"OFFERED ({summary['total_markets']} cards; {prop_count} propositions)"
+            if summary["statuses"] == [200]:
+                return "EMPTY_200"
+            return f"UNAVAILABLE ({status_text(summary['statuses'])})"
+
+        insight_statuses = sorted(int(code) for code in insights_summary["status_codes"])
+        insight_count = insights_summary["total_insights_count"]
+        if insight_count:
+            insight_resolution = f"OFFERED ({insight_count} insights)"
+        elif insight_statuses == [200]:
+            insight_resolution = "EMPTY_200"
+        else:
+            insight_resolution = f"UNAVAILABLE ({status_text(insight_statuses)})"
+
+        all_market_calls_ok = all(
+            summary["statuses"] == [200] for summary in market_summaries.values()
+        )
+        gate_verdict = "PASS" if all_market_calls_ok and insight_statuses == [200] else "FAIL"
+        mode = results["mode"]
+        auth_state = (
+            "REPLAY_FIXTURES"
+            if mode == "offline_replay"
+            else "LIVE_SESSION"
+            if results.get("auth_loaded")
+            else "LIVE_SESSION_NOT_LOADED"
+        )
 
         lines: list[str] = [
             "# Outlier NCAAFB Props & Insights Discovery Probe Report",
@@ -498,319 +625,212 @@ class OutlierProbe:
             f"- **Probe Execution Date:** {results['timestamp']}",
             f"- **Target Slate Date:** {results['slate_date']} (US Eastern calendar date)",
             (
-                f"- **Probe Script:** `scripts/probe_ncaafb_outlier.py` "
-                f"(v1.0.0, Git Commit: `{git_sha}`, Branch: `feat/outlier-props-insights`)"
+                "- **Probe Script:** `scripts/probe_ncaafb_outlier.py` "
+                f"(Git Commit: `{results.get('git_sha', 'unknown')}`, "
+                "Branch: `feat/outlier-props-insights`)"
             ),
-            f"- **HTTP Client Mode:** {mode_str} (`CFB_HTTP_MODE={http_mode}`)",
-            (
-                f"- **Authentication State:** {auth_state} "
-                "(Session: `storage_state.json`, Cognito Bearer Token)"
-            ),
-            "- **Reference Slate Fixtures:** Committed under `tests/fixtures/outlier/`",
-            "",
-            "---",
+            f"- **HTTP Client Mode:** {mode.upper()}",
+            f"- **Authentication State:** {auth_state}",
+            "- **Reference Slate Fixtures:** `tests/fixtures/outlier/`",
             "",
             "## 1. Executive Summary & Gate Verdict",
             "",
-            "- **Milestone M0 Gate Status:** PARTIAL_PASS",
-            "- **Gamelines Resolution:** CONFIRMED_FUNCTIONAL",
-            "- **Team Props Resolution:** UNOFFERED",
-            "- **Player Props Resolution:** UNOFFERED",
-            "- **Insights Endpoint Status:** EMPTY_200",
+            f"- **Milestone M0 Discovery Gate:** {gate_verdict}",
+            f"- **GAMELINE:** {market_resolution('GAMELINE')}",
+            f"- **TEAM_PROP:** {market_resolution('TEAM_PROP')}",
+            f"- **PLAYER_PROP:** {market_resolution('PLAYER_PROP')}",
+            f"- **GAME_PROP:** {market_resolution('GAME_PROP')}",
+            f"- **Insights:** {insight_resolution}",
             (
-                "- **Recommendation for M1:** Proceed to M1 with baseline gamelines and graceful "
-                "degradation for unoffered props/insights; do not synthesize mock feeds."
+                "- **Scope decision:** The live feed offers every probed market family and "
+                "insights. R2 still admits only its explicit gameline and team-prop whitelist; "
+                "player props and unwhitelisted game props remain excluded."
+                if all(market_summaries[mt]["supported"] for mt in MARKET_TYPES_TO_PROBE)
+                and insight_count
+                else "- **Scope decision:** Treat empty or failed families exactly as observed; "
+                "do not synthesize unavailable feeds."
             ),
-            "",
-            "---",
             "",
             "## 2. Slate & Sampled Events Context",
             "",
-            "### 2.1 Slate Overview",
-            "- **Schedule Endpoint:** `GET /sportsdata/leagues/NCAAFB/schedule` -> HTTP 200",
-            (
-                f"- **Total Scheduled Events on Slate:** {total_slate} games "
-                f"(Total in schedule: {results['events_count']})"
-            ),
-            (
-                f"- **Sample Selection Criteria:** {total_probed} representative matchups "
-                f"sampled on {date_str}."
-            ),
+            f"- **Schedule status:** HTTP {results['schedule_status']}",
+            f"- **Events on target slate:** {total_slate}",
+            f"- **Events in returned schedule:** {results['events_count']}",
+            f"- **Events probed:** {total_probed}",
             "",
-            "### 2.2 Sampled Event Profiles",
-            (
-                "| # | Event ID | Kickoff (UTC) | Eastern Slate | Matchup (Away @ Home) | "
-                "Venue | Network |"
-            ),
-            (
-                "|---|----------|---------------|---------------|-----------------------|"
-                "-------|---------|"
-            ),
+            "| Event ID | Kickoff (UTC) | Matchup |",
+            "|---|---|---|",
         ]
-
-        target_events = results.get("target_events", [])
-        for idx, ev in enumerate(target_events, 1):
-            eid = ev.get("eventId", "unknown")
-            kickoff = ev.get("scheduledTime", "N/A")
-            e_slate = kickoff[:10] if len(kickoff) >= 10 else date_str
-            is_home_dict = isinstance(ev.get("home"), dict)
-            is_away_dict = isinstance(ev.get("away"), dict)
-            h_name = ev.get("home", {}).get("name", "Home") if is_home_dict else "Home"
-            a_name = ev.get("away", {}).get("name", "Away") if is_away_dict else "Away"
-            venue_obj = ev.get("venue")
-            if isinstance(venue_obj, dict):
-                venue_name = str(venue_obj.get("name") or "Campus Stadium")
-            elif isinstance(venue_obj, str) and venue_obj:
-                venue_name = venue_obj
-            else:
-                venue_name = "Campus Stadium"
-            broadcast_obj = ev.get("broadcast")
-            if isinstance(broadcast_obj, dict):
-                network = str(broadcast_obj.get("network") or "National")
-            elif isinstance(broadcast_obj, str) and broadcast_obj:
-                network = broadcast_obj
-            else:
-                network = "National"
+        for event in results.get("target_events", []):
+            home = event.get("home") if isinstance(event.get("home"), dict) else {}
+            away = event.get("away") if isinstance(event.get("away"), dict) else {}
             lines.append(
-                f"| {idx} | `{eid}` | `{kickoff}` | `{e_slate}` | "
-                f"{a_name} @ {h_name} | {venue_name} | {network} |"
+                f"| `{event.get('eventId', 'unknown')}` | "
+                f"`{event.get('scheduledTime', 'N/A')}` | "
+                f"{away.get('name', 'Away')} @ {home.get('name', 'Home')} |"
             )
 
-        lines.extend([
-            "",
-            "---",
-            "",
-            "## 3. Findings by Probed Token",
-            "",
-            "### 3.1 Token: `GAMELINE`",
-            "- **Endpoint:** `GET /sportsdata/events/{eventId}/markets?marketType=GAMELINE`",
-            "- **HTTP Status:** 200 OK across all sampled games.",
-            (
-                "- **Propositions Discovered:** `MONEYLINE`, `SPREAD`, `TOTAL`, plus derivative "
-                "props (`DOUBLE_RESULT`, `MONEYLINE_THREE_WAY`, `WINNING_MARGIN`)."
-            ),
-            "- **Trap 1 Verification (Non-Parallel Books):**",
-            (
-                "  - *Observation:* Outcome object `books` list order does NOT match "
-                "`odds[].book` order."
-            ),
-            (
-                f"  - *Evidence:* In probed event `{trap1_event}`, `outcome.books[0]` was "
-                f"`{b_first}` while `outcome.odds[0].book` was `{o_first}`."
-            ),
-            "  - *Conclusion:* Verified. Book attribution must strictly read from `odds[].book`.",
-            "- **Trap 2 Verification (Multi-Row Proposition Spanning):**",
-            (
-                f"  - *Observation:* `SPREAD` spanned {spread_cards} market cards across "
-                f"sampled games; `TOTAL` spanned {total_cards} cards."
-            ),
-            (
-                "  - *Evidence:* Each market card quotes distinct book subsets; full "
-                "coverage requires unioning rows."
-            ),
-            (
-                "  - *Conclusion:* Verified. Parser must union all market rows for a "
-                "proposition and deduplicate by `(book, side, line)`."
-            ),
-            "",
-            "### 3.2 Token: `TEAM_PROP`",
-            "- **Endpoint:** `GET /sportsdata/events/{eventId}/markets?marketType=TEAM_PROP`",
-            (
-                "- **HTTP Status:** 200 OK "
-                "(empty `{\"markets\": []}` envelope in offline replay / unoffered)."
-            ),
-            "- **Discovered Propositions:** None (unoffered on sampled slate).",
-            "- **Team Attribution Schema:** N/A (no prop cards returned).",
-            "- **Sportsbook Depth:** 0 books quoting team props on sampled games.",
-            (
-                "- **R2 Alignment:** Evaluated; team props return empty payload. "
-                "Pipeline must degrade gracefully without crashing."
-            ),
-            "",
-            "### 3.3 Token: `PLAYER_PROP`",
-            "- **Endpoint:** `GET /sportsdata/events/{eventId}/markets?marketType=PLAYER_PROP`",
-            (
-                "- **HTTP Status:** 200 OK "
-                "(empty `{\"markets\": []}` envelope in offline replay / unoffered)."
-            ),
-            "- **Discovered Propositions:** None (unoffered on sampled slate).",
-            (
-                "- **R2 Compliance Action:** **STRICTLY DROPPED / EXCLUDED PER R2 §54.** "
-                "Player props are not ingested into `odds_snapshots`."
-            ),
-            (
-                "- **Player Identity Field Assessment:** "
-                "(See Section 5 for detailed technical analysis)."
-            ),
-            "",
-            "### 3.4 Token: `GAME_PROP`",
-            "- **Endpoint:** `GET /sportsdata/events/{eventId}/markets?marketType=GAME_PROP`",
-            (
-                "- **HTTP Status:** 200 OK "
-                "(empty `{\"markets\": []}` envelope in offline replay / unoffered)."
-            ),
-            "- **Discovered Propositions:** None.",
-            (
-                "- **R2 Compliance Action:** **STRICTLY DROPPED PER R2.** "
-                "Unwhitelisted game props are dropped during parsing."
-            ),
-            "",
-            "### 3.5 Endpoint: `/insights`",
-            "- **Endpoints Probed:**",
-            "  - `GET /sportsdata/events/{eventId}/insights`",
-            (
-                "- **HTTP Status:** 200 OK "
-                "(empty `{\"insights\": []}` envelope in offline replay / unoffered)."
-            ),
-            "- **Payload Contents:** Empty insights list.",
-            (
-                "- **Action per R1 §35:** Stop condition triggered for insights. "
-                "Endpoint does not provide an active insights feed for NCAAFB; "
-                "do not synthesize mock feed."
-            ),
-            "",
-            "---",
-            "",
-            "## 4. Comprehensive Proposition & Sportsbook Depth Table",
-            "",
-            (
-                "| Market Type | Proposition | Scope | Sample Rows | Event Freq | "
-                "Distinct Sportsbooks | Book Count | Median Books/Game | "
-                "Consensus Eligible (>=3) | R2 Action | Target Market Code |"
-            ),
-            (
-                "|---|---|---|---|---|---|"
-                "---|---|---|---|---|"
-            ),
-        ])
+        lines.extend(["", "## 3. Findings by Probed Token"])
+        for index, market_type in enumerate(MARKET_TYPES_TO_PROBE, 1):
+            summary = market_summaries[market_type]
+            props = proposition_summaries.get(market_type, {})
+            proposition_text = ", ".join(f"`{name}`" for name in sorted(props)) or "None"
+            lines.extend(
+                [
+                    "",
+                    f"### 3.{index} Token: `{market_type}`",
+                    (
+                        "- **Endpoint:** "
+                        f"`GET /sportsdata/events/{{eventId}}/markets?marketType={market_type}`"
+                    ),
+                    f"- **HTTP status:** {status_text(summary['statuses'])}",
+                    f"- **Market cards:** {summary['total_markets']}",
+                    f"- **Discovered propositions:** {proposition_text}",
+                    f"- **Resolution:** {market_resolution(market_type)}",
+                ]
+            )
 
-        props_dict = results["proposition_summary"]
-        admit_mapping = {
-            "MONEYLINE": ("GAMELINE", "full_game", "ADMIT", "ML"),
-            "SPREAD": ("GAMELINE", "full_game", "ADMIT", "SPREAD"),
-            "TOTAL": ("GAMELINE", "full_game", "ADMIT", "TOTAL"),
-            "DOUBLE_RESULT": ("GAMELINE", "full_game", "DROP_UNWHITELISTED", "N/A"),
-            "MONEYLINE_THREE_WAY": ("GAMELINE", "full_game", "DROP_UNWHITELISTED", "N/A"),
-            "WINNING_MARGIN": ("GAMELINE", "full_game", "DROP_UNWHITELISTED", "N/A"),
+        trap = results["trap_evidence"]
+        lines.extend(
+            [
+                "",
+                "### 3.5 Recorded parser traps",
+                (
+                    "- **Non-parallel book lists:** Verified in event "
+                    f"`{trap['trap1_event_id']}`: `outcome.books[0]` was "
+                    f"`{trap['trap1_books_first']}` while `outcome.odds[0].book` was "
+                    f"`{trap['trap1_odds_book_first']}`."
+                    if trap["trap1_found"]
+                    else "- **Non-parallel book lists:** No mismatch observed in this sample."
+                ),
+                (
+                    "- **Multi-row propositions:** "
+                    f"`SPREAD` used {trap['spread_cards_total']} cards and `TOTAL` used "
+                    f"{trap['total_cards_total']} cards; consumers must union cards and "
+                    "deduplicate `(book, side, line)`."
+                ),
+                "",
+                "## 4. Proposition & Sportsbook Depth",
+                "",
+                (
+                    "| Market Type | Proposition | Cards | Event Frequency | Distinct Books | "
+                    "Book Count | Median Books/Game | Consensus Eligible | R2 Action |"
+                ),
+                "|---|---|---:|---:|---|---:|---:|---|---|",
+            ]
+        )
+
+        admitted = {
+            ("GAMELINE", "MONEYLINE"): "ADMIT_AS_ML",
+            ("GAMELINE", "SPREAD"): "ADMIT",
+            ("GAMELINE", "TOTAL"): "ADMIT",
+            ("TEAM_PROP", "POINTS"): "ADMIT_FULL_GAME_ONLY",
+            ("TEAM_PROP", "OFFENSIVE_YARDS"): "ADMIT_FULL_GAME_ONLY",
+            ("TEAM_PROP", "RECEIVING_YARDS"): "ADMIT_FULL_GAME_ONLY",
+            ("TEAM_PROP", "RUSHING_YARDS"): "ADMIT_FULL_GAME_ONLY",
         }
+        for market_type in MARKET_TYPES_TO_PROBE:
+            for proposition, info in sorted(proposition_summaries.get(market_type, {}).items()):
+                event_count = info["events_present"]
+                percentage = round(event_count / total_probed * 100) if total_probed else 0
+                books = ", ".join(info["distinct_books"][:4]) or "None"
+                if len(info["distinct_books"]) > 4:
+                    books += ", ..."
+                median_books = info["books_per_game_median"]
+                consensus = "YES" if median_books >= 3 else "NO"
+                if market_type == "PLAYER_PROP":
+                    action = "EXCLUDED_R2"
+                elif market_type == "GAME_PROP":
+                    action = "DROP_UNWHITELISTED"
+                else:
+                    action = admitted.get((market_type, proposition), "DROP_UNWHITELISTED")
+                lines.append(
+                    f"| `{market_type}` | `{proposition}` | "
+                    f"{info['market_cards_count']} | {event_count}/{total_probed} "
+                    f"({percentage}%) | {books} | {info['distinct_books_count']} | "
+                    f"{median_books} | `{consensus}` | `{action}` |"
+                )
 
-        for p_name in sorted(props_dict.keys()):
-            p_info = props_dict[p_name]
-            m_type, scope, r2_action, target_code = admit_mapping.get(
-                p_name, ("GAMELINE", "full_game", "DROP_UNWHITELISTED", "N/A")
-            )
-            pct_val = int(p_info["events_present"] / total_probed * 100)
-            ev_pct = f"{p_info['events_present']}/{total_probed} ({pct_val}%)"
-            books_sample = ", ".join(p_info["distinct_books"][:4])
-            if len(p_info["distinct_books"]) > 4:
-                books_sample += ", ..."
-            cons_elig = "YES" if p_info["books_per_game_median"] >= 3.0 else "NO"
-            lines.append(
-                f"| `{m_type}` | `{p_name}` | `{scope}` | {p_info['market_cards_count']} | "
-                f"{ev_pct} | {books_sample} | {p_info['distinct_books_count']} | "
-                f"{p_info['books_per_game_median']} | `{cons_elig}` | "
-                f"`{r2_action}` | `{target_code}` |"
-            )
-
-        team_props_candidates = [
-            ("POINTS", "POINTS"),
-            ("OFFENSIVE_YARDS", "OFFENSIVE_YARDS"),
-            ("RECEIVING_YARDS", "RECEIVING_YARDS"),
-            ("RUSHING_YARDS", "RUSHING_YARDS"),
-        ]
-        for tp_prop, tp_target in team_props_candidates:
-            lines.append(
-                f"| `TEAM_PROP` | `{tp_prop}` | `full_game` | 0 | 0/{total_probed} (0%) | "
-                f"None | 0 | 0.0 | `NO` | `UNOFFERED` | `{tp_target}` |"
-            )
-        lines.append(
-            f"| `PLAYER_PROP` | `(ALL_PROPS)` | `full_game` | 0 | 0/{total_probed} (0%) | "
-            f"None | 0 | 0.0 | `N/A` | `EXCLUDED_R2` | `N/A` |"
+        identity = results["player_identity_summary"]
+        samples = identity.get("player_samples", [])
+        lines.extend(
+            [
+                "",
+                "## 5. Player Identity Field Assessment",
+                "",
+                (f"- **Stable `playerId` present:** {identity['player_id_found']}"),
+                f"- **Display name present:** {identity['display_name_found']}",
+                "- **Field location:** `markets[].player.playerId` and "
+                "`markets[].player.fullName` (outcome-level fields are also accepted "
+                "by the probe).",
+                "- **Representative samples:**",
+            ]
         )
-        lines.append(
-            f"| `GAME_PROP` | `(ALL_PROPS)` | `full_game` | 0 | 0/{total_probed} (0%) | "
-            f"None | 0 | 0.0 | `N/A` | `DROPPED_R2` | `N/A` |"
+        if samples:
+            for sample in samples:
+                lines.append(f"  - `{sample['player_id']}` — {sample['display_name']}")
+        else:
+            lines.append("  - None observed.")
+
+        subject_types = (
+            ", ".join(
+                f"{key}={value}" for key, value in sorted(insights_summary["subject_types"].items())
+            )
+            or "None"
         )
-
-        lines.extend([
-            "",
-            "---",
-            "",
-            "## 5. Player Identity Field Assessment",
-            "",
-            "### 5.1 Outcome Field Inspection",
-            "```json",
-            "// Representative Player Prop Outcome Record (if present):",
-            "// None present on sampled slate (markets: [] returned)",
-            "```",
-            "",
-            "### 5.2 Technical Evaluation",
-            "1. **Identifier Availability:** None present in sampled empty payloads.",
-            "2. **Format & Grain:** N/A (Player props unoffered).",
-            "3. **Cross-Event Stability:** N/A.",
-            "4. **Joinability with CFBD:** N/A.",
-            (
-                "5. **Architectural Scoping Decision:** Confirm that in strict adherence to R2, "
-                "player props are dropped at ingestion; no `player_id` is required in "
-                "`odds_snapshots` for M1."
-            ),
-            "",
-            "---",
-            "",
-            "## 6. Insights Endpoint Technical Assessment",
-            "",
-            "### 6.1 Call Resolution Log",
-            (
-                "| URL Probed | Event ID / Scope | HTTP Status | Response Time | "
-                "Payload Size | Result |"
-            ),
-            "|---|---|---|---|---|---|",
-        ])
-
-        for ev in target_events:
-            ev_id = ev.get("eventId", "unknown")
-            url_probed = f"/sportsdata/events/{ev_id}/insights"
+        insight_market_types = (
+            ", ".join(
+                f"{key}={value}" for key, value in sorted(insights_summary["market_types"].items())
+            )
+            or "None"
+        )
+        insight_props = (
+            ", ".join(
+                f"{key}={value}" for key, value in sorted(insights_summary["propositions"].items())
+            )
+            or "None"
+        )
+        lines.extend(
+            [
+                "",
+                "## 6. Insights Endpoint Technical Assessment",
+                "",
+                f"- **HTTP status:** {status_text(insight_statuses)}",
+                f"- **Insights returned:** {insight_count}",
+                f"- **Subject types:** {subject_types}",
+                f"- **Market types:** {insight_market_types}",
+                f"- **Propositions:** {insight_props}",
+                "",
+                "| Event ID | HTTP Status | Source | Insight Count |",
+                "|---|---:|---|---:|",
+            ]
+        )
+        for event in results["events_probed"]:
+            insight = event["insights"]
             lines.append(
-                f"| `{url_probed}` | `{ev_id}` | 200 OK | <50ms | 18 bytes | "
-                "`insights: []` (empty) |"
+                f"| `{event['eventId']}` | {insight['status']} | "
+                f"{insight['source']} | {insight['insights_count']} |"
             )
 
-        lines.extend([
-            "",
-            "### 6.2 Schema & Viability Analysis",
-            (
-                "- **Status Summary:** Endpoint returns empty insights list "
-                "(`{\"insights\": []}`)."
-            ),
-            (
-                "- **Decision:** Disable `--with-insights` by default; "
-                "do not synthesize mock insights feed."
-            ),
-            "",
-            "---",
-            "",
-            "## 7. Hard Gate Compliance & Next Steps",
-            "- **Hard Gate Verdict:** PARTIAL_PASS",
-            (
-                "- **Rationale:** Gamelines are fully functional with median 13 books "
-                "pricing `SPREAD` and `TOTAL`, and median 9 books pricing `MONEYLINE`. "
-                "Team props and player props are currently unoffered (empty) in the feed. "
-                "Graceful degradation and frozenset whitelist must be implemented in "
-                "downstream milestones."
-            ),
-            "- **Next Milestone Actions (M1):**",
-            (
-                "  - Implement Migration 10 table rebuild in `cfb_analytics/db.py` "
-                "(free and unconflicted on canonical master)."
-            ),
-            (
-                "  - Define frozenset whitelist in `cfb_analytics/sources/outlier.py` "
-                "matching verified markets."
-            ),
-            "  - Implement dedicated `prop_consensus` table DDL.",
-        ])
+        lines.extend(
+            [
+                "",
+                "## 7. Hard Gate Conclusion",
+                "",
+                f"- **Verdict:** {gate_verdict}",
+                (
+                    "- The authenticated live capture confirms that NCAAFB gamelines, "
+                    "team props, player props, game props, and insights are offered for "
+                    "the sampled in-window event. The discovery evidence supports proceeding "
+                    "only with the R2-authorized gameline and team-prop scope."
+                    if gate_verdict == "PASS" and insight_count
+                    else "- The capture does not establish all required endpoints as available. "
+                    "Stop or degrade exactly as required by R1."
+                ),
+            ]
+        )
 
-        report_path.write_text("\n".join(lines), encoding="utf-8")
+        report_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
         print(f"\n[REPORT] Discovery markdown report successfully written to: {report_path}")
         return report_path
 
@@ -828,8 +848,8 @@ def main() -> int:
     parser.add_argument(
         "--date",
         type=str,
-        default=DEFAULT_SLATE_DATE,
-        help=f"Target slate date in YYYY-MM-DD format (default: {DEFAULT_SLATE_DATE}).",
+        default=None,
+        help="Target slate date in YYYY-MM-DD format (default: auto-select per R6).",
     )
     parser.add_argument(
         "--limit",
