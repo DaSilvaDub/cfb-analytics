@@ -553,10 +553,40 @@ def filter_team_prop_candidates(
     return filtered
 
 
+# Bounds on the opponent-defense multipliers. CFBD defensive success rate
+# ALLOWED spans roughly 0.33 (elite) to 0.52 (worst) against a 0.42 FBS mean,
+# and explosiveness allowed roughly 1.05 to 1.55 against a 1.25 mean, so the
+# real ratio never leaves [0.79, 1.24]. Anything outside this band is a bad
+# snapshot (a percentage stored where a fraction belongs, a one-game sample),
+# not a real matchup, and must not scale a projection unbounded.
+_OPP_ADJ_MIN = 0.80
+_OPP_ADJ_MAX = 1.25
+
+
+def _opponent_multiplier(allowed: Any, fbs_baseline: float) -> float:
+    """Clamped ``allowed / fbs_baseline`` matchup multiplier, or a neutral 1.0.
+
+    ``allowed`` is a CFBD ``side = 'def'`` value (what the defense gives up), so a
+    higher number means a weaker defense and a multiplier above 1.0. Missing, NULL,
+    non-numeric, non-positive or non-finite values return 1.0 -- "no signal, not a
+    guess", the convention ``features/advanced_stats.py`` already uses.
+    """
+    if allowed is None or fbs_baseline <= 0:
+        return 1.0
+    try:
+        value = float(allowed)
+    except (ValueError, TypeError):
+        return 1.0
+    if value <= 0 or not math.isfinite(value):
+        return 1.0
+    return max(_OPP_ADJ_MIN, min(_OPP_ADJ_MAX, value / fbs_baseline))
+
+
 def build_team_props_inputs_from_db(
     conn: sqlite3.Connection,
     team_id: str,
     *,
+    opponent_team_id: str | None = None,
     season: int | None = None,
     as_of_utc: str | None = None,
 ) -> TeamPropsInputs:
@@ -564,6 +594,17 @@ def build_team_props_inputs_from_db(
 
     Reads offensive efficiency metrics from team_season_advanced and player_game_passing
     when available, gracefully falling back to standard FBS averages.
+
+    When ``opponent_team_id`` is given, the opponent's ``side = 'def'`` snapshot supplies
+    two matchup multipliers against the FBS baselines: success rate allowed / 0.42 and
+    explosiveness allowed / 1.25. Both are "allowed" quantities, so a higher value means
+    a weaker defense (see ``features/advanced_stats.py`` for CFBD's asymmetric off/def
+    sign convention). Both are clamped to ``[_OPP_ADJ_MIN, _OPP_ADJ_MAX]``, and a missing,
+    NULL, non-finite or post-cutoff opponent snapshot yields a neutral 1.0 rather than a guess.
+
+    The multipliers reach the projection ONLY through the production fields --
+    ``yards_per_completion`` (explosiveness) and ``yards_before_contact`` (success rate).
+    See the comment at the application site for why the rate fields stay opponent-neutral.
     """
     baseline = default_team_props_inputs()
     if not team_id:
@@ -573,7 +614,7 @@ def build_team_props_inputs_from_db(
         raise SchemaError("Team-prop inputs require a valid as_of_utc cutoff")
 
     query_adv = """
-        SELECT week, success_rate, explosiveness, line_yards, plays, drives,
+        SELECT season, week, success_rate, explosiveness, line_yards, plays, drives,
                passing_success_rate, rushing_success_rate
         FROM team_season_advanced
         WHERE team_id = ? AND side = 'off'
@@ -588,6 +629,37 @@ def build_team_props_inputs_from_db(
 
     row_adv = conn.execute(query_adv, params_adv).fetchone()
 
+    # Resolve season for opponent defense and passing queries to prevent cross-season mixing
+    adv_season = int(row_adv["season"]) if (row_adv and row_adv["season"] is not None) else None
+    resolved_season = season if season is not None else adv_season
+
+    # Query opponent defense for defensive success rate and explosiveness allowed
+    sr_mult = 1.0
+    exp_mult = 1.0
+    opp_clean_id = opponent_team_id.strip() if opponent_team_id else None
+    if opp_clean_id and opp_clean_id != team_id:
+        query_opp = """
+            SELECT success_rate, explosiveness
+            FROM team_season_advanced
+            WHERE team_id = ? AND side = 'def'
+        """
+        params_opp: list[Any] = [opp_clean_id]
+        if resolved_season is not None:
+            query_opp += " AND season = ?"
+            params_opp.append(resolved_season)
+        query_opp += " AND as_of_utc <= ?"
+        params_opp.append(cutoff)
+        query_opp += " ORDER BY season DESC, as_of_utc DESC LIMIT 1"
+
+        row_opp_def = conn.execute(query_opp, params_opp).fetchone()
+        if row_opp_def is not None:
+            sr_mult = _opponent_multiplier(
+                row_opp_def["success_rate"], baseline.offensive_success_rate
+            )
+            exp_mult = _opponent_multiplier(
+                row_opp_def["explosiveness"], baseline.explosiveness
+            )
+
     query_pass = """
         SELECT SUM(p.completions) as comp, SUM(p.attempts) as att,
                SUM(p.yards) as yds, COUNT(DISTINCT p.game_id) as games
@@ -596,27 +668,41 @@ def build_team_props_inputs_from_db(
         WHERE p.team_id = ? AND g.kickoff_utc < ?
     """
     params_pass: list[Any] = [team_id, cutoff]
-    if season is not None:
+    if resolved_season is not None:
         query_pass += " AND p.season = ?"
-        params_pass.append(season)
+        params_pass.append(resolved_season)
 
     row_pass = conn.execute(query_pass, params_pass).fetchone()
 
-    success_rate = (
+    raw_success_rate = (
         float(row_adv["success_rate"])
         if (row_adv and row_adv["success_rate"] is not None)
         else baseline.offensive_success_rate
     )
-    explosiveness = (
+    raw_explosiveness = (
         float(row_adv["explosiveness"])
         if (row_adv and row_adv["explosiveness"] is not None)
         else baseline.explosiveness
     )
-    line_yards = (
+    raw_line_yards = (
         float(row_adv["line_yards"])
         if (row_adv and row_adv["line_yards"] is not None)
         else baseline.yards_before_contact
     )
+
+    # Opponent strength is applied ONCE, and only through the production channel
+    # (yards_per_completion / yards_before_contact below). project_team_points
+    # already re-normalises offensive_success_rate by 0.42 and explosiveness by
+    # 1.25 -- the very baselines these multipliers are built from -- so scaling
+    # the rate fields here too would apply the matchup a second time and make
+    # projected points move by m**2: a 1.20x defense produced a 1.39x points
+    # swing and a 1.30x defense a 1.61x swing. The rate fields therefore stay
+    # opponent-neutral (they describe this offense's own identity); the matchup
+    # lives entirely in the projected yardage, which every supported market --
+    # yards AND points -- cascades from.
+    success_rate = round(max(0.0, min(1.0, raw_success_rate)), 4)
+    explosiveness = round(max(0.0, raw_explosiveness), 4)
+    line_yards = round(max(0.0, raw_line_yards * sr_mult), 2)
 
     comp = int(row_pass["comp"]) if (row_pass and row_pass["comp"]) else 0
     att = int(row_pass["att"]) if (row_pass and row_pass["att"]) else 0
@@ -637,13 +723,14 @@ def build_team_props_inputs_from_db(
 
     if att > 0 and comp > 0:
         comp_prob = round(max(0.40, min(0.85, comp / att)), 3)
-        ypc = round(max(6.0, min(20.0, yds / comp)), 2)
+        raw_ypc = yds / comp
+        ypc = round(max(6.0, min(20.0, raw_ypc * exp_mult)), 2)
         pass_per_game = att / max(1, n_games)
         expected_pass = round(max(18.0, min(55.0, pass_per_game)), 1)
         expected_rush = round(max(15.0, min(60.0, pace - expected_pass)), 1)
     else:
         comp_prob = baseline.completion_probability
-        ypc = baseline.yards_per_completion
+        ypc = round(max(6.0, min(20.0, baseline.yards_per_completion * exp_mult)), 2)
         expected_pass = baseline.expected_pass_attempts
         expected_rush = baseline.expected_rushing_attempts
 
@@ -677,16 +764,32 @@ def load_team_props_inputs_for_slate(
 ) -> dict[str, TeamPropsInputs]:
     """Load or derive TeamPropsInputs for all teams playing on a given slate."""
     games = conn.execute(
-        "SELECT home_team_id, away_team_id FROM games WHERE football_date = ?",
+        "SELECT home_team_id, away_team_id, season FROM games WHERE football_date = ?",
         (slate_date,),
     ).fetchall()
     inputs_by_team: dict[str, TeamPropsInputs] = {}
     for g in games:
-        for tid in (g["home_team_id"], g["away_team_id"]):
-            if tid and tid not in inputs_by_team:
-                inputs_by_team[str(tid)] = build_team_props_inputs_from_db(
-                    conn, str(tid), season=season, as_of_utc=as_of_utc
-                )
+        game_season = season
+        if game_season is None and g["season"] is not None:
+            game_season = int(g["season"])
+        home_id = str(g["home_team_id"]) if g["home_team_id"] else None
+        away_id = str(g["away_team_id"]) if g["away_team_id"] else None
+        if home_id and home_id not in inputs_by_team:
+            inputs_by_team[home_id] = build_team_props_inputs_from_db(
+                conn,
+                home_id,
+                opponent_team_id=away_id,
+                season=game_season,
+                as_of_utc=as_of_utc,
+            )
+        if away_id and away_id not in inputs_by_team:
+            inputs_by_team[away_id] = build_team_props_inputs_from_db(
+                conn,
+                away_id,
+                opponent_team_id=home_id,
+                season=game_season,
+                as_of_utc=as_of_utc,
+            )
     return inputs_by_team
 
 

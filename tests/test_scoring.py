@@ -21,6 +21,7 @@ from cfb_analytics.models.team_props import (
     validate_market_type,
 )
 from cfb_analytics.scoring import (
+    _OPP_ADJ_MAX,
     TeamPropCandidate,
     assign_play_tier,
     build_team_props_inputs_from_db,
@@ -648,6 +649,369 @@ class TestDatabaseDataWiring:
 
         assert build_team_props_inputs_from_db(conn, "") == baseline
 
+    def test_build_team_props_inputs_with_opponent_defensive_adjustments(self, conn):
+        store.upsert_team(
+            conn, {"team_id": "off_team", "school": "Offense", "alias": "OFF", "market": "OFF"}
+        )
+        store.upsert_team(
+            conn, {"team_id": "def_team", "school": "Defense", "alias": "DEF", "market": "DEF"}
+        )
+        store.upsert_game(
+            conn,
+            {
+                "game_id": "g_adj",
+                "season": 2026,
+                "kickoff_utc": "2026-09-01T20:00:00+00:00",
+                "football_date": "2026-09-01",
+                "day_of_week": 1,
+                "home_team_id": "off_team",
+                "away_team_id": "def_team",
+                "venue_name": "Stadium",
+                "network": "ESPN",
+                "status": "final",
+            },
+        )
+        # Offense stats
+        conn.execute(
+            """INSERT INTO team_season_advanced
+               (snapshot_id, season, week, team_id, side, as_of_utc, ingested_utc,
+                garbage_excluded, success_rate, explosiveness, line_yards, plays, drives)
+               VALUES ('snap_off', 2026, 1, 'off_team', 'off', '2026-09-01T00:00:00+00:00',
+                       '2026-09-01T00:00:00+00:00', 1, 0.48, 1.45, 3.2, 75, 11)"""
+        )
+        conn.execute(
+            """INSERT INTO players (player_id, name, first_seen_utc, last_seen_utc)
+               VALUES ('p_adj', 'QB Adj', '2026-01-01', '2026-09-01')"""
+        )
+        conn.execute(
+            """INSERT INTO player_game_passing
+               (game_id, team_id, player_id, season, week, completions, attempts,
+                yards, source, ingested_utc)
+               VALUES ('g_adj', 'off_team', 'p_adj', 2026, 1, 24, 32, 310, 'cfbd', '2026-09-01')"""
+        )
+        # Tough opponent defense (lower success rate and explosiveness allowed than FBS 0.42 / 1.25)
+        conn.execute(
+            """INSERT INTO team_season_advanced
+               (snapshot_id, season, week, team_id, side, as_of_utc, ingested_utc,
+                garbage_excluded, success_rate, explosiveness, line_yards, plays, drives)
+               VALUES ('snap_def', 2026, 1, 'def_team', 'def', '2026-09-01T00:00:00+00:00',
+                       '2026-09-01T00:00:00+00:00', 1, 0.38, 1.10, 2.0, 70, 10)"""
+        )
+
+        # Baseline without opponent adjustment
+        unadjusted = build_team_props_inputs_from_db(
+            conn,
+            "off_team",
+            season=2026,
+            as_of_utc="2026-09-02T00:00:00Z",
+        )
+        assert unadjusted.offensive_success_rate == 0.48
+        assert unadjusted.explosiveness == 1.45
+        assert unadjusted.yards_before_contact == 3.2
+        assert unadjusted.yards_per_completion == pytest.approx(12.92, rel=0.01)
+
+        # Adjusted with tough opponent defense
+        adjusted = build_team_props_inputs_from_db(
+            conn,
+            "off_team",
+            opponent_team_id="def_team",
+            season=2026,
+            as_of_utc="2026-09-02T00:00:00Z",
+        )
+        # sr_mult = 0.38 / 0.42 = 0.9048 and exp_mult = 1.10 / 1.25 = 0.88, both
+        # inside the clamp band. They reach the projection through the production
+        # fields only.
+        expected_line_yards = round(3.2 * (0.38 / 0.42), 2)  # 2.90
+        expected_ypc = round((310 / 24) * (1.10 / 1.25), 2)  # 11.37
+
+        assert adjusted.yards_before_contact == expected_line_yards
+        assert adjusted.yards_per_completion == expected_ypc
+        assert adjusted.yards_before_contact < unadjusted.yards_before_contact
+        assert adjusted.yards_per_completion < unadjusted.yards_per_completion
+
+        # The rate fields stay opponent-neutral. project_team_points re-normalises
+        # them by the same 0.42 / 1.25 baselines the multipliers are built from, so
+        # scaling them here would apply the matchup a second time.
+        assert adjusted.offensive_success_rate == unadjusted.offensive_success_rate
+        assert adjusted.offensive_success_rate == 0.48
+        assert adjusted.explosiveness == unadjusted.explosiveness == 1.45
+
+    def test_opponent_adjustment_is_applied_exactly_once(self, conn):
+        """A matchup multiplier m moves projected points by m, never by m**2.
+
+        project_team_points re-normalises offensive_success_rate by 0.42 and
+        explosiveness by 1.25 -- the same FBS baselines the opponent multipliers
+        are built from. Scaling the rate fields as well as the production fields
+        compounds the matchup: a 1.20x defense produced a 1.39x points swing.
+        """
+        store.upsert_team(
+            conn,
+            {"team_id": "avg_off", "school": "Avg", "alias": "AVG", "market": "AVG"},
+        )
+        store.upsert_team(
+            conn,
+            {"team_id": "weak_def", "school": "Weak", "alias": "WK", "market": "WK"},
+        )
+        # Exactly league-average offense, so every unadjusted efficiency factor is 1.0.
+        conn.execute(
+            """INSERT INTO team_season_advanced
+               (snapshot_id, season, week, team_id, side, as_of_utc, ingested_utc,
+                garbage_excluded, success_rate, explosiveness, line_yards, plays, drives)
+               VALUES ('snap_avg', 2026, 1, 'avg_off', 'off', '2026-09-01T00:00:00+00:00',
+                       '2026-09-01T00:00:00+00:00', 1, 0.42, 1.25, 2.4, 70, 12)"""
+        )
+        # Defense allowing 1.20x the FBS mean on both axes (inside the clamp band).
+        conn.execute(
+            """INSERT INTO team_season_advanced
+               (snapshot_id, season, week, team_id, side, as_of_utc, ingested_utc,
+                garbage_excluded, success_rate, explosiveness, line_yards, plays, drives)
+               VALUES ('snap_weak', 2026, 1, 'weak_def', 'def', '2026-09-01T00:00:00+00:00',
+                       '2026-09-01T00:00:00+00:00', 1, 0.504, 1.50, 3.0, 70, 12)"""
+        )
+
+        neutral = build_team_props_inputs_from_db(
+            conn, "avg_off", season=2026, as_of_utc="2026-09-02T00:00:00Z"
+        )
+        matchup = build_team_props_inputs_from_db(
+            conn,
+            "avg_off",
+            opponent_team_id="weak_def",
+            season=2026,
+            as_of_utc="2026-09-02T00:00:00Z",
+        )
+        neutral_proj = project_team_production("TEAM_PROP", neutral)
+        matchup_proj = project_team_production("TEAM_PROP", matchup)
+
+        yards_ratio = (
+            matchup_proj.projected_team_offensive_yards
+            / neutral_proj.projected_team_offensive_yards
+        )
+        points_ratio = (
+            matchup_proj.projected_team_total_points
+            / neutral_proj.projected_team_total_points
+        )
+
+        assert yards_ratio > 1.0
+        # Single application: points track yards exactly. Under the compounding
+        # bug this was yards_ratio * 1.20 instead.
+        assert points_ratio == pytest.approx(yards_ratio, rel=1e-3)
+        assert points_ratio < 1.20
+
+    def test_build_team_props_inputs_opponent_fallbacks(self, conn):
+        store.upsert_team(
+            conn, {"team_id": "team_x", "school": "Team X", "alias": "TX", "market": "TX"}
+        )
+        store.upsert_team(
+            conn, {"team_id": "team_null_def", "school": "Null Def", "alias": "ND", "market": "ND"}
+        )
+        store.upsert_team(
+            conn,
+            {"team_id": "team_future_def", "school": "Future Def", "alias": "FD", "market": "FD"},
+        )
+        conn.execute(
+            """INSERT INTO team_season_advanced
+               (snapshot_id, season, week, team_id, side, as_of_utc, ingested_utc,
+                garbage_excluded, success_rate, explosiveness, line_yards, plays, drives)
+               VALUES ('snap_x', 2026, 1, 'team_x', 'off', '2026-09-01T00:00:00+00:00',
+                       '2026-09-01T00:00:00+00:00', 1, 0.45, 1.30, 2.8, 65, 12)"""
+        )
+        # Defense row with NULL metrics
+        conn.execute(
+            """INSERT INTO team_season_advanced
+               (snapshot_id, season, week, team_id, side, as_of_utc, ingested_utc,
+                garbage_excluded, success_rate, explosiveness, line_yards, plays, drives)
+               VALUES ('snap_null', 2026, 1, 'team_null_def', 'def', '2026-09-01T00:00:00+00:00',
+                       '2026-09-01T00:00:00+00:00', 1, NULL, NULL, NULL, 65, 12)"""
+        )
+        # Defense row with future as_of_utc (after cutoff)
+        conn.execute(
+            """INSERT INTO team_season_advanced
+               (snapshot_id, season, week, team_id, side, as_of_utc, ingested_utc,
+                garbage_excluded, success_rate, explosiveness, line_yards, plays, drives)
+               VALUES ('snap_future', 2026, 2, 'team_future_def', 'def',
+                       '2026-09-10T00:00:00+00:00',
+                       '2026-09-10T00:00:00+00:00', 1, 0.30, 0.90, 1.5, 65, 12)"""
+        )
+
+        base = build_team_props_inputs_from_db(
+            conn, "team_x", season=2026, as_of_utc="2026-09-02T00:00:00Z"
+        )
+        # Every one of these must yield a neutral 1.0 multiplier, i.e. inputs
+        # identical to the no-opponent build: unknown opponent, NULL defensive
+        # metrics, a snapshot after the cutoff, blank/whitespace ids, and self.
+        for opponent in (
+            "nonexistent",
+            "team_null_def",
+            "team_future_def",
+            "",
+            "   ",
+            "team_x",
+        ):
+            assert (
+                build_team_props_inputs_from_db(
+                    conn,
+                    "team_x",
+                    opponent_team_id=opponent,
+                    season=2026,
+                    as_of_utc="2026-09-02T00:00:00Z",
+                )
+                == base
+            ), opponent
+
+    def test_build_team_props_inputs_opponent_boundary_and_cross_season(self, conn):
+        for team_id, school, code in (
+            ("tm_high", "High Off", "HO"),
+            ("tm_opp_weak", "Weak Def", "WD"),
+            ("tm_opp_prior", "Prior Def", "PD"),
+        ):
+            store.upsert_team(
+                conn,
+                {"team_id": team_id, "school": school, "alias": code, "market": code},
+            )
+
+        # tm_high has season 2026 off stats: raw success rate 0.70
+        conn.execute(
+            """INSERT INTO team_season_advanced
+               (snapshot_id, season, week, team_id, side, as_of_utc, ingested_utc,
+                garbage_excluded, success_rate, explosiveness, line_yards, plays, drives)
+               VALUES ('snap_high', 2026, 1, 'tm_high', 'off', '2026-09-01T00:00:00+00:00',
+                       '2026-09-01T00:00:00+00:00', 1, 0.70, 1.50, 3.5, 70, 12)"""
+        )
+        # tm_opp_weak allows an absurd 0.84 success rate (raw mult 0.84 / 0.42 = 2.0)
+        # and 2.50 explosiveness (raw mult 2.0). Unclamped this would inflate
+        # yards_before_contact to 3.5 * 2.0 = 7.0 and run the projection away.
+        conn.execute(
+            """INSERT INTO team_season_advanced
+               (snapshot_id, season, week, team_id, side, as_of_utc, ingested_utc,
+                garbage_excluded, success_rate, explosiveness, line_yards, plays, drives)
+               VALUES ('snap_weak_def', 2026, 1, 'tm_opp_weak', 'def', '2026-09-01T00:00:00+00:00',
+                       '2026-09-01T00:00:00+00:00', 1, 0.84, 2.50, 4.0, 70, 12)"""
+        )
+        # tm_opp_prior only has a 2025 defensive row, NO 2026 row
+        conn.execute(
+            """INSERT INTO team_season_advanced
+               (snapshot_id, season, week, team_id, side, as_of_utc, ingested_utc,
+                garbage_excluded, success_rate, explosiveness, line_yards, plays, drives)
+               VALUES ('snap_prior_def', 2025, 12, 'tm_opp_prior', 'def',
+                       '2025-12-01T00:00:00+00:00',
+                       '2025-12-01T00:00:00+00:00', 1, 0.30, 0.90, 1.5, 70, 12)"""
+        )
+
+        inputs_clamped = build_team_props_inputs_from_db(
+            conn,
+            "tm_high",
+            opponent_team_id="tm_opp_weak",
+            season=2026,
+            as_of_utc="2026-09-02T00:00:00Z",
+        )
+        assert inputs_clamped.yards_before_contact == round(3.5 * _OPP_ADJ_MAX, 2)
+        assert inputs_clamped.yards_per_completion == round(11.5 * _OPP_ADJ_MAX, 2)
+        # Rate fields are never scaled by the matchup at all.
+        assert inputs_clamped.offensive_success_rate == 0.70
+        assert inputs_clamped.explosiveness == 1.50
+
+        # Cross-season isolation when season=None: tm_high is in 2026, tm_opp_prior only has 2025.
+        # Should fall back to a neutral 1.0 multiplier for 2026 rather than
+        # leaking the 2025 defense.
+        inputs_cross = build_team_props_inputs_from_db(
+            conn, "tm_high", opponent_team_id="tm_opp_prior", as_of_utc="2026-09-02T00:00:00Z"
+        )
+        # The 2025 defensive snapshot must not leak into a 2026 matchup.
+        assert inputs_cross.yards_before_contact == 3.5
+        assert inputs_cross.yards_per_completion == 11.5
+
+    def test_load_team_props_inputs_for_slate_infers_game_season(self, conn):
+        for team_id, code in (("team_g1", "G1"), ("team_g2", "G2")):
+            store.upsert_team(
+                conn,
+                {"team_id": team_id, "school": code, "alias": code, "market": code},
+            )
+        store.upsert_game(
+            conn,
+            {
+                "game_id": "g_season_infer",
+                "season": 2026,
+                "kickoff_utc": "2026-09-12T20:00:00+00:00",
+                "football_date": "2026-09-12",
+                "day_of_week": 5,
+                "home_team_id": "team_g1",
+                "away_team_id": "team_g2",
+                "venue_name": "Stadium",
+                "network": "ESPN",
+                "status": "pregame",
+            },
+        )
+        # Calling without season argument should infer 2026 from the game
+        slate_inputs = load_team_props_inputs_for_slate(
+            conn,
+            "2026-09-12",
+            as_of_utc="2026-09-12T12:00:00Z",
+        )
+        assert "team_g1" in slate_inputs
+        assert "team_g2" in slate_inputs
+
+    def test_load_team_props_inputs_for_slate_applies_opponent_adjustments(self, conn):
+        for team_id, code in (("tm_a", "TA"), ("tm_b", "TB")):
+            store.upsert_team(
+                conn,
+                {"team_id": team_id, "school": team_id, "alias": code, "market": code},
+            )
+        store.upsert_game(
+            conn,
+            {
+                "game_id": "g_slate",
+                "season": 2026,
+                "kickoff_utc": "2026-09-05T20:00:00+00:00",
+                "football_date": "2026-09-05",
+                "day_of_week": 5,
+                "home_team_id": "tm_a",
+                "away_team_id": "tm_b",
+                "venue_name": "Stadium",
+                "network": "ESPN",
+                "status": "pregame",
+            },
+        )
+        # tm_a off and def
+        conn.execute(
+            """INSERT INTO team_season_advanced
+               (snapshot_id, season, week, team_id, side, as_of_utc, ingested_utc,
+                garbage_excluded, success_rate, explosiveness, line_yards, plays, drives)
+               VALUES ('snap_ta_off', 2026, 1, 'tm_a', 'off', '2026-09-01T00:00:00+00:00',
+                       '2026-09-01T00:00:00+00:00', 1, 0.44, 1.35, 3.0, 70, 12),
+                      ('snap_ta_def', 2026, 1, 'tm_a', 'def', '2026-09-01T00:00:00+00:00',
+                       '2026-09-01T00:00:00+00:00', 1, 0.50, 1.40, 3.5, 70, 12)"""
+        )
+        # tm_b off and def (elite def: 0.35 SR, 1.05 exp)
+        conn.execute(
+            """INSERT INTO team_season_advanced
+               (snapshot_id, season, week, team_id, side, as_of_utc, ingested_utc,
+                garbage_excluded, success_rate, explosiveness, line_yards, plays, drives)
+               VALUES ('snap_tb_off', 2026, 1, 'tm_b', 'off', '2026-09-01T00:00:00+00:00',
+                       '2026-09-01T00:00:00+00:00', 1, 0.40, 1.20, 2.5, 68, 11),
+                      ('snap_tb_def', 2026, 1, 'tm_b', 'def', '2026-09-01T00:00:00+00:00',
+                       '2026-09-01T00:00:00+00:00', 1, 0.35, 1.05, 2.0, 68, 11)"""
+        )
+
+        slate_inputs = load_team_props_inputs_for_slate(
+            conn,
+            "2026-09-05",
+            season=2026,
+            as_of_utc="2026-09-05T12:00:00Z",
+        )
+        # tm_a draws tm_b's elite defense (0.35 / 0.42 = 0.833): production discounted
+        # from its own 3.0 line yards.
+        assert slate_inputs["tm_a"].yards_before_contact == pytest.approx(2.50, abs=1e-2)
+        assert slate_inputs["tm_a"].yards_before_contact < 3.0
+
+        # tm_b draws tm_a's weak defense (0.50 / 0.42 = 1.190): production boosted
+        # from its own 2.5 line yards.
+        assert slate_inputs["tm_b"].yards_before_contact == pytest.approx(2.98, abs=1e-2)
+        assert slate_inputs["tm_b"].yards_before_contact > 2.5
+
+        # Opponent resolution is per side, and no rate field is touched.
+        assert slate_inputs["tm_a"].offensive_success_rate == 0.44
+        assert slate_inputs["tm_b"].offensive_success_rate == 0.40
+
     def test_load_team_props_inputs_for_slate(self, conn):
         store.upsert_team(conn, {"team_id": "t1", "school": "Team1", "alias": "T1", "market": "T1"})
         store.upsert_team(conn, {"team_id": "t2", "school": "Team2", "alias": "T2", "market": "T2"})
@@ -723,6 +1087,70 @@ class TestDatabaseDataWiring:
         assert away_score is not None
         assert away_score.side == "OVER"
         assert away_score.line == 24.5
+
+    def test_score_slate_team_props_incorporates_opponent_defense(self, conn):
+        store.upsert_team(
+            conn,
+            {"team_id": "home_def_elite", "school": "EliteDef", "alias": "EDE", "market": "EDE"},
+        )
+        store.upsert_team(
+            conn, {"team_id": "away_off_good", "school": "GoodOff", "alias": "GOF", "market": "GOF"}
+        )
+        store.upsert_game(
+            conn,
+            {
+                "game_id": "g_slate_opp",
+                "season": 2026,
+                "kickoff_utc": "2026-09-05T20:00:00+00:00",
+                "football_date": "2026-09-05",
+                "day_of_week": 5,
+                "home_team_id": "home_def_elite",
+                "away_team_id": "away_off_good",
+                "venue_name": "Stadium",
+                "network": "ESPN",
+                "status": "pregame",
+            },
+        )
+        # Away team offense
+        conn.execute(
+            """INSERT INTO team_season_advanced
+               (snapshot_id, season, week, team_id, side, as_of_utc, ingested_utc,
+                garbage_excluded, success_rate, explosiveness, line_yards, plays, drives)
+               VALUES ('snap_go_off', 2026, 1, 'away_off_good', 'off', '2026-09-01T00:00:00+00:00',
+                       '2026-09-01T00:00:00+00:00', 1, 0.48, 1.45, 3.2, 70, 11)"""
+        )
+        # Home team elite defense
+        conn.execute(
+            """INSERT INTO team_season_advanced
+               (snapshot_id, season, week, team_id, side, as_of_utc, ingested_utc,
+                garbage_excluded, success_rate, explosiveness, line_yards, plays, drives)
+               VALUES ('snap_ed_def', 2026, 1, 'home_def_elite', 'def', '2026-09-01T00:00:00+00:00',
+                       '2026-09-01T00:00:00+00:00', 1, 0.35, 1.05, 2.0, 70, 11)"""
+        )
+        conn.execute(
+            """INSERT INTO team_prop_consensus
+               (game_id, team_id, market, line, side, as_of_utc, n_books,
+                consensus_price, best_price, best_book, hold,
+                prob_multiplicative, prob_shin)
+               VALUES ('g_slate_opp', 'away_off_good', 'team_total_points', 24.5, 'OVER',
+                       '2026-09-05T12:00:00+00:00', 3, -110, -105,
+                       'FanDuel', 0.045, 0.52, 0.52)"""
+        )
+
+        scores = score_slate_team_props(
+            conn,
+            "2026-09-05",
+            as_of_utc="2026-09-05T12:30:00Z",
+        )
+        assert len(scores) > 0
+        away_score = next((s for s in scores if s.team_id == "away_off_good"), None)
+        assert away_score is not None
+        # Projected points should be discounted by elite opponent defense
+        unadjusted_inputs = build_team_props_inputs_from_db(
+            conn, "away_off_good", season=2026, as_of_utc="2026-09-05T12:30:00Z"
+        )
+        unadj_proj = project_team_production("TEAM_PROP", unadjusted_inputs)
+        assert away_score.projected_value < unadj_proj.projected_team_total_points
 
 
 class TestPointInTimeAndQualificationRegressions:
