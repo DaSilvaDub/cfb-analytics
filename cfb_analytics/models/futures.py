@@ -18,6 +18,10 @@ Core Projections & Calculations:
 - Monte Carlo season simulation engine with reproducible seeds
 
 Pure Python standard library compliance (no numpy, scipy, pandas, or scikit-learn).
+
+The coefficients and CFP/CCG curves in this module are not yet calibrated on
+out-of-sample history. Outputs are shadow-only research estimates and are never
+actionable betting recommendations.
 """
 
 from __future__ import annotations
@@ -407,7 +411,7 @@ class GameWinProjection:
 
 @dataclass(frozen=True)
 class WinTotalLineEvaluation:
-    """Evaluation of a posted regular season win total line."""
+    """Shadow evaluation of a posted regular season win total line."""
 
     line: float
     prob_over: float
@@ -418,6 +422,8 @@ class WinTotalLineEvaluation:
     recommended_side: str  # "OVER" | "UNDER" | "PASS"
     edge: float  # Model prob vs market implied prob
     expected_value: float | None = None
+    model_status: str = "uncalibrated_shadow"
+    is_actionable: bool = False
 
 
 @dataclass(frozen=True)
@@ -432,7 +438,7 @@ class ConferenceChampionshipProjection:
 
 @dataclass(frozen=True)
 class SeasonFuturesProjection:
-    """Macro-level season futures forecast for a single program."""
+    """Uncalibrated, shadow-only season futures forecast for a single program."""
 
     team_id: str
     conference: str
@@ -447,6 +453,7 @@ class SeasonFuturesProjection:
     prob_reach_conference_championship: float
     prob_win_conference_championship: float
     prob_cfp_appearance: float
+    model_status: str = "uncalibrated_shadow"
     win_total_evaluations: dict[float, WinTotalLineEvaluation] = field(default_factory=dict)
 
 

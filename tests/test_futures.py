@@ -452,6 +452,8 @@ class TestWinTotalLineEvaluation:
         assert res.recommended_side == "OVER"
         assert res.edge > 0.05
         assert res.expected_value is not None and res.expected_value > 0.0
+        assert res.model_status == "uncalibrated_shadow"
+        assert res.is_actionable is False
 
     def test_integer_line_ev_push_accounting(self) -> None:
         # 10 games, p=0.5 -> symmetric distribution around 5.0 wins
@@ -634,6 +636,7 @@ class TestProjectSeasonFutures:
         assert len(projection.schedule_projections) == 12
         assert len(projection.win_distribution) == 13
         assert projection.prob_cfp_appearance > 0.50
+        assert projection.model_status == "uncalibrated_shadow"
         assert 10.0 in projection.win_total_evaluations
         assert projection.win_total_evaluations[10.0].prob_over > 0.0
 
