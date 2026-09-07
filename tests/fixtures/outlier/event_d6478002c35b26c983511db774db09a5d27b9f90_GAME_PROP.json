@@ -1,0 +1,4980 @@
+{
+  "markets": [
+    {
+      "marketId": "d51cc1bb121aa43e058284a1db541bd8b456d6c5",
+      "eventId": "d6478002c35b26c983511db774db09a5d27b9f90",
+      "leagueId": "NCAAFB",
+      "sport": "FOOTBALL",
+      "marketType": "GAME_PROP",
+      "propType": "STRAIGHT",
+      "proposition": "BTTS",
+      "periods": [
+        3
+      ],
+      "periodLabel": "3Q",
+      "includeOvertime": false,
+      "outcomes": [
+        {
+          "outcomeId": "090a11a82b2d78fee1b38ab0240ecadbe2fe85be",
+          "position": "YES",
+          "line": 0.0,
+          "odds": [
+            {
+              "american": "-120",
+              "decimal": 1.8333333333333335,
+              "fraction": {
+                "numerator": 5,
+                "denominator": 6
+              },
+              "book": "DRAFTKINGS",
+              "identifier": {
+                "bookEventId": "34005255",
+                "bookMarketId": "364701590",
+                "bookOutcomeId": "0QA364701590#2263817484_13L87637Q10Q20",
+                "bookProps": {
+                  "urlOutcomeId": "0QA364701590%232263817484_13L87637Q10Q20"
+                }
+              }
+            }
+          ],
+          "label": "Yes",
+          "books": [
+            "DRAFTKINGS"
+          ],
+          "primary": true,
+          "bookPrimary": true
+        },
+        {
+          "outcomeId": "9426b9bacc883a802f7f01ea31117e1f9c5b15d5",
+          "position": "NO",
+          "line": 0.0,
+          "odds": [
+            {
+              "american": "-115",
+              "decimal": 1.8695652173913042,
+              "fraction": {
+                "numerator": 20,
+                "denominator": 23
+              },
+              "book": "DRAFTKINGS",
+              "identifier": {
+                "bookEventId": "34005255",
+                "bookMarketId": "364701590",
+                "bookOutcomeId": "0QA364701590#2263817525_13L87637Q10Q21",
+                "bookProps": {
+                  "urlOutcomeId": "0QA364701590%232263817525_13L87637Q10Q21"
+                }
+              }
+            }
+          ],
+          "label": "No",
+          "books": [
+            "DRAFTKINGS"
+          ],
+          "primary": true,
+          "bookPrimary": true
+        }
+      ],
+      "isActive": true,
+      "books": [
+        "DRAFTKINGS"
+      ],
+      "label": "3rd Quarter Both Teams To Score",
+      "outcomeMap": [
+        [
+          "090a11a82b2d78fee1b38ab0240ecadbe2fe85be",
+          "9426b9bacc883a802f7f01ea31117e1f9c5b15d5"
+        ]
+      ],
+      "referenceOutcomeMap": [
+        [
+          "090a11a82b2d78fee1b38ab0240ecadbe2fe85be",
+          "9426b9bacc883a802f7f01ea31117e1f9c5b15d5"
+        ]
+      ],
+      "publicMoney": [],
+      "marketGroupId": "QUARTERS",
+      "marketGroupSortOrder": 28
+    },
+    {
+      "marketId": "600a3288ae222540bd7f6ab614fbba8ffff9a9f0",
+      "eventId": "d6478002c35b26c983511db774db09a5d27b9f90",
+      "leagueId": "NCAAFB",
+      "sport": "FOOTBALL",
+      "marketType": "GAME_PROP",
+      "propType": "STRAIGHT",
+      "proposition": "BTTS",
+      "periods": [
+        2
+      ],
+      "periodLabel": "2Q",
+      "includeOvertime": false,
+      "outcomes": [
+        {
+          "outcomeId": "1058efec1518d7cabf5641761eb013f141086069",
+          "position": "YES",
+          "line": 0.0,
+          "odds": [
+            {
+              "american": "-270",
+              "decimal": 1.3703703703703702,
+              "fraction": {
+                "numerator": 10,
+                "denominator": 27
+              },
+              "book": "DRAFTKINGS",
+              "identifier": {
+                "bookEventId": "34005255",
+                "bookMarketId": "364701589",
+                "bookOutcomeId": "0QA364701589#2263817483_13L87637Q10Q20",
+                "bookProps": {
+                  "urlOutcomeId": "0QA364701589%232263817483_13L87637Q10Q20"
+                }
+              }
+            }
+          ],
+          "label": "Yes",
+          "books": [
+            "DRAFTKINGS"
+          ],
+          "primary": true,
+          "bookPrimary": true
+        },
+        {
+          "outcomeId": "0d874a57ae73ced7e4e0b7c6d69892b246e11df3",
+          "position": "NO",
+          "line": 0.0,
+          "odds": [
+            {
+              "american": "+185",
+              "decimal": 2.85,
+              "fraction": {
+                "numerator": 37,
+                "denominator": 20
+              },
+              "book": "DRAFTKINGS",
+              "identifier": {
+                "bookEventId": "34005255",
+                "bookMarketId": "364701589",
+                "bookOutcomeId": "0QA364701589#2263817526_13L87637Q10Q21",
+                "bookProps": {
+                  "urlOutcomeId": "0QA364701589%232263817526_13L87637Q10Q21"
+                }
+              }
+            }
+          ],
+          "label": "No",
+          "books": [
+            "DRAFTKINGS"
+          ],
+          "primary": true,
+          "bookPrimary": true
+        }
+      ],
+      "isActive": true,
+      "books": [
+        "DRAFTKINGS"
+      ],
+      "label": "2nd Quarter Both Teams To Score",
+      "outcomeMap": [
+        [
+          "1058efec1518d7cabf5641761eb013f141086069",
+          "0d874a57ae73ced7e4e0b7c6d69892b246e11df3"
+        ]
+      ],
+      "referenceOutcomeMap": [
+        [
+          "1058efec1518d7cabf5641761eb013f141086069",
+          "0d874a57ae73ced7e4e0b7c6d69892b246e11df3"
+        ]
+      ],
+      "publicMoney": [],
+      "marketGroupId": "QUARTERS",
+      "marketGroupSortOrder": 18
+    },
+    {
+      "marketId": "70f009fe1be5a12d313a5c189e5c59bd45b334af",
+      "eventId": "d6478002c35b26c983511db774db09a5d27b9f90",
+      "leagueId": "NCAAFB",
+      "sport": "FOOTBALL",
+      "marketType": "GAME_PROP",
+      "propType": "STRAIGHT",
+      "proposition": "BTTS",
+      "periods": [
+        4
+      ],
+      "periodLabel": "4Q",
+      "includeOvertime": false,
+      "outcomes": [
+        {
+          "outcomeId": "a11287a6421a08231208116f9e6241c305b76ade",
+          "position": "YES",
+          "line": 0.0,
+          "odds": [
+            {
+              "american": "-235",
+              "decimal": 1.425531914893617,
+              "fraction": {
+                "numerator": 20,
+                "denominator": 47
+              },
+              "book": "DRAFTKINGS",
+              "identifier": {
+                "bookEventId": "34005255",
+                "bookMarketId": "364701591",
+                "bookOutcomeId": "0QA364701591#2263817485_13L87637Q10Q20",
+                "bookProps": {
+                  "urlOutcomeId": "0QA364701591%232263817485_13L87637Q10Q20"
+                }
+              }
+            }
+          ],
+          "label": "Yes",
+          "books": [
+            "DRAFTKINGS"
+          ],
+          "primary": true,
+          "bookPrimary": true
+        },
+        {
+          "outcomeId": "8c93bd38214956daac59256efe75d00246b11e2b",
+          "position": "NO",
+          "line": 0.0,
+          "odds": [
+            {
+              "american": "+165",
+              "decimal": 2.65,
+              "fraction": {
+                "numerator": 33,
+                "denominator": 20
+              },
+              "book": "DRAFTKINGS",
+              "identifier": {
+                "bookEventId": "34005255",
+                "bookMarketId": "364701591",
+                "bookOutcomeId": "0QA364701591#2263817524_13L87637Q10Q21",
+                "bookProps": {
+                  "urlOutcomeId": "0QA364701591%232263817524_13L87637Q10Q21"
+                }
+              }
+            }
+          ],
+          "label": "No",
+          "books": [
+            "DRAFTKINGS"
+          ],
+          "primary": true,
+          "bookPrimary": true
+        }
+      ],
+      "isActive": true,
+      "books": [
+        "DRAFTKINGS"
+      ],
+      "label": "4th Quarter Both Teams To Score (Exc. OT)",
+      "outcomeMap": [
+        [
+          "a11287a6421a08231208116f9e6241c305b76ade",
+          "8c93bd38214956daac59256efe75d00246b11e2b"
+        ]
+      ],
+      "referenceOutcomeMap": [
+        [
+          "a11287a6421a08231208116f9e6241c305b76ade",
+          "8c93bd38214956daac59256efe75d00246b11e2b"
+        ]
+      ],
+      "publicMoney": [],
+      "marketGroupId": "QUARTERS",
+      "marketGroupSortOrder": 48
+    },
+    {
+      "marketId": "616df9222ddcebe96505645cd002a6b93c8e8842",
+      "eventId": "d6478002c35b26c983511db774db09a5d27b9f90",
+      "leagueId": "NCAAFB",
+      "sport": "FOOTBALL",
+      "marketType": "GAME_PROP",
+      "propType": "STRAIGHT",
+      "proposition": "BTTS",
+      "periods": [
+        1
+      ],
+      "periodLabel": "1Q",
+      "includeOvertime": false,
+      "outcomes": [
+        {
+          "outcomeId": "ed7d424581209722656b6bbc0030b877286fdac1",
+          "position": "YES",
+          "line": 0.0,
+          "odds": [
+            {
+              "american": "+120",
+              "decimal": 2.2,
+              "fraction": {
+                "numerator": 6,
+                "denominator": 5
+              },
+              "book": "DRAFTKINGS",
+              "identifier": {
+                "bookEventId": "34005255",
+                "bookMarketId": "364701588",
+                "bookOutcomeId": "0QA364701588#2263817482_13L87637Q10Q20",
+                "bookProps": {
+                  "urlOutcomeId": "0QA364701588%232263817482_13L87637Q10Q20"
+                }
+              }
+            },
+            {
+              "american": "-110",
+              "decimal": 1.9090909090909092,
+              "fraction": {
+                "numerator": 10,
+                "denominator": 11
+              },
+              "book": "FANATICS",
+              "identifier": {
+                "bookEventId": "5023114",
+                "bookMarketId": "693518785",
+                "bookOutcomeId": "1710507072"
+              }
+            }
+          ],
+          "label": "Yes",
+          "books": [
+            "DRAFTKINGS",
+            "FANATICS"
+          ],
+          "primary": true,
+          "bookPrimary": true
+        },
+        {
+          "outcomeId": "0fa05564dd659dee257071e6a71e4c43bfa666fb",
+          "position": "NO",
+          "line": 0.0,
+          "odds": [
+            {
+              "american": "-165",
+              "decimal": 1.606060606060606,
+              "fraction": {
+                "numerator": 20,
+                "denominator": 33
+              },
+              "book": "DRAFTKINGS",
+              "identifier": {
+                "bookEventId": "34005255",
+                "bookMarketId": "364701588",
+                "bookOutcomeId": "0QA364701588#2263817527_13L87637Q10Q21",
+                "bookProps": {
+                  "urlOutcomeId": "0QA364701588%232263817527_13L87637Q10Q21"
+                }
+              }
+            },
+            {
+              "american": "-120",
+              "decimal": 1.8333333333333335,
+              "fraction": {
+                "numerator": 5,
+                "denominator": 6
+              },
+              "book": "FANATICS",
+              "identifier": {
+                "bookEventId": "5023114",
+                "bookMarketId": "693518785",
+                "bookOutcomeId": "1710507077"
+              }
+            }
+          ],
+          "label": "No",
+          "books": [
+            "DRAFTKINGS",
+            "FANATICS"
+          ],
+          "primary": true,
+          "bookPrimary": true
+        }
+      ],
+      "isActive": true,
+      "books": [
+        "DRAFTKINGS",
+        "FANATICS"
+      ],
+      "label": "1st Quarter Both Teams To Score",
+      "outcomeMap": [
+        [
+          "ed7d424581209722656b6bbc0030b877286fdac1",
+          "0fa05564dd659dee257071e6a71e4c43bfa666fb"
+        ]
+      ],
+      "referenceOutcomeMap": [
+        [
+          "ed7d424581209722656b6bbc0030b877286fdac1",
+          "0fa05564dd659dee257071e6a71e4c43bfa666fb"
+        ]
+      ],
+      "publicMoney": [],
+      "marketGroupId": "QUARTERS",
+      "marketGroupSortOrder": 8
+    },
+    {
+      "marketId": "7211db2577332c33d01df0b441223da6483f2fbd",
+      "eventId": "d6478002c35b26c983511db774db09a5d27b9f90",
+      "leagueId": "NCAAFB",
+      "sport": "FOOTBALL",
+      "marketType": "GAME_PROP",
+      "propType": "TOTAL",
+      "proposition": "MADE_FIELD_GOALS",
+      "includeOvertime": true,
+      "outcomes": [
+        {
+          "outcomeId": "8b7f31d81f4e9079ec21533ec430d778e3ff6328",
+          "position": "OVER",
+          "line": 1.5,
+          "odds": [
+            {
+              "american": "-400",
+              "decimal": 1.25,
+              "fraction": {
+                "numerator": 1,
+                "denominator": 4
+              },
+              "book": "FANATICS",
+              "identifier": {
+                "bookEventId": "5023114",
+                "bookMarketId": "693518844",
+                "bookOutcomeId": "1710507237"
+              }
+            }
+          ],
+          "label": "Over",
+          "lineLabel": "1.5",
+          "books": [
+            "FANATICS"
+          ],
+          "primary": false,
+          "bookPrimary": false,
+          "stats": {
+            "awaySummaryStat": {
+              "l5": 0.6,
+              "l10": 0.7,
+              "prevSeason": 0.69,
+              "l10Results": [
+                false,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                false,
+                false
+              ]
+            },
+            "homeSummaryStat": {
+              "l5": 0.8,
+              "l10": 0.8,
+              "curSeason": 1.0,
+              "prevSeason": 0.75,
+              "l10Results": [
+                true,
+                true,
+                true,
+                true,
+                false,
+                true,
+                true,
+                false,
+                true,
+                true
+              ]
+            }
+          }
+        },
+        {
+          "outcomeId": "e6e5b75e8b0e55167e04aecb68012635a82653de",
+          "position": "UNDER",
+          "line": 1.5,
+          "odds": [
+            {
+              "american": "+280",
+              "decimal": 3.8,
+              "fraction": {
+                "numerator": 14,
+                "denominator": 5
+              },
+              "book": "FANATICS",
+              "identifier": {
+                "bookEventId": "5023114",
+                "bookMarketId": "693518844",
+                "bookOutcomeId": "1710507244"
+              }
+            }
+          ],
+          "label": "Under",
+          "lineLabel": "1.5",
+          "books": [
+            "FANATICS"
+          ],
+          "primary": false,
+          "bookPrimary": false,
+          "stats": {
+            "awaySummaryStat": {
+              "l5": 0.4,
+              "l10": 0.3,
+              "prevSeason": 0.31,
+              "l10Results": [
+                true,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                true,
+                true
+              ]
+            },
+            "homeSummaryStat": {
+              "l5": 0.2,
+              "l10": 0.2,
+              "curSeason": 0.0,
+              "prevSeason": 0.25,
+              "l10Results": [
+                false,
+                false,
+                false,
+                false,
+                true,
+                false,
+                false,
+                true,
+                false,
+                false
+              ]
+            }
+          }
+        },
+        {
+          "outcomeId": "6bd43d0570dc2170d36cdba62f166d3e961a0129",
+          "position": "OVER",
+          "line": 2.5,
+          "odds": [
+            {
+              "american": "-120",
+              "decimal": 1.8333333333333335,
+              "fraction": {
+                "numerator": 5,
+                "denominator": 6
+              },
+              "book": "FANATICS",
+              "identifier": {
+                "bookEventId": "5023114",
+                "bookMarketId": "693518838",
+                "bookOutcomeId": "1710507220"
+              }
+            }
+          ],
+          "label": "Over",
+          "lineLabel": "2.5",
+          "books": [
+            "FANATICS"
+          ],
+          "primary": true,
+          "bookPrimary": true,
+          "stats": {
+            "awaySummaryStat": {
+              "l5": 0.6,
+              "l10": 0.6,
+              "prevSeason": 0.54,
+              "l10Results": [
+                false,
+                false,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                false,
+                false
+              ]
+            },
+            "homeSummaryStat": {
+              "l5": 0.4,
+              "l10": 0.4,
+              "curSeason": 1.0,
+              "prevSeason": 0.25,
+              "l10Results": [
+                false,
+                false,
+                true,
+                true,
+                false,
+                true,
+                false,
+                false,
+                false,
+                true
+              ]
+            }
+          }
+        },
+        {
+          "outcomeId": "898098aa761dab76a6daf74d30831353080d1f29",
+          "position": "UNDER",
+          "line": 2.5,
+          "odds": [
+            {
+              "american": "-110",
+              "decimal": 1.9090909090909092,
+              "fraction": {
+                "numerator": 10,
+                "denominator": 11
+              },
+              "book": "FANATICS",
+              "identifier": {
+                "bookEventId": "5023114",
+                "bookMarketId": "693518838",
+                "bookOutcomeId": "1710507223"
+              }
+            }
+          ],
+          "label": "Under",
+          "lineLabel": "2.5",
+          "books": [
+            "FANATICS"
+          ],
+          "primary": true,
+          "bookPrimary": true,
+          "stats": {
+            "awaySummaryStat": {
+              "l5": 0.4,
+              "l10": 0.4,
+              "prevSeason": 0.46,
+              "l10Results": [
+                true,
+                true,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                true,
+                true
+              ]
+            },
+            "homeSummaryStat": {
+              "l5": 0.6,
+              "l10": 0.6,
+              "curSeason": 0.0,
+              "prevSeason": 0.75,
+              "l10Results": [
+                true,
+                true,
+                false,
+                false,
+                true,
+                false,
+                true,
+                true,
+                true,
+                false
+              ]
+            }
+          }
+        },
+        {
+          "outcomeId": "46022b8375d28070de381e849f9ad1833e5750b0",
+          "position": "OVER",
+          "line": 3.5,
+          "odds": [
+            {
+              "american": "+235",
+              "decimal": 3.35,
+              "fraction": {
+                "numerator": 47,
+                "denominator": 20
+              },
+              "book": "FANATICS",
+              "identifier": {
+                "bookEventId": "5023114",
+                "bookMarketId": "693518834",
+                "bookOutcomeId": "1710507214"
+              }
+            }
+          ],
+          "label": "Over",
+          "lineLabel": "3.5",
+          "books": [
+            "FANATICS"
+          ],
+          "primary": false,
+          "bookPrimary": false,
+          "stats": {
+            "awaySummaryStat": {
+              "l5": 0.2,
+              "l10": 0.3,
+              "prevSeason": 0.23,
+              "l10Results": [
+                false,
+                false,
+                false,
+                true,
+                true,
+                true,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            "homeSummaryStat": {
+              "l5": 0.2,
+              "l10": 0.2,
+              "curSeason": 0.0,
+              "prevSeason": 0.17,
+              "l10Results": [
+                false,
+                false,
+                false,
+                true,
+                false,
+                true,
+                false,
+                false,
+                false,
+                false
+              ]
+            }
+          }
+        },
+        {
+          "outcomeId": "dc0d177b04d5e60cb329258f9879ec402673172c",
+          "position": "UNDER",
+          "line": 3.5,
+          "odds": [
+            {
+              "american": "-330",
+              "decimal": 1.303030303030303,
+              "fraction": {
+                "numerator": 10,
+                "denominator": 33
+              },
+              "book": "FANATICS",
+              "identifier": {
+                "bookEventId": "5023114",
+                "bookMarketId": "693518834",
+                "bookOutcomeId": "1710507216"
+              }
+            }
+          ],
+          "label": "Under",
+          "lineLabel": "3.5",
+          "books": [
+            "FANATICS"
+          ],
+          "primary": false,
+          "bookPrimary": false,
+          "stats": {
+            "awaySummaryStat": {
+              "l5": 0.8,
+              "l10": 0.7,
+              "prevSeason": 0.77,
+              "l10Results": [
+                true,
+                true,
+                true,
+                false,
+                false,
+                false,
+                true,
+                true,
+                true,
+                true
+              ]
+            },
+            "homeSummaryStat": {
+              "l5": 0.8,
+              "l10": 0.8,
+              "curSeason": 1.0,
+              "prevSeason": 0.83,
+              "l10Results": [
+                true,
+                true,
+                true,
+                false,
+                true,
+                false,
+                true,
+                true,
+                true,
+                true
+              ]
+            }
+          }
+        }
+      ],
+      "isActive": true,
+      "books": [
+        "FANATICS"
+      ],
+      "label": "Total Made Field Goals",
+      "outcomeMap": [
+        [
+          "8b7f31d81f4e9079ec21533ec430d778e3ff6328",
+          "e6e5b75e8b0e55167e04aecb68012635a82653de"
+        ],
+        [
+          "6bd43d0570dc2170d36cdba62f166d3e961a0129",
+          "898098aa761dab76a6daf74d30831353080d1f29"
+        ],
+        [
+          "46022b8375d28070de381e849f9ad1833e5750b0",
+          "dc0d177b04d5e60cb329258f9879ec402673172c"
+        ]
+      ],
+      "referenceOutcomeMap": [
+        [
+          "8b7f31d81f4e9079ec21533ec430d778e3ff6328",
+          "e6e5b75e8b0e55167e04aecb68012635a82653de"
+        ],
+        [
+          "6bd43d0570dc2170d36cdba62f166d3e961a0129",
+          "898098aa761dab76a6daf74d30831353080d1f29"
+        ],
+        [
+          "46022b8375d28070de381e849f9ad1833e5750b0",
+          "dc0d177b04d5e60cb329258f9879ec402673172c"
+        ]
+      ],
+      "publicMoney": [],
+      "marketGroupId": "GAME",
+      "marketGroupSortOrder": 62
+    },
+    {
+      "marketId": "84545924d197fd37e649c3358c50382b63551db0",
+      "eventId": "d6478002c35b26c983511db774db09a5d27b9f90",
+      "leagueId": "NCAAFB",
+      "sport": "FOOTBALL",
+      "marketType": "GAME_PROP",
+      "propType": "TOTAL",
+      "proposition": "OFFENSIVE_TOUCHDOWNS",
+      "includeOvertime": false,
+      "outcomes": [
+        {
+          "outcomeId": "0bf5668f38506484ed4b13a5340b6929ab61eac8",
+          "position": "OVER",
+          "line": 6.5,
+          "odds": [
+            {
+              "american": "-105",
+              "decimal": 1.95238095,
+              "fraction": {
+                "numerator": 20,
+                "denominator": 21
+              },
+              "book": "HARDROCK",
+              "identifier": {
+                "bookEventId": "1362348201570599176",
+                "bookMarketId": "1725417640257782159",
+                "bookOutcomeId": "8122780910937571727"
+              }
+            },
+            {
+              "american": "-105",
+              "decimal": 1.95238095,
+              "fraction": {
+                "numerator": 20,
+                "denominator": 21
+              },
+              "book": "HARDROCK_R",
+              "identifier": {
+                "bookEventId": "1362348201570599176",
+                "bookMarketId": "1725417640257782159",
+                "bookOutcomeId": "8122780910937571727"
+              }
+            }
+          ],
+          "label": "Over",
+          "lineLabel": "6.5",
+          "books": [
+            "HARDROCK",
+            "HARDROCK_R"
+          ],
+          "primary": true,
+          "bookPrimary": true
+        },
+        {
+          "outcomeId": "cdac711249f260ed6cf391413338135c0e6f616d",
+          "position": "UNDER",
+          "line": 6.5,
+          "odds": [
+            {
+              "american": "-125",
+              "decimal": 1.8,
+              "fraction": {
+                "numerator": 4,
+                "denominator": 5
+              },
+              "book": "HARDROCK",
+              "identifier": {
+                "bookEventId": "1362348201570599176",
+                "bookMarketId": "1725417640257782159",
+                "bookOutcomeId": "8725137361098375567"
+              }
+            },
+            {
+              "american": "-125",
+              "decimal": 1.8,
+              "fraction": {
+                "numerator": 4,
+                "denominator": 5
+              },
+              "book": "HARDROCK_R",
+              "identifier": {
+                "bookEventId": "1362348201570599176",
+                "bookMarketId": "1725417640257782159",
+                "bookOutcomeId": "8725137361098375567"
+              }
+            }
+          ],
+          "label": "Under",
+          "lineLabel": "6.5",
+          "books": [
+            "HARDROCK",
+            "HARDROCK_R"
+          ],
+          "primary": true,
+          "bookPrimary": true
+        }
+      ],
+      "isActive": true,
+      "books": [
+        "HARDROCK",
+        "HARDROCK_R"
+      ],
+      "label": "Total Offensive TDs (Exc. OT)",
+      "outcomeMap": [
+        [
+          "0bf5668f38506484ed4b13a5340b6929ab61eac8",
+          "cdac711249f260ed6cf391413338135c0e6f616d"
+        ]
+      ],
+      "referenceOutcomeMap": [
+        [
+          "0bf5668f38506484ed4b13a5340b6929ab61eac8",
+          "cdac711249f260ed6cf391413338135c0e6f616d"
+        ]
+      ],
+      "publicMoney": [],
+      "marketGroupId": "GAME",
+      "marketGroupSortOrder": 60
+    },
+    {
+      "marketId": "e4d55b5851ecd01419a484ac1eafe7bddd230d75",
+      "eventId": "d6478002c35b26c983511db774db09a5d27b9f90",
+      "leagueId": "NCAAFB",
+      "sport": "FOOTBALL",
+      "marketType": "GAME_PROP",
+      "propType": "TOTAL",
+      "proposition": "OFFENSIVE_YARDS",
+      "includeOvertime": false,
+      "outcomes": [
+        {
+          "outcomeId": "5952d3d991f2a57a5749dcfce4d9652d85ff4ffd",
+          "position": "OVER",
+          "line": 794.5,
+          "odds": [
+            {
+              "american": "-115",
+              "decimal": 1.86956522,
+              "fraction": {
+                "numerator": 20,
+                "denominator": 23
+              },
+              "book": "HARDROCK",
+              "identifier": {
+                "bookEventId": "1362348201570599176",
+                "bookMarketId": "5897448369357455753",
+                "bookOutcomeId": "8079442388818461065"
+              }
+            },
+            {
+              "american": "-115",
+              "decimal": 1.86956522,
+              "fraction": {
+                "numerator": 20,
+                "denominator": 23
+              },
+              "book": "HARDROCK_R",
+              "identifier": {
+                "bookEventId": "1362348201570599176",
+                "bookMarketId": "5897448369357455753",
+                "bookOutcomeId": "8079442388818461065"
+              }
+            }
+          ],
+          "label": "Over",
+          "lineLabel": "794.5",
+          "books": [
+            "HARDROCK",
+            "HARDROCK_R"
+          ],
+          "primary": true,
+          "bookPrimary": true
+        },
+        {
+          "outcomeId": "da711e57da0befb72ec712732a4a351b527a886d",
+          "position": "UNDER",
+          "line": 794.5,
+          "odds": [
+            {
+              "american": "-115",
+              "decimal": 1.86956522,
+              "fraction": {
+                "numerator": 20,
+                "denominator": 23
+              },
+              "book": "HARDROCK",
+              "identifier": {
+                "bookEventId": "1362348201570599176",
+                "bookMarketId": "5897448369357455753",
+                "bookOutcomeId": "369306215039238537"
+              }
+            },
+            {
+              "american": "-115",
+              "decimal": 1.86956522,
+              "fraction": {
+                "numerator": 20,
+                "denominator": 23
+              },
+              "book": "HARDROCK_R",
+              "identifier": {
+                "bookEventId": "1362348201570599176",
+                "bookMarketId": "5897448369357455753",
+                "bookOutcomeId": "369306215039238537"
+              }
+            }
+          ],
+          "label": "Under",
+          "lineLabel": "794.5",
+          "books": [
+            "HARDROCK",
+            "HARDROCK_R"
+          ],
+          "primary": true,
+          "bookPrimary": true
+        }
+      ],
+      "isActive": true,
+      "books": [
+        "HARDROCK",
+        "HARDROCK_R"
+      ],
+      "label": "Total Offensive Yards (Exc. OT)",
+      "outcomeMap": [
+        [
+          "5952d3d991f2a57a5749dcfce4d9652d85ff4ffd",
+          "da711e57da0befb72ec712732a4a351b527a886d"
+        ]
+      ],
+      "referenceOutcomeMap": [
+        [
+          "5952d3d991f2a57a5749dcfce4d9652d85ff4ffd",
+          "da711e57da0befb72ec712732a4a351b527a886d"
+        ]
+      ],
+      "publicMoney": [],
+      "marketGroupId": "GAME",
+      "marketGroupSortOrder": 61
+    },
+    {
+      "marketId": "29acd89641da6c11ef8b2abadf1a291888f5d9d3",
+      "eventId": "d6478002c35b26c983511db774db09a5d27b9f90",
+      "leagueId": "NCAAFB",
+      "sport": "FOOTBALL",
+      "marketType": "GAME_PROP",
+      "propType": "TOTAL",
+      "proposition": "PASSING_ATTEMPTS",
+      "includeOvertime": false,
+      "outcomes": [
+        {
+          "outcomeId": "965b4cf19215dbd2c87748536b83c08b869e1787",
+          "position": "OVER",
+          "line": 65.5,
+          "odds": [
+            {
+              "american": "-105",
+              "decimal": 1.95238095,
+              "fraction": {
+                "numerator": 20,
+                "denominator": 21
+              },
+              "book": "HARDROCK",
+              "identifier": {
+                "bookEventId": "1362348201570599176",
+                "bookMarketId": "4707959567416426887",
+                "bookOutcomeId": "5232628924005089671"
+              }
+            },
+            {
+              "american": "-105",
+              "decimal": 1.95238095,
+              "fraction": {
+                "numerator": 20,
+                "denominator": 21
+              },
+              "book": "HARDROCK_R",
+              "identifier": {
+                "bookEventId": "1362348201570599176",
+                "bookMarketId": "4707959567416426887",
+                "bookOutcomeId": "5232628924005089671"
+              }
+            }
+          ],
+          "label": "Over",
+          "lineLabel": "65.5",
+          "books": [
+            "HARDROCK",
+            "HARDROCK_R"
+          ],
+          "primary": true,
+          "bookPrimary": true,
+          "stats": {
+            "awaySummaryStat": {},
+            "homeSummaryStat": {}
+          }
+        },
+        {
+          "outcomeId": "3bcd86fe43e222d375e23a1f1c70a911abc6eeb9",
+          "position": "UNDER",
+          "line": 65.5,
+          "odds": [
+            {
+              "american": "-115",
+              "decimal": 1.86956522,
+              "fraction": {
+                "numerator": 20,
+                "denominator": 23
+              },
+              "book": "HARDROCK",
+              "identifier": {
+                "bookEventId": "1362348201570599176",
+                "bookMarketId": "4707959567416426887",
+                "bookOutcomeId": "8890396246360064391"
+              }
+            },
+            {
+              "american": "-115",
+              "decimal": 1.86956522,
+              "fraction": {
+                "numerator": 20,
+                "denominator": 23
+              },
+              "book": "HARDROCK_R",
+              "identifier": {
+                "bookEventId": "1362348201570599176",
+                "bookMarketId": "4707959567416426887",
+                "bookOutcomeId": "8890396246360064391"
+              }
+            }
+          ],
+          "label": "Under",
+          "lineLabel": "65.5",
+          "books": [
+            "HARDROCK",
+            "HARDROCK_R"
+          ],
+          "primary": true,
+          "bookPrimary": true,
+          "stats": {
+            "awaySummaryStat": {},
+            "homeSummaryStat": {}
+          }
+        }
+      ],
+      "isActive": true,
+      "books": [
+        "HARDROCK",
+        "HARDROCK_R"
+      ],
+      "label": "Total Passing Attempts (Exc. OT)",
+      "outcomeMap": [
+        [
+          "965b4cf19215dbd2c87748536b83c08b869e1787",
+          "3bcd86fe43e222d375e23a1f1c70a911abc6eeb9"
+        ]
+      ],
+      "referenceOutcomeMap": [
+        [
+          "965b4cf19215dbd2c87748536b83c08b869e1787",
+          "3bcd86fe43e222d375e23a1f1c70a911abc6eeb9"
+        ]
+      ],
+      "publicMoney": [],
+      "marketGroupId": "GAME",
+      "marketGroupSortOrder": 32
+    },
+    {
+      "marketId": "1e4096c9eaa81505018528b49d880a848df27b17",
+      "eventId": "d6478002c35b26c983511db774db09a5d27b9f90",
+      "leagueId": "NCAAFB",
+      "sport": "FOOTBALL",
+      "marketType": "GAME_PROP",
+      "propType": "TOTAL",
+      "proposition": "PASSING_COMPLETIONS",
+      "includeOvertime": false,
+      "outcomes": [
+        {
+          "outcomeId": "7d1e2cdc0c78c0f29480f4d52f9bdc27da2214a6",
+          "position": "OVER",
+          "line": 39.5,
+          "odds": [
+            {
+              "american": "-120",
+              "decimal": 1.83333333,
+              "fraction": {
+                "numerator": 5,
+                "denominator": 6
+              },
+              "book": "HARDROCK",
+              "identifier": {
+                "bookEventId": "1362348201570599176",
+                "bookMarketId": "4332471948484411785",
+                "bookOutcomeId": "439110070622617993"
+              }
+            },
+            {
+              "american": "-120",
+              "decimal": 1.83333333,
+              "fraction": {
+                "numerator": 5,
+                "denominator": 6
+              },
+              "book": "HARDROCK_R",
+              "identifier": {
+                "bookEventId": "1362348201570599176",
+                "bookMarketId": "4332471948484411785",
+                "bookOutcomeId": "439110070622617993"
+              }
+            }
+          ],
+          "label": "Over",
+          "lineLabel": "39.5",
+          "books": [
+            "HARDROCK",
+            "HARDROCK_R"
+          ],
+          "primary": true,
+          "bookPrimary": true,
+          "stats": {
+            "awaySummaryStat": {},
+            "homeSummaryStat": {}
+          }
+        },
+        {
+          "outcomeId": "1918c2e9f0a28c65e6451aaf648e3580886a78ec",
+          "position": "UNDER",
+          "line": 39.5,
+          "odds": [
+            {
+              "american": "+100",
+              "decimal": 2.0,
+              "fraction": {
+                "numerator": 1,
+                "denominator": 1
+              },
+              "book": "HARDROCK",
+              "identifier": {
+                "bookEventId": "1362348201570599176",
+                "bookMarketId": "4332471948484411785",
+                "bookOutcomeId": "3590503909875122569"
+              }
+            },
+            {
+              "american": "+100",
+              "decimal": 2.0,
+              "fraction": {
+                "numerator": 1,
+                "denominator": 1
+              },
+              "book": "HARDROCK_R",
+              "identifier": {
+                "bookEventId": "1362348201570599176",
+                "bookMarketId": "4332471948484411785",
+                "bookOutcomeId": "3590503909875122569"
+              }
+            }
+          ],
+          "label": "Under",
+          "lineLabel": "39.5",
+          "books": [
+            "HARDROCK",
+            "HARDROCK_R"
+          ],
+          "primary": true,
+          "bookPrimary": true,
+          "stats": {
+            "awaySummaryStat": {},
+            "homeSummaryStat": {}
+          }
+        }
+      ],
+      "isActive": true,
+      "books": [
+        "HARDROCK",
+        "HARDROCK_R"
+      ],
+      "label": "Total Passing Completions (Exc. OT)",
+      "outcomeMap": [
+        [
+          "7d1e2cdc0c78c0f29480f4d52f9bdc27da2214a6",
+          "1918c2e9f0a28c65e6451aaf648e3580886a78ec"
+        ]
+      ],
+      "referenceOutcomeMap": [
+        [
+          "7d1e2cdc0c78c0f29480f4d52f9bdc27da2214a6",
+          "1918c2e9f0a28c65e6451aaf648e3580886a78ec"
+        ]
+      ],
+      "publicMoney": [],
+      "marketGroupId": "GAME",
+      "marketGroupSortOrder": 33
+    },
+    {
+      "marketId": "92bc258c6de147a7660cf3ed97672ba02544765a",
+      "eventId": "d6478002c35b26c983511db774db09a5d27b9f90",
+      "leagueId": "NCAAFB",
+      "sport": "FOOTBALL",
+      "marketType": "GAME_PROP",
+      "propType": "TOTAL",
+      "proposition": "PASSING_RUSHING_YARDS",
+      "includeOvertime": false,
+      "outcomes": [
+        {
+          "outcomeId": "6e05488b803fb12514bb05b661f8486497491d84",
+          "position": "OVER",
+          "line": 794.5,
+          "odds": [
+            {
+              "american": "-110",
+              "decimal": 1.90909091,
+              "fraction": {
+                "numerator": 10,
+                "denominator": 11
+              },
+              "book": "HARDROCK",
+              "identifier": {
+                "bookEventId": "1362348201570599176",
+                "bookMarketId": "6654053106755699090",
+                "bookOutcomeId": "729567796949811602"
+              }
+            },
+            {
+              "american": "-110",
+              "decimal": 1.90909091,
+              "fraction": {
+                "numerator": 10,
+                "denominator": 11
+              },
+              "book": "HARDROCK_R",
+              "identifier": {
+                "bookEventId": "1362348201570599176",
+                "bookMarketId": "6654053106755699090",
+                "bookOutcomeId": "729567796949811602"
+              }
+            }
+          ],
+          "label": "Over",
+          "lineLabel": "794.5",
+          "books": [
+            "HARDROCK",
+            "HARDROCK_R"
+          ],
+          "primary": true,
+          "bookPrimary": true,
+          "stats": {
+            "awaySummaryStat": {},
+            "homeSummaryStat": {}
+          }
+        },
+        {
+          "outcomeId": "a773f831e6924f72c644506a274866b97dc15233",
+          "position": "UNDER",
+          "line": 794.5,
+          "odds": [
+            {
+              "american": "-110",
+              "decimal": 1.90909091,
+              "fraction": {
+                "numerator": 10,
+                "denominator": 11
+              },
+              "book": "HARDROCK",
+              "identifier": {
+                "bookEventId": "1362348201570599176",
+                "bookMarketId": "6654053106755699090",
+                "bookOutcomeId": "1468184524117639570"
+              }
+            },
+            {
+              "american": "-110",
+              "decimal": 1.90909091,
+              "fraction": {
+                "numerator": 10,
+                "denominator": 11
+              },
+              "book": "HARDROCK_R",
+              "identifier": {
+                "bookEventId": "1362348201570599176",
+                "bookMarketId": "6654053106755699090",
+                "bookOutcomeId": "1468184524117639570"
+              }
+            }
+          ],
+          "label": "Under",
+          "lineLabel": "794.5",
+          "books": [
+            "HARDROCK",
+            "HARDROCK_R"
+          ],
+          "primary": true,
+          "bookPrimary": true,
+          "stats": {
+            "awaySummaryStat": {},
+            "homeSummaryStat": {}
+          }
+        }
+      ],
+      "isActive": true,
+      "books": [
+        "HARDROCK",
+        "HARDROCK_R"
+      ],
+      "label": "Total Pass + Rush Yds (Exc. OT)",
+      "outcomeMap": [
+        [
+          "6e05488b803fb12514bb05b661f8486497491d84",
+          "a773f831e6924f72c644506a274866b97dc15233"
+        ]
+      ],
+      "referenceOutcomeMap": [
+        [
+          "6e05488b803fb12514bb05b661f8486497491d84",
+          "a773f831e6924f72c644506a274866b97dc15233"
+        ]
+      ],
+      "publicMoney": [],
+      "marketGroupId": "GAME",
+      "marketGroupSortOrder": 56
+    },
+    {
+      "marketId": "dc4e6edd387a07b067a7cb1bee7b5c2db8e72cdf",
+      "eventId": "d6478002c35b26c983511db774db09a5d27b9f90",
+      "leagueId": "NCAAFB",
+      "sport": "FOOTBALL",
+      "marketType": "GAME_PROP",
+      "propType": "TOTAL",
+      "proposition": "PASSING_TOUCHDOWNS",
+      "includeOvertime": false,
+      "outcomes": [
+        {
+          "outcomeId": "5d7d01f19eb61683a1643d6ea2a4698202e3d0fb",
+          "position": "OVER",
+          "line": 3.5,
+          "odds": [
+            {
+              "american": "+125",
+              "decimal": 2.25,
+              "fraction": {
+                "numerator": 5,
+                "denominator": 4
+              },
+              "book": "HARDROCK",
+              "identifier": {
+                "bookEventId": "1362348201570599176",
+                "bookMarketId": "8154306108329165222",
+                "bookOutcomeId": "411492448972439974"
+              }
+            },
+            {
+              "american": "+125",
+              "decimal": 2.25,
+              "fraction": {
+                "numerator": 5,
+                "denominator": 4
+              },
+              "book": "HARDROCK_R",
+              "identifier": {
+                "bookEventId": "1362348201570599176",
+                "bookMarketId": "8154306108329165222",
+                "bookOutcomeId": "411492448972439974"
+              }
+            }
+          ],
+          "label": "Over",
+          "lineLabel": "3.5",
+          "books": [
+            "HARDROCK",
+            "HARDROCK_R"
+          ],
+          "primary": true,
+          "bookPrimary": true
+        },
+        {
+          "outcomeId": "f88fe6506aefd92f194e42b3b38314988f91aa4f",
+          "position": "UNDER",
+          "line": 3.5,
+          "odds": [
+            {
+              "american": "-160",
+              "decimal": 1.625,
+              "fraction": {
+                "numerator": 5,
+                "denominator": 8
+              },
+              "book": "HARDROCK",
+              "identifier": {
+                "bookEventId": "1362348201570599176",
+                "bookMarketId": "8154306108329165222",
+                "bookOutcomeId": "2487651877190238630"
+              }
+            },
+            {
+              "american": "-160",
+              "decimal": 1.625,
+              "fraction": {
+                "numerator": 5,
+                "denominator": 8
+              },
+              "book": "HARDROCK_R",
+              "identifier": {
+                "bookEventId": "1362348201570599176",
+                "bookMarketId": "8154306108329165222",
+                "bookOutcomeId": "2487651877190238630"
+              }
+            }
+          ],
+          "label": "Under",
+          "lineLabel": "3.5",
+          "books": [
+            "HARDROCK",
+            "HARDROCK_R"
+          ],
+          "primary": true,
+          "bookPrimary": true
+        }
+      ],
+      "isActive": true,
+      "books": [
+        "HARDROCK",
+        "HARDROCK_R"
+      ],
+      "label": "Total Passing TDs (Exc. OT)",
+      "outcomeMap": [
+        [
+          "5d7d01f19eb61683a1643d6ea2a4698202e3d0fb",
+          "f88fe6506aefd92f194e42b3b38314988f91aa4f"
+        ]
+      ],
+      "referenceOutcomeMap": [
+        [
+          "5d7d01f19eb61683a1643d6ea2a4698202e3d0fb",
+          "f88fe6506aefd92f194e42b3b38314988f91aa4f"
+        ]
+      ],
+      "publicMoney": [],
+      "marketGroupId": "GAME",
+      "marketGroupSortOrder": 51
+    },
+    {
+      "marketId": "9dfa665c365bc4ab91e6aab65bf62fb33781676d",
+      "eventId": "d6478002c35b26c983511db774db09a5d27b9f90",
+      "leagueId": "NCAAFB",
+      "sport": "FOOTBALL",
+      "marketType": "GAME_PROP",
+      "propType": "TOTAL",
+      "proposition": "PASSING_YARDS",
+      "includeOvertime": false,
+      "outcomes": [
+        {
+          "outcomeId": "d8a24e1d600dd10115bc7812dddc063aefc94d95",
+          "position": "OVER",
+          "line": 482.5,
+          "odds": [
+            {
+              "american": "-115",
+              "decimal": 1.86956522,
+              "fraction": {
+                "numerator": 20,
+                "denominator": 23
+              },
+              "book": "HARDROCK",
+              "identifier": {
+                "bookEventId": "1362348201570599176",
+                "bookMarketId": "3802884330355818901",
+                "bookOutcomeId": "7912418990331396501"
+              }
+            },
+            {
+              "american": "-115",
+              "decimal": 1.86956522,
+              "fraction": {
+                "numerator": 20,
+                "denominator": 23
+              },
+              "book": "HARDROCK_R",
+              "identifier": {
+                "bookEventId": "1362348201570599176",
+                "bookMarketId": "3802884330355818901",
+                "bookOutcomeId": "7912418990331396501"
+              }
+            }
+          ],
+          "label": "Over",
+          "lineLabel": "482.5",
+          "books": [
+            "HARDROCK",
+            "HARDROCK_R"
+          ],
+          "primary": true,
+          "bookPrimary": true
+        },
+        {
+          "outcomeId": "c3d6fadd7ebe03ccdd9861e458bfa1805d386021",
+          "position": "UNDER",
+          "line": 482.5,
+          "odds": [
+            {
+              "american": "-115",
+              "decimal": 1.86956522,
+              "fraction": {
+                "numerator": 20,
+                "denominator": 23
+              },
+              "book": "HARDROCK",
+              "identifier": {
+                "bookEventId": "1362348201570599176",
+                "bookMarketId": "3802884330355818901",
+                "bookOutcomeId": "8476213368682840469"
+              }
+            },
+            {
+              "american": "-115",
+              "decimal": 1.86956522,
+              "fraction": {
+                "numerator": 20,
+                "denominator": 23
+              },
+              "book": "HARDROCK_R",
+              "identifier": {
+                "bookEventId": "1362348201570599176",
+                "bookMarketId": "3802884330355818901",
+                "bookOutcomeId": "8476213368682840469"
+              }
+            }
+          ],
+          "label": "Under",
+          "lineLabel": "482.5",
+          "books": [
+            "HARDROCK",
+            "HARDROCK_R"
+          ],
+          "primary": true,
+          "bookPrimary": true
+        }
+      ],
+      "isActive": true,
+      "books": [
+        "HARDROCK",
+        "HARDROCK_R"
+      ],
+      "label": "Total Passing Yards (Exc. OT)",
+      "outcomeMap": [
+        [
+          "d8a24e1d600dd10115bc7812dddc063aefc94d95",
+          "c3d6fadd7ebe03ccdd9861e458bfa1805d386021"
+        ]
+      ],
+      "referenceOutcomeMap": [
+        [
+          "d8a24e1d600dd10115bc7812dddc063aefc94d95",
+          "c3d6fadd7ebe03ccdd9861e458bfa1805d386021"
+        ]
+      ],
+      "publicMoney": [],
+      "marketGroupId": "GAME",
+      "marketGroupSortOrder": 34
+    },
+    {
+      "marketId": "4d85308cc820e57a3289c63f3c99ec7ba24b63a6",
+      "eventId": "d6478002c35b26c983511db774db09a5d27b9f90",
+      "leagueId": "NCAAFB",
+      "sport": "FOOTBALL",
+      "marketType": "GAME_PROP",
+      "propType": "TOTAL",
+      "proposition": "RECEIVING_TOUCHDOWNS",
+      "includeOvertime": false,
+      "outcomes": [
+        {
+          "outcomeId": "8ab33bf3106886b16832333f9c35f82f46b6dd54",
+          "position": "OVER",
+          "line": 3.5,
+          "odds": [
+            {
+              "american": "+125",
+              "decimal": 2.25,
+              "fraction": {
+                "numerator": 5,
+                "denominator": 4
+              },
+              "book": "HARDROCK",
+              "identifier": {
+                "bookEventId": "1362348201570599176",
+                "bookMarketId": "5979630438262636932",
+                "bookOutcomeId": "1402847316947370372"
+              }
+            },
+            {
+              "american": "+125",
+              "decimal": 2.25,
+              "fraction": {
+                "numerator": 5,
+                "denominator": 4
+              },
+              "book": "HARDROCK_R",
+              "identifier": {
+                "bookEventId": "1362348201570599176",
+                "bookMarketId": "5979630438262636932",
+                "bookOutcomeId": "1402847316947370372"
+              }
+            }
+          ],
+          "label": "Over",
+          "lineLabel": "3.5",
+          "books": [
+            "HARDROCK",
+            "HARDROCK_R"
+          ],
+          "primary": true,
+          "bookPrimary": true
+        },
+        {
+          "outcomeId": "ca197f0a796ba476295ef07bc96c35873393f175",
+          "position": "UNDER",
+          "line": 3.5,
+          "odds": [
+            {
+              "american": "-160",
+              "decimal": 1.625,
+              "fraction": {
+                "numerator": 5,
+                "denominator": 8
+              },
+              "book": "HARDROCK",
+              "identifier": {
+                "bookEventId": "1362348201570599176",
+                "bookMarketId": "5979630438262636932",
+                "bookOutcomeId": "387285600975323524"
+              }
+            },
+            {
+              "american": "-160",
+              "decimal": 1.625,
+              "fraction": {
+                "numerator": 5,
+                "denominator": 8
+              },
+              "book": "HARDROCK_R",
+              "identifier": {
+                "bookEventId": "1362348201570599176",
+                "bookMarketId": "5979630438262636932",
+                "bookOutcomeId": "387285600975323524"
+              }
+            }
+          ],
+          "label": "Under",
+          "lineLabel": "3.5",
+          "books": [
+            "HARDROCK",
+            "HARDROCK_R"
+          ],
+          "primary": true,
+          "bookPrimary": true
+        }
+      ],
+      "isActive": true,
+      "books": [
+        "HARDROCK",
+        "HARDROCK_R"
+      ],
+      "label": "Total Receiving TDs (Exc. OT)",
+      "outcomeMap": [
+        [
+          "8ab33bf3106886b16832333f9c35f82f46b6dd54",
+          "ca197f0a796ba476295ef07bc96c35873393f175"
+        ]
+      ],
+      "referenceOutcomeMap": [
+        [
+          "8ab33bf3106886b16832333f9c35f82f46b6dd54",
+          "ca197f0a796ba476295ef07bc96c35873393f175"
+        ]
+      ],
+      "publicMoney": [],
+      "marketGroupId": "GAME",
+      "marketGroupSortOrder": 59
+    },
+    {
+      "marketId": "ad68768fb995a23bb8b530eaa70a929b8e14cdd4",
+      "eventId": "d6478002c35b26c983511db774db09a5d27b9f90",
+      "leagueId": "NCAAFB",
+      "sport": "FOOTBALL",
+      "marketType": "GAME_PROP",
+      "propType": "TOTAL",
+      "proposition": "RECEIVING_YARDS",
+      "includeOvertime": false,
+      "outcomes": [
+        {
+          "outcomeId": "45e615005e9ca850e4e64d7a9db6d572ce780aaf",
+          "position": "OVER",
+          "line": 482.5,
+          "odds": [
+            {
+              "american": "-115",
+              "decimal": 1.86956522,
+              "fraction": {
+                "numerator": 20,
+                "denominator": 23
+              },
+              "book": "HARDROCK",
+              "identifier": {
+                "bookEventId": "1362348201570599176",
+                "bookMarketId": "3790499431380550062",
+                "bookOutcomeId": "7671476410267074990"
+              }
+            },
+            {
+              "american": "-115",
+              "decimal": 1.86956522,
+              "fraction": {
+                "numerator": 20,
+                "denominator": 23
+              },
+              "book": "HARDROCK_R",
+              "identifier": {
+                "bookEventId": "1362348201570599176",
+                "bookMarketId": "3790499431380550062",
+                "bookOutcomeId": "7671476410267074990"
+              }
+            }
+          ],
+          "label": "Over",
+          "lineLabel": "482.5",
+          "books": [
+            "HARDROCK",
+            "HARDROCK_R"
+          ],
+          "primary": true,
+          "bookPrimary": true
+        },
+        {
+          "outcomeId": "66c4031ffb048856d75a20baa75c136bc13c626f",
+          "position": "UNDER",
+          "line": 482.5,
+          "odds": [
+            {
+              "american": "-115",
+              "decimal": 1.86956522,
+              "fraction": {
+                "numerator": 20,
+                "denominator": 23
+              },
+              "book": "HARDROCK",
+              "identifier": {
+                "bookEventId": "1362348201570599176",
+                "bookMarketId": "3790499431380550062",
+                "bookOutcomeId": "6180784933607440814"
+              }
+            },
+            {
+              "american": "-115",
+              "decimal": 1.86956522,
+              "fraction": {
+                "numerator": 20,
+                "denominator": 23
+              },
+              "book": "HARDROCK_R",
+              "identifier": {
+                "bookEventId": "1362348201570599176",
+                "bookMarketId": "3790499431380550062",
+                "bookOutcomeId": "6180784933607440814"
+              }
+            }
+          ],
+          "label": "Under",
+          "lineLabel": "482.5",
+          "books": [
+            "HARDROCK",
+            "HARDROCK_R"
+          ],
+          "primary": true,
+          "bookPrimary": true
+        }
+      ],
+      "isActive": true,
+      "books": [
+        "HARDROCK",
+        "HARDROCK_R"
+      ],
+      "label": "Total Receiving Yards (Exc. OT)",
+      "outcomeMap": [
+        [
+          "45e615005e9ca850e4e64d7a9db6d572ce780aaf",
+          "66c4031ffb048856d75a20baa75c136bc13c626f"
+        ]
+      ],
+      "referenceOutcomeMap": [
+        [
+          "45e615005e9ca850e4e64d7a9db6d572ce780aaf",
+          "66c4031ffb048856d75a20baa75c136bc13c626f"
+        ]
+      ],
+      "publicMoney": [],
+      "marketGroupId": "GAME",
+      "marketGroupSortOrder": 58
+    },
+    {
+      "marketId": "d5ffdb248d2c3ebfb2a3893bfb9f3e6b1f08d083",
+      "eventId": "d6478002c35b26c983511db774db09a5d27b9f90",
+      "leagueId": "NCAAFB",
+      "sport": "FOOTBALL",
+      "marketType": "GAME_PROP",
+      "propType": "TOTAL",
+      "proposition": "RECEPTIONS",
+      "includeOvertime": false,
+      "outcomes": [
+        {
+          "outcomeId": "1eb84e8e2e7b060b88f7c29f2485995a759038f3",
+          "position": "OVER",
+          "line": 39.5,
+          "odds": [
+            {
+              "american": "-120",
+              "decimal": 1.83333333,
+              "fraction": {
+                "numerator": 5,
+                "denominator": 6
+              },
+              "book": "HARDROCK",
+              "identifier": {
+                "bookEventId": "1362348201570599176",
+                "bookMarketId": "2783207288389894558",
+                "bookOutcomeId": "7804747261187064222"
+              }
+            },
+            {
+              "american": "-120",
+              "decimal": 1.83333333,
+              "fraction": {
+                "numerator": 5,
+                "denominator": 6
+              },
+              "book": "HARDROCK_R",
+              "identifier": {
+                "bookEventId": "1362348201570599176",
+                "bookMarketId": "2783207288389894558",
+                "bookOutcomeId": "7804747261187064222"
+              }
+            }
+          ],
+          "label": "Over",
+          "lineLabel": "39.5",
+          "books": [
+            "HARDROCK",
+            "HARDROCK_R"
+          ],
+          "primary": true,
+          "bookPrimary": true
+        },
+        {
+          "outcomeId": "4ce6314c9da70abe29c0f6e9f033d7b83293ef9b",
+          "position": "UNDER",
+          "line": 39.5,
+          "odds": [
+            {
+              "american": "+100",
+              "decimal": 2.0,
+              "fraction": {
+                "numerator": 1,
+                "denominator": 1
+              },
+              "book": "HARDROCK",
+              "identifier": {
+                "bookEventId": "1362348201570599176",
+                "bookMarketId": "2783207288389894558",
+                "bookOutcomeId": "4496853334883434910"
+              }
+            },
+            {
+              "american": "+100",
+              "decimal": 2.0,
+              "fraction": {
+                "numerator": 1,
+                "denominator": 1
+              },
+              "book": "HARDROCK_R",
+              "identifier": {
+                "bookEventId": "1362348201570599176",
+                "bookMarketId": "2783207288389894558",
+                "bookOutcomeId": "4496853334883434910"
+              }
+            }
+          ],
+          "label": "Under",
+          "lineLabel": "39.5",
+          "books": [
+            "HARDROCK",
+            "HARDROCK_R"
+          ],
+          "primary": true,
+          "bookPrimary": true
+        }
+      ],
+      "isActive": true,
+      "books": [
+        "HARDROCK",
+        "HARDROCK_R"
+      ],
+      "label": "Total Receptions (Exc. OT)",
+      "outcomeMap": [
+        [
+          "1eb84e8e2e7b060b88f7c29f2485995a759038f3",
+          "4ce6314c9da70abe29c0f6e9f033d7b83293ef9b"
+        ]
+      ],
+      "referenceOutcomeMap": [
+        [
+          "1eb84e8e2e7b060b88f7c29f2485995a759038f3",
+          "4ce6314c9da70abe29c0f6e9f033d7b83293ef9b"
+        ]
+      ],
+      "publicMoney": [],
+      "marketGroupId": "GAME",
+      "marketGroupSortOrder": 57
+    },
+    {
+      "marketId": "a48802d4ba29003750ccf2453db7e5a21bf4345d",
+      "eventId": "d6478002c35b26c983511db774db09a5d27b9f90",
+      "leagueId": "NCAAFB",
+      "sport": "FOOTBALL",
+      "marketType": "GAME_PROP",
+      "propType": "TOTAL",
+      "proposition": "RUSHING_RECEIVING_YARDS",
+      "includeOvertime": false,
+      "outcomes": [
+        {
+          "outcomeId": "35973ff0095f3c4090c8c79dc2241f198f665dca",
+          "position": "OVER",
+          "line": 794.5,
+          "odds": [
+            {
+              "american": "-115",
+              "decimal": 1.86956522,
+              "fraction": {
+                "numerator": 20,
+                "denominator": 23
+              },
+              "book": "HARDROCK",
+              "identifier": {
+                "bookEventId": "1362348201570599176",
+                "bookMarketId": "8095204987514257795",
+                "bookOutcomeId": "3922619932755493251"
+              }
+            },
+            {
+              "american": "-115",
+              "decimal": 1.86956522,
+              "fraction": {
+                "numerator": 20,
+                "denominator": 23
+              },
+              "book": "HARDROCK_R",
+              "identifier": {
+                "bookEventId": "1362348201570599176",
+                "bookMarketId": "8095204987514257795",
+                "bookOutcomeId": "3922619932755493251"
+              }
+            }
+          ],
+          "label": "Over",
+          "lineLabel": "794.5",
+          "books": [
+            "HARDROCK",
+            "HARDROCK_R"
+          ],
+          "primary": true,
+          "bookPrimary": true
+        },
+        {
+          "outcomeId": "5be4ad271719147b0c54949f434706e4a7a51bbf",
+          "position": "UNDER",
+          "line": 794.5,
+          "odds": [
+            {
+              "american": "-115",
+              "decimal": 1.86956522,
+              "fraction": {
+                "numerator": 20,
+                "denominator": 23
+              },
+              "book": "HARDROCK",
+              "identifier": {
+                "bookEventId": "1362348201570599176",
+                "bookMarketId": "8095204987514257795",
+                "bookOutcomeId": "7259813644916097411"
+              }
+            },
+            {
+              "american": "-115",
+              "decimal": 1.86956522,
+              "fraction": {
+                "numerator": 20,
+                "denominator": 23
+              },
+              "book": "HARDROCK_R",
+              "identifier": {
+                "bookEventId": "1362348201570599176",
+                "bookMarketId": "8095204987514257795",
+                "bookOutcomeId": "7259813644916097411"
+              }
+            }
+          ],
+          "label": "Under",
+          "lineLabel": "794.5",
+          "books": [
+            "HARDROCK",
+            "HARDROCK_R"
+          ],
+          "primary": true,
+          "bookPrimary": true
+        }
+      ],
+      "isActive": true,
+      "books": [
+        "HARDROCK",
+        "HARDROCK_R"
+      ],
+      "label": "Total Rush + Rec Yds (Exc. OT)",
+      "outcomeMap": [
+        [
+          "35973ff0095f3c4090c8c79dc2241f198f665dca",
+          "5be4ad271719147b0c54949f434706e4a7a51bbf"
+        ]
+      ],
+      "referenceOutcomeMap": [
+        [
+          "35973ff0095f3c4090c8c79dc2241f198f665dca",
+          "5be4ad271719147b0c54949f434706e4a7a51bbf"
+        ]
+      ],
+      "publicMoney": [],
+      "marketGroupId": "GAME",
+      "marketGroupSortOrder": 55
+    },
+    {
+      "marketId": "db0853b2fa6daa9c759a53720ad4a824fd5d24da",
+      "eventId": "d6478002c35b26c983511db774db09a5d27b9f90",
+      "leagueId": "NCAAFB",
+      "sport": "FOOTBALL",
+      "marketType": "GAME_PROP",
+      "propType": "TOTAL",
+      "proposition": "RUSHING_TOUCHDOWNS",
+      "includeOvertime": false,
+      "outcomes": [
+        {
+          "outcomeId": "2ef3bab72ebc1dd3a636cb7fc3c0986339bcf051",
+          "position": "OVER",
+          "line": 3.5,
+          "odds": [
+            {
+              "american": "+130",
+              "decimal": 2.3,
+              "fraction": {
+                "numerator": 13,
+                "denominator": 10
+              },
+              "book": "HARDROCK",
+              "identifier": {
+                "bookEventId": "1362348201570599176",
+                "bookMarketId": "1941590422371565976",
+                "bookOutcomeId": "2140874705882710424"
+              }
+            },
+            {
+              "american": "+130",
+              "decimal": 2.3,
+              "fraction": {
+                "numerator": 13,
+                "denominator": 10
+              },
+              "book": "HARDROCK_R",
+              "identifier": {
+                "bookEventId": "1362348201570599176",
+                "bookMarketId": "1941590422371565976",
+                "bookOutcomeId": "2140874705882710424"
+              }
+            }
+          ],
+          "label": "Over",
+          "lineLabel": "3.5",
+          "books": [
+            "HARDROCK",
+            "HARDROCK_R"
+          ],
+          "primary": true,
+          "bookPrimary": true
+        },
+        {
+          "outcomeId": "7ff03f7389e56dfce5efda781bf543b1f4bff158",
+          "position": "UNDER",
+          "line": 3.5,
+          "odds": [
+            {
+              "american": "-170",
+              "decimal": 1.58823529,
+              "fraction": {
+                "numerator": 10,
+                "denominator": 17
+              },
+              "book": "HARDROCK",
+              "identifier": {
+                "bookEventId": "1362348201570599176",
+                "bookMarketId": "1941590422371565976",
+                "bookOutcomeId": "8176824106466017688"
+              }
+            },
+            {
+              "american": "-170",
+              "decimal": 1.58823529,
+              "fraction": {
+                "numerator": 10,
+                "denominator": 17
+              },
+              "book": "HARDROCK_R",
+              "identifier": {
+                "bookEventId": "1362348201570599176",
+                "bookMarketId": "1941590422371565976",
+                "bookOutcomeId": "8176824106466017688"
+              }
+            }
+          ],
+          "label": "Under",
+          "lineLabel": "3.5",
+          "books": [
+            "HARDROCK",
+            "HARDROCK_R"
+          ],
+          "primary": true,
+          "bookPrimary": true
+        }
+      ],
+      "isActive": true,
+      "books": [
+        "HARDROCK",
+        "HARDROCK_R"
+      ],
+      "label": "Total Rushing TDs (Exc. OT)",
+      "outcomeMap": [
+        [
+          "2ef3bab72ebc1dd3a636cb7fc3c0986339bcf051",
+          "7ff03f7389e56dfce5efda781bf543b1f4bff158"
+        ]
+      ],
+      "referenceOutcomeMap": [
+        [
+          "2ef3bab72ebc1dd3a636cb7fc3c0986339bcf051",
+          "7ff03f7389e56dfce5efda781bf543b1f4bff158"
+        ]
+      ],
+      "publicMoney": [],
+      "marketGroupId": "GAME",
+      "marketGroupSortOrder": 52
+    },
+    {
+      "marketId": "452e74e2c6caa4ea4e848dba091223bf95f99fcf",
+      "eventId": "d6478002c35b26c983511db774db09a5d27b9f90",
+      "leagueId": "NCAAFB",
+      "sport": "FOOTBALL",
+      "marketType": "GAME_PROP",
+      "propType": "TOTAL",
+      "proposition": "RUSHING_YARDS",
+      "includeOvertime": false,
+      "outcomes": [
+        {
+          "outcomeId": "0d47d7d17a9973afc605a138c2b03ec79e2fc177",
+          "position": "OVER",
+          "line": 305.5,
+          "odds": [
+            {
+              "american": "-115",
+              "decimal": 1.86956522,
+              "fraction": {
+                "numerator": 20,
+                "denominator": 23
+              },
+              "book": "HARDROCK",
+              "identifier": {
+                "bookEventId": "1362348201570599176",
+                "bookMarketId": "2144953117437985165",
+                "bookOutcomeId": "7221072847437955469"
+              }
+            },
+            {
+              "american": "-115",
+              "decimal": 1.86956522,
+              "fraction": {
+                "numerator": 20,
+                "denominator": 23
+              },
+              "book": "HARDROCK_R",
+              "identifier": {
+                "bookEventId": "1362348201570599176",
+                "bookMarketId": "2144953117437985165",
+                "bookOutcomeId": "7221072847437955469"
+              }
+            }
+          ],
+          "label": "Over",
+          "lineLabel": "305.5",
+          "books": [
+            "HARDROCK",
+            "HARDROCK_R"
+          ],
+          "primary": true,
+          "bookPrimary": true
+        },
+        {
+          "outcomeId": "b2265830968a68131b8b639a930e99f0a2ccea82",
+          "position": "UNDER",
+          "line": 305.5,
+          "odds": [
+            {
+              "american": "-115",
+              "decimal": 1.86956522,
+              "fraction": {
+                "numerator": 20,
+                "denominator": 23
+              },
+              "book": "HARDROCK",
+              "identifier": {
+                "bookEventId": "1362348201570599176",
+                "bookMarketId": "2144953117437985165",
+                "bookOutcomeId": "6915953972683604365"
+              }
+            },
+            {
+              "american": "-115",
+              "decimal": 1.86956522,
+              "fraction": {
+                "numerator": 20,
+                "denominator": 23
+              },
+              "book": "HARDROCK_R",
+              "identifier": {
+                "bookEventId": "1362348201570599176",
+                "bookMarketId": "2144953117437985165",
+                "bookOutcomeId": "6915953972683604365"
+              }
+            }
+          ],
+          "label": "Under",
+          "lineLabel": "305.5",
+          "books": [
+            "HARDROCK",
+            "HARDROCK_R"
+          ],
+          "primary": true,
+          "bookPrimary": true
+        }
+      ],
+      "isActive": true,
+      "books": [
+        "HARDROCK",
+        "HARDROCK_R"
+      ],
+      "label": "Total Rushing Yards (Exc. OT)",
+      "outcomeMap": [
+        [
+          "0d47d7d17a9973afc605a138c2b03ec79e2fc177",
+          "b2265830968a68131b8b639a930e99f0a2ccea82"
+        ]
+      ],
+      "referenceOutcomeMap": [
+        [
+          "0d47d7d17a9973afc605a138c2b03ec79e2fc177",
+          "b2265830968a68131b8b639a930e99f0a2ccea82"
+        ]
+      ],
+      "publicMoney": [],
+      "marketGroupId": "GAME",
+      "marketGroupSortOrder": 53
+    },
+    {
+      "marketId": "30bd8293965ea66c9d209507d828293def19088f",
+      "eventId": "d6478002c35b26c983511db774db09a5d27b9f90",
+      "leagueId": "NCAAFB",
+      "sport": "FOOTBALL",
+      "marketType": "GAME_PROP",
+      "propType": "TOTAL",
+      "proposition": "TOUCHDOWNS",
+      "periods": [
+        1
+      ],
+      "periodLabel": "1Q",
+      "includeOvertime": false,
+      "outcomes": [
+        {
+          "outcomeId": "e6903a08d1fd40a93ae4aacb60329b89b4a0f846",
+          "position": "OVER",
+          "line": 0.5,
+          "odds": [
+            {
+              "american": "-550",
+              "decimal": 1.1818181818181819,
+              "fraction": {
+                "numerator": 2,
+                "denominator": 11
+              },
+              "book": "FANATICS",
+              "identifier": {
+                "bookEventId": "5023114",
+                "bookMarketId": "693518771",
+                "bookOutcomeId": "1710507038"
+              }
+            }
+          ],
+          "label": "Over",
+          "lineLabel": "0.5",
+          "books": [
+            "FANATICS"
+          ],
+          "primary": false,
+          "bookPrimary": false,
+          "stats": {
+            "awaySummaryStat": {
+              "l5": 1.0,
+              "l10": 0.8,
+              "prevSeason": 0.85,
+              "l10Results": [
+                true,
+                false,
+                true,
+                true,
+                false,
+                true,
+                true,
+                true,
+                true,
+                true
+              ]
+            },
+            "homeSummaryStat": {
+              "l5": 0.6,
+              "l10": 0.6,
+              "curSeason": 0.0,
+              "prevSeason": 0.75,
+              "l10Results": [
+                true,
+                true,
+                true,
+                false,
+                false,
+                true,
+                false,
+                true,
+                true,
+                false
+              ]
+            }
+          }
+        },
+        {
+          "outcomeId": "0b30df8ea46ec9f088ceee01a5d1f54821f9687c",
+          "position": "UNDER",
+          "line": 0.5,
+          "odds": [
+            {
+              "american": "+360",
+              "decimal": 4.6,
+              "fraction": {
+                "numerator": 18,
+                "denominator": 5
+              },
+              "book": "FANATICS",
+              "identifier": {
+                "bookEventId": "5023114",
+                "bookMarketId": "693518771",
+                "bookOutcomeId": "1710507043"
+              }
+            }
+          ],
+          "label": "Under",
+          "lineLabel": "0.5",
+          "books": [
+            "FANATICS"
+          ],
+          "primary": false,
+          "bookPrimary": false,
+          "stats": {
+            "awaySummaryStat": {
+              "l5": 0.0,
+              "l10": 0.2,
+              "prevSeason": 0.15,
+              "l10Results": [
+                false,
+                true,
+                false,
+                false,
+                true,
+                false,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            "homeSummaryStat": {
+              "l5": 0.4,
+              "l10": 0.4,
+              "curSeason": 1.0,
+              "prevSeason": 0.25,
+              "l10Results": [
+                false,
+                false,
+                false,
+                true,
+                true,
+                false,
+                true,
+                false,
+                false,
+                true
+              ]
+            }
+          }
+        },
+        {
+          "outcomeId": "c82c523ba91af59803980056ccab879e8e5f4285",
+          "position": "OVER",
+          "line": 1.5,
+          "odds": [
+            {
+              "american": "+105",
+              "decimal": 2.05,
+              "fraction": {
+                "numerator": 21,
+                "denominator": 20
+              },
+              "book": "DRAFTKINGS",
+              "identifier": {
+                "bookEventId": "34005255",
+                "bookMarketId": "3_86071791",
+                "bookOutcomeId": "0OU86071791O150_1",
+                "bookProps": {
+                  "urlOutcomeId": "0OU86071791O150_1"
+                }
+              }
+            },
+            {
+              "american": "+105",
+              "decimal": 2.05,
+              "fraction": {
+                "numerator": 21,
+                "denominator": 20
+              },
+              "book": "FANATICS",
+              "identifier": {
+                "bookEventId": "5023114",
+                "bookMarketId": "693518916",
+                "bookOutcomeId": "1710507394"
+              }
+            }
+          ],
+          "label": "Over",
+          "lineLabel": "1.5",
+          "books": [
+            "DRAFTKINGS",
+            "FANATICS"
+          ],
+          "primary": true,
+          "bookPrimary": true,
+          "stats": {
+            "awaySummaryStat": {
+              "l5": 0.2,
+              "l10": 0.1,
+              "prevSeason": 0.15,
+              "l10Results": [
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                true
+              ]
+            },
+            "homeSummaryStat": {
+              "l5": 0.0,
+              "l10": 0.1,
+              "curSeason": 0.0,
+              "prevSeason": 0.33,
+              "l10Results": [
+                false,
+                false,
+                true,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false
+              ]
+            }
+          }
+        },
+        {
+          "outcomeId": "e1b1846d2471aea9ad087c0c8912a688dcd76532",
+          "position": "UNDER",
+          "line": 1.5,
+          "odds": [
+            {
+              "american": "-135",
+              "decimal": 1.7407407407407407,
+              "fraction": {
+                "numerator": 20,
+                "denominator": 27
+              },
+              "book": "DRAFTKINGS",
+              "identifier": {
+                "bookEventId": "34005255",
+                "bookMarketId": "3_86071791",
+                "bookOutcomeId": "0OU86071791U150_3",
+                "bookProps": {
+                  "urlOutcomeId": "0OU86071791U150_3"
+                }
+              }
+            },
+            {
+              "american": "-140",
+              "decimal": 1.7142857142857144,
+              "fraction": {
+                "numerator": 5,
+                "denominator": 7
+              },
+              "book": "FANATICS",
+              "identifier": {
+                "bookEventId": "5023114",
+                "bookMarketId": "693518916",
+                "bookOutcomeId": "1710507396"
+              }
+            }
+          ],
+          "label": "Under",
+          "lineLabel": "1.5",
+          "books": [
+            "DRAFTKINGS",
+            "FANATICS"
+          ],
+          "primary": true,
+          "bookPrimary": true,
+          "stats": {
+            "awaySummaryStat": {
+              "l5": 0.8,
+              "l10": 0.9,
+              "prevSeason": 0.85,
+              "l10Results": [
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                false
+              ]
+            },
+            "homeSummaryStat": {
+              "l5": 1.0,
+              "l10": 0.9,
+              "curSeason": 1.0,
+              "prevSeason": 0.67,
+              "l10Results": [
+                true,
+                true,
+                false,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true
+              ]
+            }
+          }
+        }
+      ],
+      "isActive": true,
+      "books": [
+        "DRAFTKINGS",
+        "FANATICS"
+      ],
+      "label": "1st Quarter Total Touchdowns",
+      "outcomeMap": [
+        [
+          "e6903a08d1fd40a93ae4aacb60329b89b4a0f846",
+          "0b30df8ea46ec9f088ceee01a5d1f54821f9687c"
+        ],
+        [
+          "c82c523ba91af59803980056ccab879e8e5f4285",
+          "e1b1846d2471aea9ad087c0c8912a688dcd76532"
+        ]
+      ],
+      "referenceOutcomeMap": [
+        [
+          "e6903a08d1fd40a93ae4aacb60329b89b4a0f846",
+          "0b30df8ea46ec9f088ceee01a5d1f54821f9687c"
+        ],
+        [
+          "c82c523ba91af59803980056ccab879e8e5f4285",
+          "e1b1846d2471aea9ad087c0c8912a688dcd76532"
+        ]
+      ],
+      "publicMoney": [],
+      "marketGroupId": "QUARTERS",
+      "marketGroupSortOrder": 50
+    },
+    {
+      "marketId": "81889dd55025aef1a91c6b18aa4f556fdc3a33be",
+      "eventId": "d6478002c35b26c983511db774db09a5d27b9f90",
+      "leagueId": "NCAAFB",
+      "sport": "FOOTBALL",
+      "marketType": "GAME_PROP",
+      "propType": "TOTAL",
+      "proposition": "TOUCHDOWNS",
+      "periods": [
+        4
+      ],
+      "periodLabel": "4Q",
+      "includeOvertime": false,
+      "outcomes": [
+        {
+          "outcomeId": "ba73e6ffca47595c78dfefedb52b01efd453108a",
+          "position": "OVER",
+          "line": 1.5,
+          "odds": [
+            {
+              "american": "-160",
+              "decimal": 1.625,
+              "fraction": {
+                "numerator": 5,
+                "denominator": 8
+              },
+              "book": "DRAFTKINGS",
+              "identifier": {
+                "bookEventId": "34005255",
+                "bookMarketId": "3_86071794",
+                "bookOutcomeId": "0OU86071794O150_1",
+                "bookProps": {
+                  "urlOutcomeId": "0OU86071794O150_1"
+                }
+              }
+            }
+          ],
+          "label": "Over",
+          "lineLabel": "1.5",
+          "books": [
+            "DRAFTKINGS"
+          ],
+          "primary": true,
+          "bookPrimary": true,
+          "stats": {
+            "awaySummaryStat": {
+              "l5": 0.8,
+              "l10": 0.7,
+              "prevSeason": 0.69,
+              "l10Results": [
+                true,
+                true,
+                false,
+                true,
+                false,
+                false,
+                true,
+                true,
+                true,
+                true
+              ]
+            },
+            "homeSummaryStat": {
+              "l5": 0.8,
+              "l10": 0.8,
+              "curSeason": 1.0,
+              "prevSeason": 0.67,
+              "l10Results": [
+                true,
+                true,
+                true,
+                false,
+                true,
+                false,
+                true,
+                true,
+                true,
+                true
+              ]
+            }
+          }
+        },
+        {
+          "outcomeId": "815899b680d26fcb5f26c5acab7a9f623c987ce5",
+          "position": "UNDER",
+          "line": 1.5,
+          "odds": [
+            {
+              "american": "+124",
+              "decimal": 2.24,
+              "fraction": {
+                "numerator": 31,
+                "denominator": 25
+              },
+              "book": "DRAFTKINGS",
+              "identifier": {
+                "bookEventId": "34005255",
+                "bookMarketId": "3_86071794",
+                "bookOutcomeId": "0OU86071794U150_3",
+                "bookProps": {
+                  "urlOutcomeId": "0OU86071794U150_3"
+                }
+              }
+            }
+          ],
+          "label": "Under",
+          "lineLabel": "1.5",
+          "books": [
+            "DRAFTKINGS"
+          ],
+          "primary": true,
+          "bookPrimary": true,
+          "stats": {
+            "awaySummaryStat": {
+              "l5": 0.2,
+              "l10": 0.3,
+              "prevSeason": 0.31,
+              "l10Results": [
+                false,
+                false,
+                true,
+                false,
+                true,
+                true,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            "homeSummaryStat": {
+              "l5": 0.2,
+              "l10": 0.2,
+              "curSeason": 0.0,
+              "prevSeason": 0.33,
+              "l10Results": [
+                false,
+                false,
+                false,
+                true,
+                false,
+                true,
+                false,
+                false,
+                false,
+                false
+              ]
+            }
+          }
+        }
+      ],
+      "isActive": true,
+      "books": [
+        "DRAFTKINGS"
+      ],
+      "label": "4th Quarter Total Touchdowns (Exc. OT)",
+      "outcomeMap": [
+        [
+          "ba73e6ffca47595c78dfefedb52b01efd453108a",
+          "815899b680d26fcb5f26c5acab7a9f623c987ce5"
+        ]
+      ],
+      "referenceOutcomeMap": [
+        [
+          "ba73e6ffca47595c78dfefedb52b01efd453108a",
+          "815899b680d26fcb5f26c5acab7a9f623c987ce5"
+        ]
+      ],
+      "publicMoney": [],
+      "marketGroupId": "QUARTERS",
+      "marketGroupSortOrder": 90
+    },
+    {
+      "marketId": "5f9ea06a13c5e49341fe804f135af6f609fff7f0",
+      "eventId": "d6478002c35b26c983511db774db09a5d27b9f90",
+      "leagueId": "NCAAFB",
+      "sport": "FOOTBALL",
+      "marketType": "GAME_PROP",
+      "propType": "TOTAL",
+      "proposition": "TOUCHDOWNS",
+      "periods": [
+        1,
+        2
+      ],
+      "periodLabel": "1H",
+      "includeOvertime": false,
+      "outcomes": [
+        {
+          "outcomeId": "59415abc1f1d7ac4ddd6ef4e52a6c17606f4217f",
+          "position": "OVER",
+          "line": 3.5,
+          "odds": [
+            {
+              "american": "+135",
+              "decimal": 2.35,
+              "fraction": {
+                "numerator": 27,
+                "denominator": 20
+              },
+              "book": "DRAFTKINGS",
+              "identifier": {
+                "bookEventId": "34005255",
+                "bookMarketId": "3_86071789",
+                "bookOutcomeId": "0OU86071789O350_1",
+                "bookProps": {
+                  "urlOutcomeId": "0OU86071789O350_1"
+                }
+              }
+            },
+            {
+              "american": "+130",
+              "decimal": 2.3,
+              "fraction": {
+                "numerator": 13,
+                "denominator": 10
+              },
+              "book": "FANATICS",
+              "identifier": {
+                "bookEventId": "5023114",
+                "bookMarketId": "693518848",
+                "bookOutcomeId": "1710507239"
+              }
+            },
+            {
+              "american": "+135",
+              "decimal": 2.35,
+              "fraction": {
+                "numerator": 27,
+                "denominator": 20
+              },
+              "book": "FLIFF",
+              "identifier": {
+                "bookEventId": "389161_c_p_209_prematch",
+                "bookMarketId": "2c335134",
+                "bookOutcomeId": "180433_p_209_prematch"
+              }
+            }
+          ],
+          "label": "Over",
+          "lineLabel": "3.5",
+          "books": [
+            "DRAFTKINGS",
+            "FLIFF",
+            "FANATICS"
+          ],
+          "primary": true,
+          "bookPrimary": true,
+          "stats": {
+            "awaySummaryStat": {
+              "l5": 0.0,
+              "l10": 0.0,
+              "prevSeason": 0.08,
+              "l10Results": [
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            "homeSummaryStat": {
+              "l5": 0.2,
+              "l10": 0.3,
+              "curSeason": 0.0,
+              "prevSeason": 0.42,
+              "l10Results": [
+                true,
+                false,
+                true,
+                false,
+                false,
+                false,
+                false,
+                false,
+                true,
+                false
+              ]
+            }
+          }
+        },
+        {
+          "outcomeId": "e4630e2610f57ec1e14f1fb0fef0e56848886ff5",
+          "position": "UNDER",
+          "line": 3.5,
+          "odds": [
+            {
+              "american": "-175",
+              "decimal": 1.5714285714285714,
+              "fraction": {
+                "numerator": 4,
+                "denominator": 7
+              },
+              "book": "DRAFTKINGS",
+              "identifier": {
+                "bookEventId": "34005255",
+                "bookMarketId": "3_86071789",
+                "bookOutcomeId": "0OU86071789U350_3",
+                "bookProps": {
+                  "urlOutcomeId": "0OU86071789U350_3"
+                }
+              }
+            },
+            {
+              "american": "-170",
+              "decimal": 1.5882352941176472,
+              "fraction": {
+                "numerator": 10,
+                "denominator": 17
+              },
+              "book": "FANATICS",
+              "identifier": {
+                "bookEventId": "5023114",
+                "bookMarketId": "693518848",
+                "bookOutcomeId": "1710507242"
+              }
+            },
+            {
+              "american": "-180",
+              "decimal": 1.5555555555555556,
+              "fraction": {
+                "numerator": 5,
+                "denominator": 9
+              },
+              "book": "FLIFF",
+              "identifier": {
+                "bookEventId": "389161_c_p_209_prematch",
+                "bookMarketId": "2c335134",
+                "bookOutcomeId": "180432_p_209_prematch"
+              }
+            }
+          ],
+          "label": "Under",
+          "lineLabel": "3.5",
+          "books": [
+            "DRAFTKINGS",
+            "FLIFF",
+            "FANATICS"
+          ],
+          "primary": true,
+          "bookPrimary": true,
+          "stats": {
+            "awaySummaryStat": {
+              "l5": 1.0,
+              "l10": 1.0,
+              "prevSeason": 0.92,
+              "l10Results": [
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true
+              ]
+            },
+            "homeSummaryStat": {
+              "l5": 0.8,
+              "l10": 0.7,
+              "curSeason": 1.0,
+              "prevSeason": 0.58,
+              "l10Results": [
+                false,
+                true,
+                false,
+                true,
+                true,
+                true,
+                true,
+                true,
+                false,
+                true
+              ]
+            }
+          }
+        }
+      ],
+      "isActive": true,
+      "books": [
+        "DRAFTKINGS",
+        "FANATICS",
+        "FLIFF"
+      ],
+      "label": "1st Half Total Touchdowns",
+      "outcomeMap": [
+        [
+          "59415abc1f1d7ac4ddd6ef4e52a6c17606f4217f",
+          "e4630e2610f57ec1e14f1fb0fef0e56848886ff5"
+        ]
+      ],
+      "referenceOutcomeMap": [
+        [
+          "59415abc1f1d7ac4ddd6ef4e52a6c17606f4217f",
+          "e4630e2610f57ec1e14f1fb0fef0e56848886ff5"
+        ]
+      ],
+      "publicMoney": [],
+      "marketGroupId": "HALVES",
+      "marketGroupSortOrder": 50
+    },
+    {
+      "marketId": "e2d22183bd71a12402cec17a2757ac652c46a576",
+      "eventId": "d6478002c35b26c983511db774db09a5d27b9f90",
+      "leagueId": "NCAAFB",
+      "sport": "FOOTBALL",
+      "marketType": "GAME_PROP",
+      "propType": "TOTAL",
+      "proposition": "TOUCHDOWNS",
+      "periods": [
+        3
+      ],
+      "periodLabel": "3Q",
+      "includeOvertime": false,
+      "outcomes": [
+        {
+          "outcomeId": "b9e67a6a6673cfa846d7c5588ac2085692cebfd2",
+          "position": "OVER",
+          "line": 1.5,
+          "odds": [
+            {
+              "american": "+105",
+              "decimal": 2.05,
+              "fraction": {
+                "numerator": 21,
+                "denominator": 20
+              },
+              "book": "DRAFTKINGS",
+              "identifier": {
+                "bookEventId": "34005255",
+                "bookMarketId": "3_86071793",
+                "bookOutcomeId": "0OU86071793O150_1",
+                "bookProps": {
+                  "urlOutcomeId": "0OU86071793O150_1"
+                }
+              }
+            }
+          ],
+          "label": "Over",
+          "lineLabel": "1.5",
+          "books": [
+            "DRAFTKINGS"
+          ],
+          "primary": true,
+          "bookPrimary": true,
+          "stats": {
+            "awaySummaryStat": {
+              "l5": 0.6,
+              "l10": 0.5,
+              "prevSeason": 0.38,
+              "l10Results": [
+                true,
+                false,
+                false,
+                true,
+                false,
+                true,
+                true,
+                false,
+                true,
+                false
+              ]
+            },
+            "homeSummaryStat": {
+              "l5": 0.4,
+              "l10": 0.5,
+              "curSeason": 0.0,
+              "prevSeason": 0.58,
+              "l10Results": [
+                true,
+                true,
+                false,
+                false,
+                true,
+                false,
+                true,
+                false,
+                true,
+                false
+              ]
+            }
+          }
+        },
+        {
+          "outcomeId": "364e98e82d09d52bd998aee6a3bf7daab6575f53",
+          "position": "UNDER",
+          "line": 1.5,
+          "odds": [
+            {
+              "american": "-135",
+              "decimal": 1.7407407407407407,
+              "fraction": {
+                "numerator": 20,
+                "denominator": 27
+              },
+              "book": "DRAFTKINGS",
+              "identifier": {
+                "bookEventId": "34005255",
+                "bookMarketId": "3_86071793",
+                "bookOutcomeId": "0OU86071793U150_3",
+                "bookProps": {
+                  "urlOutcomeId": "0OU86071793U150_3"
+                }
+              }
+            }
+          ],
+          "label": "Under",
+          "lineLabel": "1.5",
+          "books": [
+            "DRAFTKINGS"
+          ],
+          "primary": true,
+          "bookPrimary": true,
+          "stats": {
+            "awaySummaryStat": {
+              "l5": 0.4,
+              "l10": 0.5,
+              "prevSeason": 0.62,
+              "l10Results": [
+                false,
+                true,
+                true,
+                false,
+                true,
+                false,
+                false,
+                true,
+                false,
+                true
+              ]
+            },
+            "homeSummaryStat": {
+              "l5": 0.6,
+              "l10": 0.5,
+              "curSeason": 1.0,
+              "prevSeason": 0.42,
+              "l10Results": [
+                false,
+                false,
+                true,
+                true,
+                false,
+                true,
+                false,
+                true,
+                false,
+                true
+              ]
+            }
+          }
+        }
+      ],
+      "isActive": true,
+      "books": [
+        "DRAFTKINGS"
+      ],
+      "label": "3rd Quarter Total Touchdowns",
+      "outcomeMap": [
+        [
+          "b9e67a6a6673cfa846d7c5588ac2085692cebfd2",
+          "364e98e82d09d52bd998aee6a3bf7daab6575f53"
+        ]
+      ],
+      "referenceOutcomeMap": [
+        [
+          "b9e67a6a6673cfa846d7c5588ac2085692cebfd2",
+          "364e98e82d09d52bd998aee6a3bf7daab6575f53"
+        ]
+      ],
+      "publicMoney": [],
+      "marketGroupId": "QUARTERS",
+      "marketGroupSortOrder": 70
+    },
+    {
+      "marketId": "ede53382f698e9294fccc5ac3bfce1def275b542",
+      "eventId": "d6478002c35b26c983511db774db09a5d27b9f90",
+      "leagueId": "NCAAFB",
+      "sport": "FOOTBALL",
+      "marketType": "GAME_PROP",
+      "propType": "TOTAL",
+      "proposition": "TOUCHDOWNS",
+      "includeOvertime": true,
+      "outcomes": [
+        {
+          "outcomeId": "2b18f48d04e6033ba8a7a6c804938d0bc8c6b586",
+          "position": "UNDER",
+          "line": 0.5,
+          "odds": [
+            {
+              "american": "+8000",
+              "decimal": 81.0,
+              "fraction": {
+                "numerator": 80,
+                "denominator": 1
+              },
+              "book": "DRAFTKINGS",
+              "identifier": {
+                "bookEventId": "34005255",
+                "bookMarketId": "364701587",
+                "bookOutcomeId": "0QA364701587#2263817478_13L87637Q10Q20",
+                "bookProps": {
+                  "urlOutcomeId": "0QA364701587%232263817478_13L87637Q10Q20"
+                }
+              }
+            }
+          ],
+          "label": "Under",
+          "lineLabel": "0.5",
+          "books": [
+            "DRAFTKINGS"
+          ],
+          "primary": false,
+          "bookPrimary": false,
+          "stats": {
+            "awaySummaryStat": {
+              "l5": 0.0,
+              "l10": 0.0,
+              "prevSeason": 0.0,
+              "l10Results": [
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            "homeSummaryStat": {
+              "l5": 0.0,
+              "l10": 0.0,
+              "curSeason": 0.0,
+              "prevSeason": 0.0,
+              "l10Results": [
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false
+              ]
+            }
+          }
+        },
+        {
+          "outcomeId": "8d9909cc35ec9dba7ac0d63ee217408c907f73df",
+          "position": "OVER",
+          "line": 5.5,
+          "odds": [
+            {
+              "american": "-230",
+              "decimal": 1.434782608695652,
+              "fraction": {
+                "numerator": 10,
+                "denominator": 23
+              },
+              "book": "FANATICS",
+              "identifier": {
+                "bookEventId": "5023114",
+                "bookMarketId": "693518902",
+                "bookOutcomeId": "1710507356"
+              }
+            }
+          ],
+          "label": "Over",
+          "lineLabel": "5.5",
+          "books": [
+            "FANATICS"
+          ],
+          "primary": false,
+          "bookPrimary": false,
+          "stats": {
+            "awaySummaryStat": {
+              "l5": 0.6,
+              "l10": 0.6,
+              "prevSeason": 0.62,
+              "l10Results": [
+                true,
+                true,
+                false,
+                true,
+                false,
+                false,
+                true,
+                false,
+                true,
+                true
+              ]
+            },
+            "homeSummaryStat": {
+              "l5": 0.6,
+              "l10": 0.7,
+              "curSeason": 1.0,
+              "prevSeason": 0.75,
+              "l10Results": [
+                true,
+                true,
+                true,
+                false,
+                true,
+                false,
+                true,
+                false,
+                true,
+                true
+              ]
+            }
+          }
+        },
+        {
+          "outcomeId": "294a285ddefc24159d71ce011f4666f551f90ec2",
+          "position": "UNDER",
+          "line": 5.5,
+          "odds": [
+            {
+              "american": "+170",
+              "decimal": 2.7,
+              "fraction": {
+                "numerator": 17,
+                "denominator": 10
+              },
+              "book": "FANATICS",
+              "identifier": {
+                "bookEventId": "5023114",
+                "bookMarketId": "693518902",
+                "bookOutcomeId": "1710507358"
+              }
+            }
+          ],
+          "label": "Under",
+          "lineLabel": "5.5",
+          "books": [
+            "FANATICS"
+          ],
+          "primary": false,
+          "bookPrimary": false,
+          "stats": {
+            "awaySummaryStat": {
+              "l5": 0.4,
+              "l10": 0.4,
+              "prevSeason": 0.38,
+              "l10Results": [
+                false,
+                false,
+                true,
+                false,
+                true,
+                true,
+                false,
+                true,
+                false,
+                false
+              ]
+            },
+            "homeSummaryStat": {
+              "l5": 0.4,
+              "l10": 0.3,
+              "curSeason": 0.0,
+              "prevSeason": 0.25,
+              "l10Results": [
+                false,
+                false,
+                false,
+                true,
+                false,
+                true,
+                false,
+                true,
+                false,
+                false
+              ]
+            }
+          }
+        },
+        {
+          "outcomeId": "f3cfd14935d5f85601849766982604f09e2cdcdb",
+          "position": "OVER",
+          "line": 6.5,
+          "odds": [
+            {
+              "american": "-115",
+              "decimal": 1.8695652173913042,
+              "fraction": {
+                "numerator": 20,
+                "denominator": 23
+              },
+              "book": "DRAFTKINGS",
+              "identifier": {
+                "bookEventId": "34005255",
+                "bookMarketId": "3_86071774",
+                "bookOutcomeId": "0OU86071774O650_1",
+                "bookProps": {
+                  "urlOutcomeId": "0OU86071774O650_1"
+                }
+              }
+            },
+            {
+              "american": "-115",
+              "decimal": 1.8695652173913042,
+              "fraction": {
+                "numerator": 20,
+                "denominator": 23
+              },
+              "book": "FANATICS",
+              "identifier": {
+                "bookEventId": "5023114",
+                "bookMarketId": "693518876",
+                "bookOutcomeId": "1710507298"
+              }
+            },
+            {
+              "american": "-120",
+              "decimal": 1.8333333333333335,
+              "fraction": {
+                "numerator": 5,
+                "denominator": 6
+              },
+              "book": "FLIFF",
+              "identifier": {
+                "bookEventId": "389161_c_p_209_prematch",
+                "bookMarketId": "18ad538a",
+                "bookOutcomeId": "180435_p_209_prematch"
+              }
+            }
+          ],
+          "label": "Over",
+          "lineLabel": "6.5",
+          "books": [
+            "DRAFTKINGS",
+            "FLIFF",
+            "FANATICS"
+          ],
+          "primary": true,
+          "bookPrimary": true,
+          "stats": {
+            "awaySummaryStat": {
+              "l5": 0.4,
+              "l10": 0.4,
+              "prevSeason": 0.46,
+              "l10Results": [
+                true,
+                false,
+                false,
+                true,
+                false,
+                false,
+                true,
+                false,
+                true,
+                false
+              ]
+            },
+            "homeSummaryStat": {
+              "l5": 0.2,
+              "l10": 0.4,
+              "curSeason": 0.0,
+              "prevSeason": 0.5,
+              "l10Results": [
+                true,
+                false,
+                true,
+                false,
+                true,
+                false,
+                false,
+                false,
+                true,
+                false
+              ]
+            }
+          }
+        },
+        {
+          "outcomeId": "44c6ea5c0fc9b70980d2cafb5834b24d617a4502",
+          "position": "UNDER",
+          "line": 6.5,
+          "odds": [
+            {
+              "american": "-115",
+              "decimal": 1.8695652173913042,
+              "fraction": {
+                "numerator": 20,
+                "denominator": 23
+              },
+              "book": "DRAFTKINGS",
+              "identifier": {
+                "bookEventId": "34005255",
+                "bookMarketId": "3_86071774",
+                "bookOutcomeId": "0OU86071774U650_3",
+                "bookProps": {
+                  "urlOutcomeId": "0OU86071774U650_3"
+                }
+              }
+            },
+            {
+              "american": "-115",
+              "decimal": 1.8695652173913042,
+              "fraction": {
+                "numerator": 20,
+                "denominator": 23
+              },
+              "book": "FANATICS",
+              "identifier": {
+                "bookEventId": "5023114",
+                "bookMarketId": "693518876",
+                "bookOutcomeId": "1710507301"
+              }
+            },
+            {
+              "american": "-120",
+              "decimal": 1.8333333333333335,
+              "fraction": {
+                "numerator": 5,
+                "denominator": 6
+              },
+              "book": "FLIFF",
+              "identifier": {
+                "bookEventId": "389161_c_p_209_prematch",
+                "bookMarketId": "18ad538a",
+                "bookOutcomeId": "180434_p_209_prematch"
+              }
+            }
+          ],
+          "label": "Under",
+          "lineLabel": "6.5",
+          "books": [
+            "DRAFTKINGS",
+            "FLIFF",
+            "FANATICS"
+          ],
+          "primary": true,
+          "bookPrimary": true,
+          "stats": {
+            "awaySummaryStat": {
+              "l5": 0.6,
+              "l10": 0.6,
+              "prevSeason": 0.54,
+              "l10Results": [
+                false,
+                true,
+                true,
+                false,
+                true,
+                true,
+                false,
+                true,
+                false,
+                true
+              ]
+            },
+            "homeSummaryStat": {
+              "l5": 0.8,
+              "l10": 0.6,
+              "curSeason": 1.0,
+              "prevSeason": 0.5,
+              "l10Results": [
+                false,
+                true,
+                false,
+                true,
+                false,
+                true,
+                true,
+                true,
+                false,
+                true
+              ]
+            }
+          }
+        },
+        {
+          "outcomeId": "cafc80286ad66c3d2337522852a83cac3c7d5265",
+          "position": "OVER",
+          "line": 7.5,
+          "odds": [
+            {
+              "american": "+175",
+              "decimal": 2.75,
+              "fraction": {
+                "numerator": 7,
+                "denominator": 4
+              },
+              "book": "FANATICS",
+              "identifier": {
+                "bookEventId": "5023114",
+                "bookMarketId": "693518879",
+                "bookOutcomeId": "1710507304"
+              }
+            }
+          ],
+          "label": "Over",
+          "lineLabel": "7.5",
+          "books": [
+            "FANATICS"
+          ],
+          "primary": false,
+          "bookPrimary": false,
+          "stats": {
+            "awaySummaryStat": {
+              "l5": 0.2,
+              "l10": 0.2,
+              "prevSeason": 0.23,
+              "l10Results": [
+                true,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                true,
+                false
+              ]
+            },
+            "homeSummaryStat": {
+              "l5": 0.2,
+              "l10": 0.3,
+              "curSeason": 0.0,
+              "prevSeason": 0.42,
+              "l10Results": [
+                true,
+                false,
+                true,
+                false,
+                false,
+                false,
+                false,
+                false,
+                true,
+                false
+              ]
+            }
+          }
+        },
+        {
+          "outcomeId": "546cd75a9b9d623bffaf35853231907774372c80",
+          "position": "UNDER",
+          "line": 7.5,
+          "odds": [
+            {
+              "american": "-235",
+              "decimal": 1.425531914893617,
+              "fraction": {
+                "numerator": 20,
+                "denominator": 47
+              },
+              "book": "FANATICS",
+              "identifier": {
+                "bookEventId": "5023114",
+                "bookMarketId": "693518879",
+                "bookOutcomeId": "1710507308"
+              }
+            }
+          ],
+          "label": "Under",
+          "lineLabel": "7.5",
+          "books": [
+            "FANATICS"
+          ],
+          "primary": false,
+          "bookPrimary": false,
+          "stats": {
+            "awaySummaryStat": {
+              "l5": 0.8,
+              "l10": 0.8,
+              "prevSeason": 0.77,
+              "l10Results": [
+                false,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                false,
+                true
+              ]
+            },
+            "homeSummaryStat": {
+              "l5": 0.8,
+              "l10": 0.7,
+              "curSeason": 1.0,
+              "prevSeason": 0.58,
+              "l10Results": [
+                false,
+                true,
+                false,
+                true,
+                true,
+                true,
+                true,
+                true,
+                false,
+                true
+              ]
+            }
+          }
+        },
+        {
+          "outcomeId": "b1848a5ebb2866bb2a0f5f3eaa6feb0e18a4ac6f",
+          "position": "OVER",
+          "line": 8.5,
+          "odds": [
+            {
+              "american": "+310",
+              "decimal": 4.1,
+              "fraction": {
+                "numerator": 31,
+                "denominator": 10
+              },
+              "book": "FANATICS",
+              "identifier": {
+                "bookEventId": "5023114",
+                "bookMarketId": "693518891",
+                "bookOutcomeId": "1710507331"
+              }
+            }
+          ],
+          "label": "Over",
+          "lineLabel": "8.5",
+          "books": [
+            "FANATICS"
+          ],
+          "primary": false,
+          "bookPrimary": false,
+          "stats": {
+            "awaySummaryStat": {
+              "l5": 0.2,
+              "l10": 0.1,
+              "prevSeason": 0.15,
+              "l10Results": [
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                true,
+                false
+              ]
+            },
+            "homeSummaryStat": {
+              "l5": 0.0,
+              "l10": 0.1,
+              "curSeason": 0.0,
+              "prevSeason": 0.25,
+              "l10Results": [
+                true,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false
+              ]
+            }
+          }
+        },
+        {
+          "outcomeId": "ffcb43c72b36f4be4d027d5efa94d77cb14b9f1d",
+          "position": "UNDER",
+          "line": 8.5,
+          "odds": [
+            {
+              "american": "-450",
+              "decimal": 1.2222222222222223,
+              "fraction": {
+                "numerator": 2,
+                "denominator": 9
+              },
+              "book": "FANATICS",
+              "identifier": {
+                "bookEventId": "5023114",
+                "bookMarketId": "693518891",
+                "bookOutcomeId": "1710507336"
+              }
+            }
+          ],
+          "label": "Under",
+          "lineLabel": "8.5",
+          "books": [
+            "FANATICS"
+          ],
+          "primary": false,
+          "bookPrimary": false,
+          "stats": {
+            "awaySummaryStat": {
+              "l5": 0.8,
+              "l10": 0.9,
+              "prevSeason": 0.85,
+              "l10Results": [
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                false,
+                true
+              ]
+            },
+            "homeSummaryStat": {
+              "l5": 1.0,
+              "l10": 0.9,
+              "curSeason": 1.0,
+              "prevSeason": 0.75,
+              "l10Results": [
+                false,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true
+              ]
+            }
+          }
+        },
+        {
+          "outcomeId": "9299c0d67ee4d5ef480d0b47e26bbef67534164b",
+          "position": "OVER",
+          "line": 9.5,
+          "odds": [
+            {
+              "american": "+650",
+              "decimal": 7.5,
+              "fraction": {
+                "numerator": 13,
+                "denominator": 2
+              },
+              "book": "DRAFTKINGS",
+              "identifier": {
+                "bookEventId": "34005255",
+                "bookMarketId": "364701587",
+                "bookOutcomeId": "0QA364701587#2263817675_13L87637Q10Q210",
+                "bookProps": {
+                  "urlOutcomeId": "0QA364701587%232263817675_13L87637Q10Q210"
+                }
+              }
+            }
+          ],
+          "label": "Over",
+          "lineLabel": "9.5",
+          "books": [
+            "DRAFTKINGS"
+          ],
+          "primary": false,
+          "bookPrimary": false,
+          "stats": {
+            "awaySummaryStat": {
+              "l5": 0.2,
+              "l10": 0.1,
+              "prevSeason": 0.15,
+              "l10Results": [
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                true,
+                false
+              ]
+            },
+            "homeSummaryStat": {
+              "l5": 0.0,
+              "l10": 0.1,
+              "curSeason": 0.0,
+              "prevSeason": 0.25,
+              "l10Results": [
+                true,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false
+              ]
+            }
+          }
+        },
+        {
+          "outcomeId": "9c55adf80cd36ef592f14cd383e41a9735962f17",
+          "position": "EXACTLY",
+          "line": 1.0,
+          "odds": [
+            {
+              "american": "+5500",
+              "decimal": 56.0,
+              "fraction": {
+                "numerator": 55,
+                "denominator": 1
+              },
+              "book": "DRAFTKINGS",
+              "identifier": {
+                "bookEventId": "34005255",
+                "bookMarketId": "364701587",
+                "bookOutcomeId": "0QA364701587#2263817531_13L87637Q10Q21",
+                "bookProps": {
+                  "urlOutcomeId": "0QA364701587%232263817531_13L87637Q10Q21"
+                }
+              }
+            }
+          ],
+          "label": "Exactly",
+          "lineLabel": "1",
+          "books": [
+            "DRAFTKINGS"
+          ],
+          "primary": false,
+          "bookPrimary": false,
+          "stats": {
+            "awaySummaryStat": {
+              "l5": 0.0,
+              "l10": 0.0,
+              "prevSeason": 0.0,
+              "l10Results": [
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            "homeSummaryStat": {
+              "l5": 0.0,
+              "l10": 0.0,
+              "curSeason": 0.0,
+              "prevSeason": 0.0,
+              "l10Results": [
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false
+              ]
+            }
+          }
+        },
+        {
+          "outcomeId": "2deeb4fce919292b7a39572e4ed5df73f0787632",
+          "position": "EXACTLY",
+          "line": 2.0,
+          "odds": [
+            {
+              "american": "+2500",
+              "decimal": 26.0,
+              "fraction": {
+                "numerator": 25,
+                "denominator": 1
+              },
+              "book": "DRAFTKINGS",
+              "identifier": {
+                "bookEventId": "34005255",
+                "bookMarketId": "364701587",
+                "bookOutcomeId": "0QA364701587#2263817622_13L87637Q10Q22",
+                "bookProps": {
+                  "urlOutcomeId": "0QA364701587%232263817622_13L87637Q10Q22"
+                }
+              }
+            }
+          ],
+          "label": "Exactly",
+          "lineLabel": "2",
+          "books": [
+            "DRAFTKINGS"
+          ],
+          "primary": false,
+          "bookPrimary": false,
+          "stats": {
+            "awaySummaryStat": {
+              "l5": 0.0,
+              "l10": 0.1,
+              "prevSeason": 0.08,
+              "l10Results": [
+                false,
+                false,
+                false,
+                false,
+                true,
+                false,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            "homeSummaryStat": {
+              "l5": 0.0,
+              "l10": 0.0,
+              "curSeason": 0.0,
+              "prevSeason": 0.0,
+              "l10Results": [
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false
+              ]
+            }
+          }
+        },
+        {
+          "outcomeId": "6a5ec855c7157d5cd280636b0a3047fa859ff719",
+          "position": "EXACTLY",
+          "line": 3.0,
+          "odds": [
+            {
+              "american": "+1100",
+              "decimal": 12.0,
+              "fraction": {
+                "numerator": 11,
+                "denominator": 1
+              },
+              "book": "DRAFTKINGS",
+              "identifier": {
+                "bookEventId": "34005255",
+                "bookMarketId": "364701587",
+                "bookOutcomeId": "0QA364701587#2263817634_13L87637Q10Q23",
+                "bookProps": {
+                  "urlOutcomeId": "0QA364701587%232263817634_13L87637Q10Q23"
+                }
+              }
+            }
+          ],
+          "label": "Exactly",
+          "lineLabel": "3",
+          "books": [
+            "DRAFTKINGS"
+          ],
+          "primary": false,
+          "bookPrimary": false,
+          "stats": {
+            "awaySummaryStat": {
+              "l5": 0.0,
+              "l10": 0.0,
+              "prevSeason": 0.0,
+              "l10Results": [
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            "homeSummaryStat": {
+              "l5": 0.2,
+              "l10": 0.2,
+              "curSeason": 0.0,
+              "prevSeason": 0.17,
+              "l10Results": [
+                false,
+                false,
+                false,
+                true,
+                false,
+                true,
+                false,
+                false,
+                false,
+                false
+              ]
+            }
+          }
+        },
+        {
+          "outcomeId": "8be74253a53e32d2ff94a701c71b50dc992ddab0",
+          "position": "EXACTLY",
+          "line": 4.0,
+          "odds": [
+            {
+              "american": "+650",
+              "decimal": 7.5,
+              "fraction": {
+                "numerator": 13,
+                "denominator": 2
+              },
+              "book": "DRAFTKINGS",
+              "identifier": {
+                "bookEventId": "34005255",
+                "bookMarketId": "364701587",
+                "bookOutcomeId": "0QA364701587#2263817649_13L87637Q10Q24",
+                "bookProps": {
+                  "urlOutcomeId": "0QA364701587%232263817649_13L87637Q10Q24"
+                }
+              }
+            }
+          ],
+          "label": "Exactly",
+          "lineLabel": "4",
+          "books": [
+            "DRAFTKINGS"
+          ],
+          "primary": false,
+          "bookPrimary": false,
+          "stats": {
+            "awaySummaryStat": {
+              "l5": 0.0,
+              "l10": 0.0,
+              "prevSeason": 0.0,
+              "l10Results": [
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            "homeSummaryStat": {
+              "l5": 0.2,
+              "l10": 0.1,
+              "curSeason": 0.0,
+              "prevSeason": 0.08,
+              "l10Results": [
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                true,
+                false,
+                false
+              ]
+            }
+          }
+        },
+        {
+          "outcomeId": "09395e1ec69d67bd3558d47c5dfaa80a66538c9e",
+          "position": "EXACTLY",
+          "line": 5.0,
+          "odds": [
+            {
+              "american": "+400",
+              "decimal": 5.0,
+              "fraction": {
+                "numerator": 4,
+                "denominator": 1
+              },
+              "book": "DRAFTKINGS",
+              "identifier": {
+                "bookEventId": "34005255",
+                "bookMarketId": "364701587",
+                "bookOutcomeId": "0QA364701587#2263817654_13L87637Q10Q25",
+                "bookProps": {
+                  "urlOutcomeId": "0QA364701587%232263817654_13L87637Q10Q25"
+                }
+              }
+            }
+          ],
+          "label": "Exactly",
+          "lineLabel": "5",
+          "books": [
+            "DRAFTKINGS"
+          ],
+          "primary": false,
+          "bookPrimary": false,
+          "stats": {
+            "awaySummaryStat": {
+              "l5": 0.4,
+              "l10": 0.3,
+              "prevSeason": 0.31,
+              "l10Results": [
+                false,
+                false,
+                true,
+                false,
+                false,
+                true,
+                false,
+                true,
+                false,
+                false
+              ]
+            },
+            "homeSummaryStat": {
+              "l5": 0.0,
+              "l10": 0.0,
+              "curSeason": 0.0,
+              "prevSeason": 0.0,
+              "l10Results": [
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false
+              ]
+            }
+          }
+        },
+        {
+          "outcomeId": "7c82b5d893434cdb557b95ceafb7b42c14dc04b0",
+          "position": "EXACTLY",
+          "line": 6.0,
+          "odds": [
+            {
+              "american": "+370",
+              "decimal": 4.7,
+              "fraction": {
+                "numerator": 37,
+                "denominator": 10
+              },
+              "book": "DRAFTKINGS",
+              "identifier": {
+                "bookEventId": "34005255",
+                "bookMarketId": "364701587",
+                "bookOutcomeId": "0QA364701587#2263817661_13L87637Q10Q26",
+                "bookProps": {
+                  "urlOutcomeId": "0QA364701587%232263817661_13L87637Q10Q26"
+                }
+              }
+            }
+          ],
+          "label": "Exactly",
+          "lineLabel": "6",
+          "books": [
+            "DRAFTKINGS"
+          ],
+          "primary": false,
+          "bookPrimary": false,
+          "stats": {
+            "awaySummaryStat": {
+              "l5": 0.2,
+              "l10": 0.2,
+              "prevSeason": 0.15,
+              "l10Results": [
+                false,
+                true,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                true
+              ]
+            },
+            "homeSummaryStat": {
+              "l5": 0.4,
+              "l10": 0.3,
+              "curSeason": 1.0,
+              "prevSeason": 0.25,
+              "l10Results": [
+                false,
+                true,
+                false,
+                false,
+                false,
+                false,
+                true,
+                false,
+                false,
+                true
+              ]
+            }
+          }
+        },
+        {
+          "outcomeId": "6c45f15009baf25d7870af1037d8032d24c1da20",
+          "position": "EXACTLY",
+          "line": 7.0,
+          "odds": [
+            {
+              "american": "+360",
+              "decimal": 4.6,
+              "fraction": {
+                "numerator": 18,
+                "denominator": 5
+              },
+              "book": "DRAFTKINGS",
+              "identifier": {
+                "bookEventId": "34005255",
+                "bookMarketId": "364701587",
+                "bookOutcomeId": "0QA364701587#2263817662_13L87637Q10Q27",
+                "bookProps": {
+                  "urlOutcomeId": "0QA364701587%232263817662_13L87637Q10Q27"
+                }
+              }
+            }
+          ],
+          "label": "Exactly",
+          "lineLabel": "7",
+          "books": [
+            "DRAFTKINGS"
+          ],
+          "primary": false,
+          "bookPrimary": false,
+          "stats": {
+            "awaySummaryStat": {
+              "l5": 0.2,
+              "l10": 0.2,
+              "prevSeason": 0.23,
+              "l10Results": [
+                false,
+                false,
+                false,
+                true,
+                false,
+                false,
+                true,
+                false,
+                false,
+                false
+              ]
+            },
+            "homeSummaryStat": {
+              "l5": 0.0,
+              "l10": 0.1,
+              "curSeason": 0.0,
+              "prevSeason": 0.08,
+              "l10Results": [
+                false,
+                false,
+                false,
+                false,
+                true,
+                false,
+                false,
+                false,
+                false,
+                false
+              ]
+            }
+          }
+        },
+        {
+          "outcomeId": "ba56d6b4c604f79d8e846355d200ed4bf46d174e",
+          "position": "EXACTLY",
+          "line": 8.0,
+          "odds": [
+            {
+              "american": "+500",
+              "decimal": 6.0,
+              "fraction": {
+                "numerator": 5,
+                "denominator": 1
+              },
+              "book": "DRAFTKINGS",
+              "identifier": {
+                "bookEventId": "34005255",
+                "bookMarketId": "364701587",
+                "bookOutcomeId": "0QA364701587#2263817669_13L87637Q10Q28",
+                "bookProps": {
+                  "urlOutcomeId": "0QA364701587%232263817669_13L87637Q10Q28"
+                }
+              }
+            }
+          ],
+          "label": "Exactly",
+          "lineLabel": "8",
+          "books": [
+            "DRAFTKINGS"
+          ],
+          "primary": false,
+          "bookPrimary": false,
+          "stats": {
+            "awaySummaryStat": {
+              "l5": 0.0,
+              "l10": 0.1,
+              "prevSeason": 0.08,
+              "l10Results": [
+                true,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            "homeSummaryStat": {
+              "l5": 0.2,
+              "l10": 0.2,
+              "curSeason": 0.0,
+              "prevSeason": 0.17,
+              "l10Results": [
+                false,
+                false,
+                true,
+                false,
+                false,
+                false,
+                false,
+                false,
+                true,
+                false
+              ]
+            }
+          }
+        },
+        {
+          "outcomeId": "56a5a3bc35f3c881e445950e87de7bba99f9a95f",
+          "position": "EXACTLY",
+          "line": 9.0,
+          "odds": [
+            {
+              "american": "+700",
+              "decimal": 8.0,
+              "fraction": {
+                "numerator": 7,
+                "denominator": 1
+              },
+              "book": "DRAFTKINGS",
+              "identifier": {
+                "bookEventId": "34005255",
+                "bookMarketId": "364701587",
+                "bookOutcomeId": "0QA364701587#2263817670_13L87637Q10Q29",
+                "bookProps": {
+                  "urlOutcomeId": "0QA364701587%232263817670_13L87637Q10Q29"
+                }
+              }
+            }
+          ],
+          "label": "Exactly",
+          "lineLabel": "9",
+          "books": [
+            "DRAFTKINGS"
+          ],
+          "primary": false,
+          "bookPrimary": false,
+          "stats": {
+            "awaySummaryStat": {
+              "l5": 0.0,
+              "l10": 0.0,
+              "prevSeason": 0.0,
+              "l10Results": [
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false
+              ]
+            },
+            "homeSummaryStat": {
+              "l5": 0.0,
+              "l10": 0.0,
+              "curSeason": 0.0,
+              "prevSeason": 0.0,
+              "l10Results": [
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false
+              ]
+            }
+          }
+        }
+      ],
+      "isActive": true,
+      "books": [
+        "DRAFTKINGS",
+        "FLIFF",
+        "FANATICS"
+      ],
+      "label": "Total Touchdowns",
+      "outcomeMap": [
+        [
+          null,
+          "2b18f48d04e6033ba8a7a6c804938d0bc8c6b586"
+        ],
+        [
+          "8d9909cc35ec9dba7ac0d63ee217408c907f73df",
+          "294a285ddefc24159d71ce011f4666f551f90ec2"
+        ],
+        [
+          "f3cfd14935d5f85601849766982604f09e2cdcdb",
+          "44c6ea5c0fc9b70980d2cafb5834b24d617a4502"
+        ],
+        [
+          "cafc80286ad66c3d2337522852a83cac3c7d5265",
+          "546cd75a9b9d623bffaf35853231907774372c80"
+        ],
+        [
+          "b1848a5ebb2866bb2a0f5f3eaa6feb0e18a4ac6f",
+          "ffcb43c72b36f4be4d027d5efa94d77cb14b9f1d"
+        ],
+        [
+          "9299c0d67ee4d5ef480d0b47e26bbef67534164b",
+          null
+        ],
+        [
+          "9c55adf80cd36ef592f14cd383e41a9735962f17"
+        ],
+        [
+          "2deeb4fce919292b7a39572e4ed5df73f0787632"
+        ],
+        [
+          "6a5ec855c7157d5cd280636b0a3047fa859ff719"
+        ],
+        [
+          "8be74253a53e32d2ff94a701c71b50dc992ddab0"
+        ],
+        [
+          "09395e1ec69d67bd3558d47c5dfaa80a66538c9e"
+        ],
+        [
+          "7c82b5d893434cdb557b95ceafb7b42c14dc04b0"
+        ],
+        [
+          "6c45f15009baf25d7870af1037d8032d24c1da20"
+        ],
+        [
+          "ba56d6b4c604f79d8e846355d200ed4bf46d174e"
+        ],
+        [
+          "56a5a3bc35f3c881e445950e87de7bba99f9a95f"
+        ]
+      ],
+      "referenceOutcomeMap": [
+        [
+          "2b18f48d04e6033ba8a7a6c804938d0bc8c6b586"
+        ],
+        [
+          "8d9909cc35ec9dba7ac0d63ee217408c907f73df",
+          "294a285ddefc24159d71ce011f4666f551f90ec2"
+        ],
+        [
+          "f3cfd14935d5f85601849766982604f09e2cdcdb",
+          "44c6ea5c0fc9b70980d2cafb5834b24d617a4502"
+        ],
+        [
+          "cafc80286ad66c3d2337522852a83cac3c7d5265",
+          "546cd75a9b9d623bffaf35853231907774372c80"
+        ],
+        [
+          "b1848a5ebb2866bb2a0f5f3eaa6feb0e18a4ac6f",
+          "ffcb43c72b36f4be4d027d5efa94d77cb14b9f1d"
+        ],
+        [
+          "9299c0d67ee4d5ef480d0b47e26bbef67534164b"
+        ],
+        [
+          "9c55adf80cd36ef592f14cd383e41a9735962f17"
+        ],
+        [
+          "2deeb4fce919292b7a39572e4ed5df73f0787632"
+        ],
+        [
+          "6a5ec855c7157d5cd280636b0a3047fa859ff719"
+        ],
+        [
+          "8be74253a53e32d2ff94a701c71b50dc992ddab0"
+        ],
+        [
+          "09395e1ec69d67bd3558d47c5dfaa80a66538c9e"
+        ],
+        [
+          "7c82b5d893434cdb557b95ceafb7b42c14dc04b0"
+        ],
+        [
+          "6c45f15009baf25d7870af1037d8032d24c1da20"
+        ],
+        [
+          "ba56d6b4c604f79d8e846355d200ed4bf46d174e"
+        ],
+        [
+          "56a5a3bc35f3c881e445950e87de7bba99f9a95f"
+        ]
+      ],
+      "publicMoney": [],
+      "marketGroupId": "GAME",
+      "marketGroupSortOrder": 50
+    },
+    {
+      "marketId": "9806a3b95d3d898d5b2130b5e7b845f2ea923eda",
+      "eventId": "d6478002c35b26c983511db774db09a5d27b9f90",
+      "leagueId": "NCAAFB",
+      "sport": "FOOTBALL",
+      "marketType": "GAME_PROP",
+      "propType": "TOTAL",
+      "proposition": "TOUCHDOWNS",
+      "periods": [
+        2
+      ],
+      "periodLabel": "2Q",
+      "includeOvertime": false,
+      "outcomes": [
+        {
+          "outcomeId": "d235cb31d3ddffab99d68a08efd13e11d05a5d01",
+          "position": "OVER",
+          "line": 1.5,
+          "odds": [
+            {
+              "american": "-130",
+              "decimal": 1.7692307692307692,
+              "fraction": {
+                "numerator": 10,
+                "denominator": 13
+              },
+              "book": "DRAFTKINGS",
+              "identifier": {
+                "bookEventId": "34005255",
+                "bookMarketId": "3_86071792",
+                "bookOutcomeId": "0OU86071792O150_1",
+                "bookProps": {
+                  "urlOutcomeId": "0OU86071792O150_1"
+                }
+              }
+            }
+          ],
+          "label": "Over",
+          "lineLabel": "1.5",
+          "books": [
+            "DRAFTKINGS"
+          ],
+          "primary": true,
+          "bookPrimary": true,
+          "stats": {
+            "awaySummaryStat": {
+              "l5": 0.4,
+              "l10": 0.5,
+              "prevSeason": 0.54,
+              "l10Results": [
+                true,
+                true,
+                true,
+                false,
+                false,
+                false,
+                false,
+                true,
+                true,
+                false
+              ]
+            },
+            "homeSummaryStat": {
+              "l5": 0.8,
+              "l10": 0.8,
+              "curSeason": 1.0,
+              "prevSeason": 0.67,
+              "l10Results": [
+                true,
+                false,
+                true,
+                true,
+                true,
+                true,
+                true,
+                false,
+                true,
+                true
+              ]
+            }
+          }
+        },
+        {
+          "outcomeId": "320b42c2b66f5dfa197edfc9863ceb733026f2ac",
+          "position": "UNDER",
+          "line": 1.5,
+          "odds": [
+            {
+              "american": "+100",
+              "decimal": 2.0,
+              "fraction": {
+                "numerator": 1,
+                "denominator": 1
+              },
+              "book": "DRAFTKINGS",
+              "identifier": {
+                "bookEventId": "34005255",
+                "bookMarketId": "3_86071792",
+                "bookOutcomeId": "0OU86071792U150_3",
+                "bookProps": {
+                  "urlOutcomeId": "0OU86071792U150_3"
+                }
+              }
+            }
+          ],
+          "label": "Under",
+          "lineLabel": "1.5",
+          "books": [
+            "DRAFTKINGS"
+          ],
+          "primary": true,
+          "bookPrimary": true,
+          "stats": {
+            "awaySummaryStat": {
+              "l5": 0.6,
+              "l10": 0.5,
+              "prevSeason": 0.46,
+              "l10Results": [
+                false,
+                false,
+                false,
+                true,
+                true,
+                true,
+                true,
+                false,
+                false,
+                true
+              ]
+            },
+            "homeSummaryStat": {
+              "l5": 0.2,
+              "l10": 0.2,
+              "curSeason": 0.0,
+              "prevSeason": 0.33,
+              "l10Results": [
+                false,
+                true,
+                false,
+                false,
+                false,
+                false,
+                false,
+                true,
+                false,
+                false
+              ]
+            }
+          }
+        }
+      ],
+      "isActive": true,
+      "books": [
+        "DRAFTKINGS"
+      ],
+      "label": "2nd Quarter Total Touchdowns",
+      "outcomeMap": [
+        [
+          "d235cb31d3ddffab99d68a08efd13e11d05a5d01",
+          "320b42c2b66f5dfa197edfc9863ceb733026f2ac"
+        ]
+      ],
+      "referenceOutcomeMap": [
+        [
+          "d235cb31d3ddffab99d68a08efd13e11d05a5d01",
+          "320b42c2b66f5dfa197edfc9863ceb733026f2ac"
+        ]
+      ],
+      "publicMoney": [],
+      "marketGroupId": "QUARTERS",
+      "marketGroupSortOrder": 60
+    }
+  ]
+}

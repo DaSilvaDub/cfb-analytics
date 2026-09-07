@@ -1,0 +1,2379 @@
+{
+  "events": [
+    {
+      "leagueId": "NCAAFB",
+      "eventId": "bf327ca3c00913a4925d54ad47e53e5d9e9f3e80",
+      "scheduledTime": "2026-09-12T23:00:00+00:00",
+      "live": false,
+      "status": "pregame",
+      "venue": "Elliott T. Bowers Stadium",
+      "network": "ESPN+",
+      "season": 2026,
+      "code": "REG",
+      "home": {
+        "teamId": "77d8cf2a920a29c40ee280382b32975c08bec9ee",
+        "name": "Bearkats",
+        "alias": "SHSU",
+        "market": "Sam Houston"
+      },
+      "away": {
+        "teamId": "2d4eada2a3457f1f84b67e5716bd0b140dbd88a8",
+        "name": "Golden Hurricane",
+        "alias": "TLSA",
+        "market": "Tulsa"
+      },
+      "dayOfWeek": 5,
+      "timezone": "US/Central"
+    },
+    {
+      "leagueId": "NCAAFB",
+      "eventId": "4d9b8e0ef4cbcc66d0e81b322e82f31859a5fef7",
+      "scheduledTime": "2026-09-19T23:00:00+00:00",
+      "live": false,
+      "status": "pregame",
+      "venue": "Acrisure Bounce House",
+      "network": "ESPN+",
+      "season": 2026,
+      "code": "REG",
+      "home": {
+        "teamId": "1aaf25f9208a8d682d7b625ae61e88f65bfcd1bf",
+        "name": "Knights",
+        "alias": "UCF",
+        "market": "UCF"
+      },
+      "away": {
+        "teamId": "739d080d09017cb3193eb62051c758d13a87248d",
+        "name": "Panthers",
+        "alias": "GAST",
+        "market": "Georgia State"
+      },
+      "dayOfWeek": 5,
+      "timezone": "US/Eastern"
+    },
+    {
+      "leagueId": "NCAAFB",
+      "eventId": "ecc38bd9ac6916caa57931d62e9aebb002d83d6b",
+      "scheduledTime": "2026-09-12T19:30:00+00:00",
+      "live": false,
+      "status": "pregame",
+      "venue": "Spartan Stadium",
+      "network": "BTN",
+      "season": 2026,
+      "code": "REG",
+      "home": {
+        "teamId": "c8bf01048bb866cb2188c66686cd07d40033309a",
+        "name": "Spartans",
+        "alias": "MSU",
+        "market": "Michigan State"
+      },
+      "away": {
+        "teamId": "14274f447ea7a97932ab52e18eb4c837fdddf0eb",
+        "name": "Eagles",
+        "alias": "EMU",
+        "market": "Eastern Michigan"
+      },
+      "dayOfWeek": 5,
+      "timezone": "US/Eastern"
+    },
+    {
+      "leagueId": "NCAAFB",
+      "eventId": "4569d958887e0654ba27c2ef7de53b34ef25f946",
+      "scheduledTime": "2026-09-12T23:00:00+00:00",
+      "live": false,
+      "status": "pregame",
+      "venue": "Joan C. Edwards Stadium",
+      "network": "ESPN+",
+      "season": 2026,
+      "code": "REG",
+      "home": {
+        "teamId": "8b280a24ca0e20055e783c5e1d6a683cdb67a152",
+        "name": "Thundering Herd",
+        "alias": "MRSH",
+        "market": "Marshall"
+      },
+      "away": {
+        "teamId": "8fc9db95b4e522e8de9a13e73bcdb94d0d23a983",
+        "name": "Blue Raiders",
+        "alias": "MTU",
+        "market": "Middle Tennessee"
+      },
+      "dayOfWeek": 5,
+      "timezone": "US/Eastern"
+    },
+    {
+      "leagueId": "NCAAFB",
+      "eventId": "c9c77c2e9813c8b840641e7a77ad8545a36c510f",
+      "scheduledTime": "2026-09-12T19:30:00+00:00",
+      "live": false,
+      "status": "pregame",
+      "venue": "Acrisure Stadium",
+      "network": "ESPN2",
+      "season": 2026,
+      "code": "REG",
+      "home": {
+        "teamId": "f04155c4395db7c2d7489fefbad5aa583a09e7f6",
+        "name": "Panthers",
+        "alias": "PITT",
+        "market": "Pittsburgh"
+      },
+      "away": {
+        "teamId": "1aaf25f9208a8d682d7b625ae61e88f65bfcd1bf",
+        "name": "Knights",
+        "alias": "UCF",
+        "market": "UCF"
+      },
+      "dayOfWeek": 5,
+      "timezone": "US/Eastern"
+    },
+    {
+      "leagueId": "NCAAFB",
+      "eventId": "ab854b7de862814638b05fc88797198edb3e8db7",
+      "scheduledTime": "2026-09-19T16:00:00+00:00",
+      "live": false,
+      "status": "pregame",
+      "venue": "West Shore Home Field at Beaver Stadium",
+      "network": "BTN",
+      "season": 2026,
+      "code": "REG",
+      "home": {
+        "teamId": "1883100bf4e7fbd3e5233730985cb9c84a889228",
+        "name": "Nittany Lions",
+        "alias": "PSU",
+        "market": "Penn State"
+      },
+      "away": {
+        "teamId": "869f930c8f4522740a77adc631eaf5d4cd5ca3a3",
+        "name": "Bulls",
+        "alias": "BUFF",
+        "market": "Buffalo"
+      },
+      "dayOfWeek": 5,
+      "timezone": "US/Eastern"
+    },
+    {
+      "leagueId": "NCAAFB",
+      "eventId": "c42b60e43cad8433b519d41089e62fec354bd622",
+      "scheduledTime": "2026-09-12T19:30:00+00:00",
+      "live": false,
+      "status": "pregame",
+      "venue": "Kroger Field",
+      "network": "ABC",
+      "season": 2026,
+      "code": "REG",
+      "home": {
+        "teamId": "0cbf1b8f2c1ebebb29962826f69d586869d9cbe1",
+        "name": "Wildcats",
+        "alias": "UK",
+        "market": "Kentucky"
+      },
+      "away": {
+        "teamId": "eb2b4cc02d10beac5c536b5f4e7330e19a690287",
+        "name": "Crimson Tide",
+        "alias": "ALA",
+        "market": "Alabama"
+      },
+      "dayOfWeek": 5,
+      "timezone": "US/Eastern"
+    },
+    {
+      "leagueId": "NCAAFB",
+      "eventId": "97770d09b55eb7f42310510d1ffd38dee89a1402",
+      "scheduledTime": "2026-09-20T02:30:00+00:00",
+      "live": false,
+      "status": "pregame",
+      "venue": "Casino Del Sol Stadium",
+      "network": "TNT/HBO Max",
+      "season": 2026,
+      "code": "REG",
+      "home": {
+        "teamId": "d206bd108c50cfabccac073bb579bc6dd9b59cbd",
+        "name": "Wildcats",
+        "alias": "ARIZ",
+        "market": "Arizona"
+      },
+      "away": {
+        "teamId": "3a1b0bf0f3766a106c3ece63fd1569bd1283c28a",
+        "name": "Huskies",
+        "alias": "NIU",
+        "market": "Northern Illinois"
+      },
+      "dayOfWeek": 5,
+      "timezone": "US/Arizona"
+    },
+    {
+      "leagueId": "NCAAFB",
+      "eventId": "a6afb35a5f171f9b071de90fea8987f78ef3a3c2",
+      "scheduledTime": "2026-09-19T16:00:00+00:00",
+      "live": false,
+      "status": "pregame",
+      "venue": "Jack Trice Stadium",
+      "network": "ESPNU",
+      "season": 2026,
+      "code": "REG",
+      "home": {
+        "teamId": "e0a32889b039356835ac2dd2f5f981568def8fc5",
+        "name": "Cyclones",
+        "alias": "ISU",
+        "market": "Iowa State"
+      },
+      "away": {
+        "teamId": "c4b5dfe580bd45b0967206ac6a8727628b99c968",
+        "name": "Falcons",
+        "alias": "BGSU",
+        "market": "Bowling Green"
+      },
+      "dayOfWeek": 5,
+      "timezone": "US/Central"
+    },
+    {
+      "leagueId": "NCAAFB",
+      "eventId": "c4f7e471774e455129214ab34928efe1d7a3b0df",
+      "scheduledTime": "2026-09-20T03:00:00+00:00",
+      "live": false,
+      "status": "pregame",
+      "venue": "Rose Bowl",
+      "network": "BTN",
+      "season": 2026,
+      "code": "REG",
+      "home": {
+        "teamId": "9b1bcbce960241e85024de7fc0fed87813d54747",
+        "name": "Bruins",
+        "alias": "UCLA",
+        "market": "UCLA"
+      },
+      "away": {
+        "teamId": "55a7dda13a8af2a7f7c91744559bc4883bbd8ced",
+        "name": "Boilermakers",
+        "alias": "PUR",
+        "market": "Purdue"
+      },
+      "dayOfWeek": 5,
+      "timezone": "US/Pacific"
+    },
+    {
+      "leagueId": "NCAAFB",
+      "eventId": "3b80fa0f974ce67165aeb93b4e11879c40a05e93",
+      "scheduledTime": "2026-09-19T16:00:00+00:00",
+      "live": false,
+      "status": "pregame",
+      "venue": "Ohio Stadium",
+      "network": "FOX",
+      "season": 2026,
+      "code": "REG",
+      "home": {
+        "teamId": "900738c19317827d0393ed919506508138d14a7d",
+        "name": "Buckeyes",
+        "alias": "OSU",
+        "market": "Ohio State"
+      },
+      "away": {
+        "teamId": "ef79e0f9e9b9b2d94767dabec482c52fccae5d59",
+        "name": "Golden Flashes",
+        "alias": "KENT",
+        "market": "Kent State"
+      },
+      "dayOfWeek": 5,
+      "timezone": "US/Eastern"
+    },
+    {
+      "leagueId": "NCAAFB",
+      "eventId": "dd4922c8e89728ae0eeb28621502548b9a79d03b",
+      "scheduledTime": "2026-09-12T16:00:00+00:00",
+      "live": false,
+      "status": "pregame",
+      "venue": "Bagwell Field at Dowdy-Ficklen Stadium",
+      "network": "ESPNU",
+      "season": 2026,
+      "code": "REG",
+      "home": {
+        "teamId": "32348c376c7bc59289cdea2e01b2f13f0e2a9c16",
+        "name": "Pirates",
+        "alias": "ECU",
+        "market": "East Carolina"
+      },
+      "away": {
+        "teamId": "37d103ff08a4b7f284253099eec1147936b47a9f",
+        "name": "Mountaineers",
+        "alias": "APP",
+        "market": "Appalachian State"
+      },
+      "dayOfWeek": 5,
+      "timezone": "US/Eastern"
+    },
+    {
+      "leagueId": "NCAAFB",
+      "eventId": "c8f0a84bd7e945f15238bfe80d32e125a9315e02",
+      "scheduledTime": "2026-09-13T02:30:00+00:00",
+      "live": false,
+      "status": "pregame",
+      "venue": "Valley Children's Stadium",
+      "network": "CBS Sports Network",
+      "season": 2026,
+      "code": "REG",
+      "home": {
+        "teamId": "d47b52bb3ea8bda678133efb236b085981f65109",
+        "name": "Bulldogs",
+        "alias": "FRES",
+        "market": "Fresno State"
+      },
+      "away": {
+        "teamId": "0302ecfc17b669534ecd77ee7c6f3f69d9a24ca0",
+        "name": "Hornets",
+        "alias": "SAC",
+        "market": "Sacramento State"
+      },
+      "dayOfWeek": 5,
+      "timezone": "US/Pacific"
+    },
+    {
+      "leagueId": "NCAAFB",
+      "eventId": "c670f009f3ff14314fba10a54cccca81c46b4166",
+      "scheduledTime": "2026-09-19T23:00:00+00:00",
+      "live": false,
+      "status": "pregame",
+      "venue": "AmFirst Stadium",
+      "network": "ESPN+",
+      "season": 2026,
+      "code": "REG",
+      "home": {
+        "teamId": "f6efd59222887629a32e48e39e864091cc02f11f",
+        "name": "Gamecocks",
+        "alias": "JVST",
+        "market": "Jacksonville State"
+      },
+      "away": {
+        "teamId": "0a41da62075f66c6dc61d3a1162bbc537392c725",
+        "name": "Eagles",
+        "alias": "GASO",
+        "market": "Georgia Southern"
+      },
+      "dayOfWeek": 5,
+      "timezone": "US/Central"
+    },
+    {
+      "leagueId": "NCAAFB",
+      "eventId": "37c09990475bbbd1c2a5480dd59ca753fabb2906",
+      "scheduledTime": "2026-09-12T23:00:00+00:00",
+      "live": false,
+      "status": "pregame",
+      "venue": "Fifth Third Stadium",
+      "network": "ESPN+",
+      "season": 2026,
+      "code": "REG",
+      "home": {
+        "teamId": "4e8e90b1edfd29542d8a08a1c9c94540cf889a5d",
+        "name": "Owls",
+        "alias": "KENN",
+        "market": "Kennesaw State"
+      },
+      "away": {
+        "teamId": "739d080d09017cb3193eb62051c758d13a87248d",
+        "name": "Panthers",
+        "alias": "GAST",
+        "market": "Georgia State"
+      },
+      "dayOfWeek": 5,
+      "timezone": "US/Eastern"
+    },
+    {
+      "leagueId": "NCAAFB",
+      "eventId": "a37905ee8b04dfebb75b533c19e4b76b8520c71e",
+      "scheduledTime": "2026-09-12T00:00:00+00:00",
+      "live": false,
+      "status": "pregame",
+      "venue": "David Booth Kansas Memorial Stadium",
+      "network": "FOX",
+      "season": 2026,
+      "code": "REG",
+      "home": {
+        "teamId": "71318c6869865695bdf598158dd6e2ad0400bbc1",
+        "name": "Jayhawks",
+        "alias": "KU",
+        "market": "Kansas"
+      },
+      "away": {
+        "teamId": "000a69035699c7ae7f49bdbcba27e06be7682c86",
+        "name": "Tigers",
+        "alias": "MIZZ",
+        "market": "Missouri"
+      },
+      "dayOfWeek": 4,
+      "timezone": "US/Central"
+    },
+    {
+      "leagueId": "NCAAFB",
+      "eventId": "01d33a185e5922bf9109597f959ba78c771882c4",
+      "scheduledTime": "2026-09-19T19:30:00+00:00",
+      "live": false,
+      "status": "pregame",
+      "venue": "TQL Stadium",
+      "network": "ESPN+",
+      "season": 2026,
+      "code": "REG",
+      "home": {
+        "teamId": "0e4a3735b9ea77fa3c11ff19f0690cf5c91fb8d7",
+        "name": "Bearcats",
+        "alias": "CIN",
+        "market": "Cincinnati"
+      },
+      "away": {
+        "teamId": "b471484d58049ac67adc2e18f930fa4e4df778d7",
+        "name": "RedHawks",
+        "alias": "M-OH",
+        "market": "Miami (OH)"
+      },
+      "neutralSite": true,
+      "dayOfWeek": 5,
+      "timezone": "US/Eastern"
+    },
+    {
+      "leagueId": "NCAAFB",
+      "eventId": "b6da3dfa1519d745be4e67774ee254bd8f3eb60b",
+      "scheduledTime": "2026-09-19T20:00:00+00:00",
+      "live": false,
+      "status": "pregame",
+      "venue": "McLane Stadium",
+      "network": "ESPNU",
+      "season": 2026,
+      "code": "REG",
+      "home": {
+        "teamId": "dd593d86c4506bc248863b6cd5aea5f4759def1a",
+        "name": "Bears",
+        "alias": "BAY",
+        "market": "Baylor"
+      },
+      "away": {
+        "teamId": "a2d6f1b0218656b9d9bdc05b5cd5b3abc44e99f0",
+        "name": "Bulldogs",
+        "alias": "LT",
+        "market": "Louisiana Tech"
+      },
+      "dayOfWeek": 5,
+      "timezone": "US/Central"
+    },
+    {
+      "leagueId": "NCAAFB",
+      "eventId": "68ca77ed60cc26573592cc804b94b462cb1d6683",
+      "scheduledTime": "2026-09-12T16:00:00+00:00",
+      "live": false,
+      "status": "pregame",
+      "venue": "Lincoln Financial Field",
+      "network": "ESPN2",
+      "season": 2026,
+      "code": "REG",
+      "home": {
+        "teamId": "120160cc4d6106556c54d9ff4222045b3b341a4e",
+        "name": "Owls",
+        "alias": "TEM",
+        "market": "Temple"
+      },
+      "away": {
+        "teamId": "1883100bf4e7fbd3e5233730985cb9c84a889228",
+        "name": "Nittany Lions",
+        "alias": "PSU",
+        "market": "Penn State"
+      },
+      "dayOfWeek": 5,
+      "timezone": "US/Eastern"
+    },
+    {
+      "leagueId": "NCAAFB",
+      "eventId": "f63850bcc02c4d699b4ba404e4d3ef3fba42ead7",
+      "scheduledTime": "2026-09-12T19:30:00+00:00",
+      "live": false,
+      "status": "pregame",
+      "venue": "Pratt and Whitney Stadium at Rentschler Field",
+      "network": "CBS Sports Network",
+      "season": 2026,
+      "code": "REG",
+      "home": {
+        "teamId": "ecde6c56e14dcce4737f2823d715f6449761b40d",
+        "name": "Huskies",
+        "alias": "CONN",
+        "market": "UConn"
+      },
+      "away": {
+        "teamId": "b0dc6900ec3ff7099731b331794213c3658c966c",
+        "name": "Terrapins",
+        "alias": "MD",
+        "market": "Maryland"
+      },
+      "dayOfWeek": 5,
+      "timezone": "US/Eastern"
+    },
+    {
+      "leagueId": "NCAAFB",
+      "eventId": "8cfd584484115414b2d4aacc36f602cb05ed1b2e",
+      "scheduledTime": "2026-09-20T03:00:00+00:00",
+      "live": false,
+      "status": "pregame",
+      "venue": "CEFCU Stadium",
+      "network": "Fox Sports 1",
+      "season": 2026,
+      "code": "REG",
+      "home": {
+        "teamId": "a9c1fed4eb26ecea213eac7bd49825f8a90f90df",
+        "name": "Spartans",
+        "alias": "SJSU",
+        "market": "San Jose State"
+      },
+      "away": {
+        "teamId": "d47b52bb3ea8bda678133efb236b085981f65109",
+        "name": "Bulldogs",
+        "alias": "FRES",
+        "market": "Fresno State"
+      },
+      "dayOfWeek": 5,
+      "timezone": "US/Pacific"
+    },
+    {
+      "leagueId": "NCAAFB",
+      "eventId": "2d55015c8b975c16bcaca76013bbab8241fe7606",
+      "scheduledTime": "2026-09-11T23:30:00+00:00",
+      "live": false,
+      "status": "pregame",
+      "venue": "Alumni Stadium (Chestnut Hill, MA)",
+      "network": "ESPN2",
+      "season": 2026,
+      "code": "REG",
+      "home": {
+        "teamId": "ea47da989ca3992fb6d386c5098415a1c2592f36",
+        "name": "Eagles",
+        "alias": "BC",
+        "market": "Boston College"
+      },
+      "away": {
+        "teamId": "519386b1b4c98d2be49747822f550d686c818db2",
+        "name": "Scarlet Knights",
+        "alias": "RUTG",
+        "market": "Rutgers"
+      },
+      "dayOfWeek": 4,
+      "timezone": "US/Eastern"
+    },
+    {
+      "leagueId": "NCAAFB",
+      "eventId": "f3def5ce328481e987d0881a5a28c22807906bb3",
+      "scheduledTime": "2026-09-12T23:30:00+00:00",
+      "live": false,
+      "status": "pregame",
+      "venue": "Memorial Stadium (Clemson, SC)",
+      "network": "ACC Network",
+      "season": 2026,
+      "code": "REG",
+      "home": {
+        "teamId": "5a97295eab1ab5f25aa6687c41aa44cd3127a5b7",
+        "name": "Tigers",
+        "alias": "CLEM",
+        "market": "Clemson"
+      },
+      "away": {
+        "teamId": "0a41da62075f66c6dc61d3a1162bbc537392c725",
+        "name": "Eagles",
+        "alias": "GASO",
+        "market": "Georgia Southern"
+      },
+      "dayOfWeek": 5,
+      "timezone": "US/Eastern"
+    },
+    {
+      "leagueId": "NCAAFB",
+      "eventId": "e7e892fa8d2ca9162c4b6078a926d333ae5bcdc3",
+      "scheduledTime": "2026-11-28T17:00:00+00:00",
+      "live": false,
+      "status": "pregame",
+      "venue": "Ohio Stadium",
+      "network": "FOX",
+      "season": 2026,
+      "code": "REG",
+      "home": {
+        "teamId": "900738c19317827d0393ed919506508138d14a7d",
+        "name": "Buckeyes",
+        "alias": "OSU",
+        "market": "Ohio State"
+      },
+      "away": {
+        "teamId": "cad96e6b40fb81de022cba9ae7c90f2f06f69ce2",
+        "name": "Wolverines",
+        "alias": "MICH",
+        "market": "Michigan"
+      },
+      "dayOfWeek": 5,
+      "timezone": "US/Eastern"
+    },
+    {
+      "leagueId": "NCAAFB",
+      "eventId": "9bd05d7d4ada0448ac7b39ec4a26fc90edb53044",
+      "scheduledTime": "2026-09-19T19:30:00+00:00",
+      "live": false,
+      "status": "pregame",
+      "venue": "Bryant-Denny Stadium",
+      "network": "ABC",
+      "season": 2026,
+      "code": "REG",
+      "home": {
+        "teamId": "eb2b4cc02d10beac5c536b5f4e7330e19a690287",
+        "name": "Crimson Tide",
+        "alias": "ALA",
+        "market": "Alabama"
+      },
+      "away": {
+        "teamId": "7d07035da784873be72d11c3f17a6a8f51a3bb43",
+        "name": "Seminoles",
+        "alias": "FSU",
+        "market": "Florida State"
+      },
+      "dayOfWeek": 5,
+      "timezone": "US/Central"
+    },
+    {
+      "leagueId": "NCAAFB",
+      "eventId": "502e87f87ae2583b9012fa18d4699e0286318ab5",
+      "scheduledTime": "2026-09-13T04:00:00+00:00",
+      "live": false,
+      "status": "pregame",
+      "venue": "Clarence T.C. Ching Athletics Complex",
+      "network": "MW+",
+      "season": 2026,
+      "code": "REG",
+      "home": {
+        "teamId": "6859357ab920c39260adba656fd87f361a0cf7e1",
+        "name": "Rainbow Warriors",
+        "alias": "HAW",
+        "market": "Hawai'i"
+      },
+      "away": {
+        "teamId": "9240910dc749d24960a1a3b50be75bda946f2787",
+        "name": "Aggies",
+        "alias": "NMSU",
+        "market": "New Mexico State"
+      },
+      "dayOfWeek": 5,
+      "timezone": "US/Hawaii"
+    },
+    {
+      "leagueId": "NCAAFB",
+      "eventId": "dd57035f2bfcf51e130d4efb007a19fcbd8837b5",
+      "scheduledTime": "2026-09-12T22:00:00+00:00",
+      "live": false,
+      "status": "pregame",
+      "venue": "Pitbull Stadium",
+      "network": "ESPN+",
+      "season": 2026,
+      "code": "REG",
+      "home": {
+        "teamId": "7f4ba771d61c2148da88c5396425f505f794c061",
+        "name": "Panthers",
+        "alias": "FIU",
+        "market": "Florida International"
+      },
+      "away": {
+        "teamId": "869f930c8f4522740a77adc631eaf5d4cd5ca3a3",
+        "name": "Bulls",
+        "alias": "BUFF",
+        "market": "Buffalo"
+      },
+      "dayOfWeek": 5,
+      "timezone": "US/Eastern"
+    },
+    {
+      "leagueId": "NCAAFB",
+      "eventId": "b70bbda6f058f0e4948277c96ab2ce13d0cc8b64",
+      "scheduledTime": "2026-09-19T19:30:00+00:00",
+      "live": false,
+      "status": "pregame",
+      "venue": "SHI Stadium",
+      "network": "CBS",
+      "season": 2026,
+      "code": "REG",
+      "home": {
+        "teamId": "519386b1b4c98d2be49747822f550d686c818db2",
+        "name": "Scarlet Knights",
+        "alias": "RUTG",
+        "market": "Rutgers"
+      },
+      "away": {
+        "teamId": "bad638f34e4237381cedd8980ce4b6611ec6e194",
+        "name": "Trojans",
+        "alias": "USC",
+        "market": "USC"
+      },
+      "dayOfWeek": 5,
+      "timezone": "US/Eastern"
+    },
+    {
+      "leagueId": "NCAAFB",
+      "eventId": "9cac849a481162fae8a3f7186fd4e3618b66e369",
+      "scheduledTime": "2026-09-19T23:30:00+00:00",
+      "live": false,
+      "status": "pregame",
+      "venue": "SECU Stadium",
+      "network": "Fox Networks",
+      "season": 2026,
+      "code": "REG",
+      "home": {
+        "teamId": "b0dc6900ec3ff7099731b331794213c3658c966c",
+        "name": "Terrapins",
+        "alias": "MD",
+        "market": "Maryland"
+      },
+      "away": {
+        "teamId": "3ae81c2e93aa8d4d6a823594a416f77d98734b8a",
+        "name": "Hokies",
+        "alias": "VT",
+        "market": "Virginia Tech"
+      },
+      "dayOfWeek": 5,
+      "timezone": "US/Eastern"
+    },
+    {
+      "leagueId": "NCAAFB",
+      "eventId": "27833613e7f6a3d3c2776f50d0b0ab2fc6efb7dd",
+      "scheduledTime": "2026-09-13T03:00:00+00:00",
+      "live": false,
+      "status": "pregame",
+      "venue": "Los Angeles Memorial Coliseum",
+      "network": "BTN",
+      "season": 2026,
+      "code": "REG",
+      "home": {
+        "teamId": "bad638f34e4237381cedd8980ce4b6611ec6e194",
+        "name": "Trojans",
+        "alias": "USC",
+        "market": "USC"
+      },
+      "away": {
+        "teamId": "840aff4edb79d4d888f5f31f2bff8a959f9dd747",
+        "name": "Ragin' Cajuns",
+        "alias": "ULL",
+        "market": "Louisiana"
+      },
+      "dayOfWeek": 5,
+      "timezone": "US/Pacific"
+    },
+    {
+      "leagueId": "NCAAFB",
+      "eventId": "62219313c4227f723014429886a1736de4390fc9",
+      "scheduledTime": "2026-09-12T19:30:00+00:00",
+      "live": false,
+      "status": "pregame",
+      "venue": "UFCU Stadium",
+      "network": "The CW",
+      "season": 2026,
+      "code": "REG",
+      "home": {
+        "teamId": "ad386894f3a1c38ca9e74be3e20f77d5ea938ba4",
+        "name": "Bobcats",
+        "alias": "TXST",
+        "market": "Texas State"
+      },
+      "away": {
+        "teamId": "a6d1c8c6ea0dba7c2c858beb93bb5649f265067f",
+        "name": "Roadrunners",
+        "alias": "UTSA",
+        "market": "UTSA"
+      },
+      "dayOfWeek": 5,
+      "timezone": "US/Central"
+    },
+    {
+      "leagueId": "NCAAFB",
+      "eventId": "98d3c9b45437518d447a3dffc83b9cea649db814",
+      "scheduledTime": "2026-09-12T16:00:00+00:00",
+      "live": false,
+      "status": "pregame",
+      "venue": "Kyle Field",
+      "network": "ABC",
+      "season": 2026,
+      "code": "REG",
+      "home": {
+        "teamId": "b0031decb868583b0dd4b717bd866904e5c27b7f",
+        "name": "Aggies",
+        "alias": "TXAM",
+        "market": "Texas A&M"
+      },
+      "away": {
+        "teamId": "e604c428ba96a5fa9c6d3628bcd15799c45943df",
+        "name": "Sun Devils",
+        "alias": "ASU",
+        "market": "Arizona State"
+      },
+      "dayOfWeek": 5,
+      "timezone": "US/Central"
+    },
+    {
+      "leagueId": "NCAAFB",
+      "eventId": "36d99511d3cc29650ca2d22a3719d3fdb9838792",
+      "scheduledTime": "2026-09-19T16:00:00+00:00",
+      "live": false,
+      "status": "pregame",
+      "venue": "Huntington Bank Stadium",
+      "network": "BTN",
+      "season": 2026,
+      "code": "REG",
+      "home": {
+        "teamId": "29f0ad8221bd0c5b9917c3f0eaf4d2a193f211f0",
+        "name": "Golden Gophers",
+        "alias": "MINN",
+        "market": "Minnesota"
+      },
+      "away": {
+        "teamId": "6c7ecd6cb55e508898ffc6aa17371ece66705362",
+        "name": "Zips",
+        "alias": "AKR",
+        "market": "Akron"
+      },
+      "dayOfWeek": 5,
+      "timezone": "US/Central"
+    },
+    {
+      "leagueId": "NCAAFB",
+      "eventId": "eb75f36f564a583d0c2a758e31a6581e4a50e523",
+      "scheduledTime": "2026-09-13T02:00:00+00:00",
+      "live": false,
+      "status": "pregame",
+      "venue": "Falcon Stadium",
+      "network": "Fox Sports 1",
+      "season": 2026,
+      "code": "REG",
+      "home": {
+        "teamId": "bcf4ff4f34d270f4d9a94e47c3d51ce167e389e9",
+        "name": "Falcons",
+        "alias": "AFA",
+        "market": "Air Force"
+      },
+      "away": {
+        "teamId": "306ebc6f55ada73bb34c479256b6e00e4784176a",
+        "name": "Bison",
+        "alias": "NDSU",
+        "market": "North Dakota State"
+      },
+      "dayOfWeek": 5,
+      "timezone": "US/Mountain"
+    },
+    {
+      "leagueId": "NCAAFB",
+      "eventId": "d6478002c35b26c983511db774db09a5d27b9f90",
+      "scheduledTime": "2026-09-07T23:30:00+00:00",
+      "live": false,
+      "status": "pregame",
+      "venue": "Bobby Bowden Field at Doak Campbell Stadium",
+      "network": "ESPN",
+      "season": 2026,
+      "code": "REG",
+      "home": {
+        "teamId": "7d07035da784873be72d11c3f17a6a8f51a3bb43",
+        "name": "Seminoles",
+        "alias": "FSU",
+        "market": "Florida State"
+      },
+      "away": {
+        "teamId": "8d6fa032056194a90410d770697bc5ce85cb8302",
+        "name": "Mustangs",
+        "alias": "SMU",
+        "market": "SMU"
+      },
+      "dayOfWeek": 0,
+      "timezone": "US/Eastern"
+    },
+    {
+      "leagueId": "NCAAFB",
+      "eventId": "b218fe923f024cae2d91514aca8bc995e2df383a",
+      "scheduledTime": "2026-09-12T23:15:00+00:00",
+      "live": false,
+      "status": "pregame",
+      "venue": "Rose Bowl",
+      "network": "BTN",
+      "season": 2026,
+      "code": "REG",
+      "home": {
+        "teamId": "9b1bcbce960241e85024de7fc0fed87813d54747",
+        "name": "Bruins",
+        "alias": "UCLA",
+        "market": "UCLA"
+      },
+      "away": {
+        "teamId": "ea8f3330ba3abc10a8dba3312d5f997bececca58",
+        "name": "Aztecs",
+        "alias": "SDSU",
+        "market": "San Diego State"
+      },
+      "dayOfWeek": 5,
+      "timezone": "US/Pacific"
+    },
+    {
+      "leagueId": "NCAAFB",
+      "eventId": "04aef21d08b6e0aa508361790b852d8f34a282d8",
+      "scheduledTime": "2026-09-12T16:00:00+00:00",
+      "live": false,
+      "status": "pregame",
+      "venue": "Bill Snyder Family Stadium",
+      "network": "TNT/HBO Max",
+      "season": 2026,
+      "code": "REG",
+      "home": {
+        "teamId": "1f087997b135e6050c6afe5d09fc411585c461bd",
+        "name": "Wildcats",
+        "alias": "KSU",
+        "market": "Kansas State"
+      },
+      "away": {
+        "teamId": "68d2f1ec02e02691261d8c02e9f70bc5b805562a",
+        "name": "Cougars",
+        "alias": "WSU",
+        "market": "Washington State"
+      },
+      "dayOfWeek": 5,
+      "timezone": "US/Central"
+    },
+    {
+      "leagueId": "NCAAFB",
+      "eventId": "218c355c62fe443d56a493b138bfaac000938552",
+      "scheduledTime": "2026-09-20T00:00:00+00:00",
+      "live": false,
+      "status": "pregame",
+      "venue": "DKR-Texas Memorial Stadium",
+      "network": "SEC Network+",
+      "season": 2026,
+      "code": "REG",
+      "home": {
+        "teamId": "d64cdfa484f91bad5617f22079c69db677a8a447",
+        "name": "Longhorns",
+        "alias": "TEX",
+        "market": "Texas"
+      },
+      "away": {
+        "teamId": "a6d1c8c6ea0dba7c2c858beb93bb5649f265067f",
+        "name": "Roadrunners",
+        "alias": "UTSA",
+        "market": "UTSA"
+      },
+      "dayOfWeek": 5,
+      "timezone": "US/Central"
+    },
+    {
+      "leagueId": "NCAAFB",
+      "eventId": "8714e02ca3b39755afc7e449bd587ab723faed34",
+      "scheduledTime": "2026-09-12T16:00:00+00:00",
+      "live": false,
+      "status": "pregame",
+      "venue": "Boone Pickens Stadium",
+      "network": "ESPN",
+      "season": 2026,
+      "code": "REG",
+      "home": {
+        "teamId": "2d71fe3198e7e63602c6461b99c84c5b293ddf60",
+        "name": "Cowboys",
+        "alias": "OKST",
+        "market": "Oklahoma State"
+      },
+      "away": {
+        "teamId": "b2b7d7d727ed3c3c332fad89f027b2f3eb49b40b",
+        "name": "Ducks",
+        "alias": "ORE",
+        "market": "Oregon"
+      },
+      "dayOfWeek": 5,
+      "timezone": "US/Central"
+    },
+    {
+      "leagueId": "NCAAFB",
+      "eventId": "d5567a114637707207777a9eed0e1d1e1944f5c9",
+      "scheduledTime": "2026-09-12T19:30:00+00:00",
+      "live": false,
+      "status": "pregame",
+      "venue": "JMA Wireless Dome",
+      "network": "ACC Network",
+      "season": 2026,
+      "code": "REG",
+      "home": {
+        "teamId": "10d0193939288e695dadf2a754cdb465f5c8740d",
+        "name": "Orange",
+        "alias": "SYR",
+        "market": "Syracuse"
+      },
+      "away": {
+        "teamId": "762396137552041b1dc29d34511d2d496b42ff9d",
+        "name": "Golden Bears",
+        "alias": "CAL",
+        "market": "California"
+      },
+      "dayOfWeek": 5,
+      "timezone": "US/Eastern"
+    },
+    {
+      "leagueId": "NCAAFB",
+      "eventId": "68ffab728cfa0dd5ca38d45b40588f03edd0d7e0",
+      "scheduledTime": "2026-09-19T23:00:00+00:00",
+      "live": false,
+      "status": "pregame",
+      "venue": "Jordan-Hare Stadium",
+      "network": "ESPN",
+      "season": 2026,
+      "code": "REG",
+      "home": {
+        "teamId": "bba533c48b17e20faa20a745b3d2fc8860bca3a7",
+        "name": "Tigers",
+        "alias": "AUB",
+        "market": "Auburn"
+      },
+      "away": {
+        "teamId": "3aaf6bb3ed335a46d9e8a0a7404d717af75be534",
+        "name": "Gators",
+        "alias": "FLA",
+        "market": "Florida"
+      },
+      "dayOfWeek": 5,
+      "timezone": "US/Central"
+    },
+    {
+      "leagueId": "NCAAFB",
+      "eventId": "98bb1582ff838a67b34cedfb52dc211960fa34d0",
+      "scheduledTime": "2026-09-13T02:15:00+00:00",
+      "live": false,
+      "status": "pregame",
+      "venue": "Rice-Eccles Stadium",
+      "network": "ESPN",
+      "season": 2026,
+      "code": "REG",
+      "home": {
+        "teamId": "7fe53f947af805caefe2b460c6de694e1a9ecd97",
+        "name": "Utes",
+        "alias": "UTAH",
+        "market": "Utah"
+      },
+      "away": {
+        "teamId": "1b08d849c3407e21923d26bb89182c3890f8c36c",
+        "name": "Razorbacks",
+        "alias": "ARK",
+        "market": "Arkansas"
+      },
+      "dayOfWeek": 5,
+      "timezone": "US/Mountain"
+    },
+    {
+      "leagueId": "NCAAFB",
+      "eventId": "46ea53392b5a2852b9f52190838a94fe3ef0e1ca",
+      "scheduledTime": "2026-09-20T02:30:00+00:00",
+      "live": false,
+      "status": "pregame",
+      "venue": "Hornet Stadium",
+      "network": "ESPN",
+      "season": 2026,
+      "code": "REG",
+      "home": {
+        "teamId": "0302ecfc17b669534ecd77ee7c6f3f69d9a24ca0",
+        "name": "Hornets",
+        "alias": "SAC",
+        "market": "Sacramento State"
+      },
+      "away": {
+        "teamId": "306ebc6f55ada73bb34c479256b6e00e4784176a",
+        "name": "Bison",
+        "alias": "NDSU",
+        "market": "North Dakota State"
+      },
+      "dayOfWeek": 5,
+      "timezone": "US/Pacific"
+    },
+    {
+      "leagueId": "NCAAFB",
+      "eventId": "c3f6b05b12a10542f53cb1948d7de02778f5504c",
+      "scheduledTime": "2026-09-17T23:30:00+00:00",
+      "live": false,
+      "status": "pregame",
+      "venue": "Acrisure Stadium",
+      "network": "ESPN",
+      "season": 2026,
+      "code": "REG",
+      "home": {
+        "teamId": "f04155c4395db7c2d7489fefbad5aa583a09e7f6",
+        "name": "Panthers",
+        "alias": "PITT",
+        "market": "Pittsburgh"
+      },
+      "away": {
+        "teamId": "10d0193939288e695dadf2a754cdb465f5c8740d",
+        "name": "Orange",
+        "alias": "SYR",
+        "market": "Syracuse"
+      },
+      "dayOfWeek": 3,
+      "timezone": "US/Eastern"
+    },
+    {
+      "leagueId": "NCAAFB",
+      "eventId": "7075d176464ed936ac39d6414e3f13a94c449c39",
+      "scheduledTime": "2026-09-12T23:30:00+00:00",
+      "live": false,
+      "status": "pregame",
+      "venue": "Tiger Stadium",
+      "network": "SEC Network+",
+      "season": 2026,
+      "code": "REG",
+      "home": {
+        "teamId": "c4dee06a460e6d842826413dca3dd6cf1b565b49",
+        "name": "Tigers",
+        "alias": "LSU",
+        "market": "LSU"
+      },
+      "away": {
+        "teamId": "a2d6f1b0218656b9d9bdc05b5cd5b3abc44e99f0",
+        "name": "Bulldogs",
+        "alias": "LT",
+        "market": "Louisiana Tech"
+      },
+      "dayOfWeek": 5,
+      "timezone": "US/Central"
+    },
+    {
+      "leagueId": "NCAAFB",
+      "eventId": "536999321c0357b9fe0bd43d72d135f23f9a5b96",
+      "scheduledTime": "2026-09-19T22:00:00+00:00",
+      "live": false,
+      "status": "pregame",
+      "venue": "Kidd Brewer Stadium",
+      "network": "ESPN+",
+      "season": 2026,
+      "code": "REG",
+      "home": {
+        "teamId": "37d103ff08a4b7f284253099eec1147936b47a9f",
+        "name": "Mountaineers",
+        "alias": "APP",
+        "market": "Appalachian State"
+      },
+      "away": {
+        "teamId": "4b864eda08075803575aef62b28a706d56398790",
+        "name": "49ers",
+        "alias": "CHAR",
+        "market": "Charlotte"
+      },
+      "dayOfWeek": 5,
+      "timezone": "US/Eastern"
+    },
+    {
+      "leagueId": "NCAAFB",
+      "eventId": "4f8cc0312ceeac3cb7ef374bdfc85791f34d24ae",
+      "scheduledTime": "2026-09-12T23:30:00+00:00",
+      "live": false,
+      "status": "pregame",
+      "venue": "DKR-Texas Memorial Stadium",
+      "network": "ABC",
+      "season": 2026,
+      "code": "REG",
+      "home": {
+        "teamId": "d64cdfa484f91bad5617f22079c69db677a8a447",
+        "name": "Longhorns",
+        "alias": "TEX",
+        "market": "Texas"
+      },
+      "away": {
+        "teamId": "900738c19317827d0393ed919506508138d14a7d",
+        "name": "Buckeyes",
+        "alias": "OSU",
+        "market": "Ohio State"
+      },
+      "dayOfWeek": 5,
+      "timezone": "US/Central"
+    },
+    {
+      "leagueId": "NCAAFB",
+      "eventId": "c9ef4c73cb91541935f48594834869b8f668ad26",
+      "scheduledTime": "2026-09-19T19:30:00+00:00",
+      "live": false,
+      "status": "pregame",
+      "venue": "Michigan Stadium",
+      "network": "BTN",
+      "season": 2026,
+      "code": "REG",
+      "home": {
+        "teamId": "cad96e6b40fb81de022cba9ae7c90f2f06f69ce2",
+        "name": "Wolverines",
+        "alias": "MICH",
+        "market": "Michigan"
+      },
+      "away": {
+        "teamId": "b7735327829221d4a28ed78bda19e7302ff8c597",
+        "name": "Miners",
+        "alias": "UTEP",
+        "market": "UTEP"
+      },
+      "dayOfWeek": 5,
+      "timezone": "US/Eastern"
+    },
+    {
+      "leagueId": "NCAAFB",
+      "eventId": "20c9a4ba0573c8178a4c8b9d9a4bd0bb27d0ddd8",
+      "scheduledTime": "2026-09-19T20:00:00+00:00",
+      "live": false,
+      "status": "pregame",
+      "venue": "Memorial Stadium (Bloomington, IN)",
+      "network": "Peacock",
+      "season": 2026,
+      "code": "REG",
+      "home": {
+        "teamId": "8c386ddd9426f1b35745611856f32f2bb7b0b199",
+        "name": "Hoosiers",
+        "alias": "IND",
+        "market": "Indiana"
+      },
+      "away": {
+        "teamId": "fd3d3098190db21bae4bb3a6aa43029e93304789",
+        "name": "Hilltoppers",
+        "alias": "WKU",
+        "market": "Western Kentucky"
+      },
+      "dayOfWeek": 5,
+      "timezone": "US/Eastern"
+    },
+    {
+      "leagueId": "NCAAFB",
+      "eventId": "6a49f95d393c877853e2a6931cdfc8df098f9ca3",
+      "scheduledTime": "2026-09-12T23:00:00+00:00",
+      "live": false,
+      "status": "pregame",
+      "venue": "Yulman Stadium",
+      "network": "ESPN+",
+      "season": 2026,
+      "code": "REG",
+      "home": {
+        "teamId": "19ba8bfeacb08e10e93f4631f456bf6b2c912c75",
+        "name": "Green Wave",
+        "alias": "TULN",
+        "market": "Tulane"
+      },
+      "away": {
+        "teamId": "4d5d9428d2e24221d8105c05903860d3adcac8d0",
+        "name": "Jaguars",
+        "alias": "USA",
+        "market": "South Alabama"
+      },
+      "dayOfWeek": 5,
+      "timezone": "US/Central"
+    },
+    {
+      "leagueId": "NCAAFB",
+      "eventId": "cbe4a905db7a6cc18b9a7e4758d3d7e8818cf7f1",
+      "scheduledTime": "2026-09-12T16:00:00+00:00",
+      "live": false,
+      "status": "pregame",
+      "venue": "Michie Stadium",
+      "network": "CBS Sports Network",
+      "season": 2026,
+      "code": "REG",
+      "home": {
+        "teamId": "f8a850df1f3133d18574b072e2db1c2e4feadb24",
+        "name": "Black Knights",
+        "alias": "ARMY",
+        "market": "Army"
+      },
+      "away": {
+        "teamId": "1a33bb34ba8c92c6723fe0b420718f2d56d062e6",
+        "name": "Bulls",
+        "alias": "USF",
+        "market": "South Florida"
+      },
+      "dayOfWeek": 5,
+      "timezone": "US/Eastern"
+    },
+    {
+      "leagueId": "NCAAFB",
+      "eventId": "9249cd9f90783ac7a729b5cb7b945ec26e7cdf8e",
+      "scheduledTime": "2026-09-12T23:00:00+00:00",
+      "live": false,
+      "status": "pregame",
+      "venue": "Bobby Dodd Stadium at Hyundai Field",
+      "network": "ESPN",
+      "season": 2026,
+      "code": "REG",
+      "home": {
+        "teamId": "a562f347c4b6e4bf48e01b646b729ef3ab03cbfb",
+        "name": "Yellow Jackets",
+        "alias": "GT",
+        "market": "Georgia Tech"
+      },
+      "away": {
+        "teamId": "93eadaa409f4e565ae4931ce767746110481c738",
+        "name": "Volunteers",
+        "alias": "TENN",
+        "market": "Tennessee"
+      },
+      "dayOfWeek": 5,
+      "timezone": "US/Eastern"
+    },
+    {
+      "leagueId": "NCAAFB",
+      "eventId": "bb5b0afd15735a84dff6f3e096bc984ddda599c7",
+      "scheduledTime": "2026-09-19T16:30:00+00:00",
+      "live": false,
+      "status": "pregame",
+      "venue": "Camp Randall Stadium",
+      "network": "Peacock",
+      "season": 2026,
+      "code": "REG",
+      "home": {
+        "teamId": "1b68c7e1be66331739b7405d5bc9ca61386d1ee1",
+        "name": "Badgers",
+        "alias": "WIS",
+        "market": "Wisconsin"
+      },
+      "away": {
+        "teamId": "14274f447ea7a97932ab52e18eb4c837fdddf0eb",
+        "name": "Eagles",
+        "alias": "EMU",
+        "market": "Eastern Michigan"
+      },
+      "dayOfWeek": 5,
+      "timezone": "US/Central"
+    },
+    {
+      "leagueId": "NCAAFB",
+      "eventId": "3a156a0104b0d84ec9dbc617faa317894aebf0e2",
+      "scheduledTime": "2026-09-12T23:45:00+00:00",
+      "live": false,
+      "status": "pregame",
+      "venue": "Vaught-Hemingway Stadium",
+      "network": "ESPN2",
+      "season": 2026,
+      "code": "REG",
+      "home": {
+        "teamId": "4a8bb540687ad9c1cfa64a0382f4bde3570b7d47",
+        "name": "Rebels",
+        "alias": "MISS",
+        "market": "Ole Miss"
+      },
+      "away": {
+        "teamId": "4b864eda08075803575aef62b28a706d56398790",
+        "name": "49ers",
+        "alias": "CHAR",
+        "market": "Charlotte"
+      },
+      "dayOfWeek": 5,
+      "timezone": "US/Central"
+    },
+    {
+      "leagueId": "NCAAFB",
+      "eventId": "96cccac32e1c4bc93c3b68b935d81acebd9dfb1b",
+      "scheduledTime": "2026-10-17T17:00:00+00:00",
+      "live": false,
+      "status": "pregame",
+      "venue": "Memorial Stadium (Bloomington, IN)",
+      "season": 2026,
+      "code": "REG",
+      "home": {
+        "teamId": "8c386ddd9426f1b35745611856f32f2bb7b0b199",
+        "name": "Hoosiers",
+        "alias": "IND",
+        "market": "Indiana"
+      },
+      "away": {
+        "teamId": "900738c19317827d0393ed919506508138d14a7d",
+        "name": "Buckeyes",
+        "alias": "OSU",
+        "market": "Ohio State"
+      },
+      "dayOfWeek": 5,
+      "timezone": "US/Eastern"
+    },
+    {
+      "leagueId": "NCAAFB",
+      "eventId": "9d002e34275ae152d36317b9377d7947549219f4",
+      "scheduledTime": "2026-09-12T22:00:00+00:00",
+      "live": false,
+      "status": "pregame",
+      "venue": "Albertsons Stadium",
+      "network": "USA",
+      "season": 2026,
+      "code": "REG",
+      "home": {
+        "teamId": "90b715fc09d9f8d7beb29b60bd29eb1b4e9d4cb4",
+        "name": "Broncos",
+        "alias": "BSU",
+        "market": "Boise State"
+      },
+      "away": {
+        "teamId": "2d2e19203774e8dd04d9ef8b3372a549911e985c",
+        "name": "Tigers",
+        "alias": "MEM",
+        "market": "Memphis"
+      },
+      "dayOfWeek": 5,
+      "timezone": "US/Mountain"
+    },
+    {
+      "leagueId": "NCAAFB",
+      "eventId": "93d7e7e63f3f903be60ab5f2d10914bf55852dbf",
+      "scheduledTime": "2026-09-19T23:45:00+00:00",
+      "live": false,
+      "status": "pregame",
+      "venue": "Neyland Stadium",
+      "network": "SEC Network",
+      "season": 2026,
+      "code": "REG",
+      "home": {
+        "teamId": "93eadaa409f4e565ae4931ce767746110481c738",
+        "name": "Volunteers",
+        "alias": "TENN",
+        "market": "Tennessee"
+      },
+      "away": {
+        "teamId": "4e8e90b1edfd29542d8a08a1c9c94540cf889a5d",
+        "name": "Owls",
+        "alias": "KENN",
+        "market": "Kennesaw State"
+      },
+      "dayOfWeek": 5,
+      "timezone": "US/Eastern"
+    },
+    {
+      "leagueId": "NCAAFB",
+      "eventId": "2ec3baca08208d7cca17a594d4030055ee68c1d7",
+      "scheduledTime": "2026-09-19T19:30:00+00:00",
+      "live": false,
+      "status": "pregame",
+      "venue": "Rice-Eccles Stadium",
+      "network": "FOX",
+      "season": 2026,
+      "code": "REG",
+      "home": {
+        "teamId": "7fe53f947af805caefe2b460c6de694e1a9ecd97",
+        "name": "Utes",
+        "alias": "UTAH",
+        "market": "Utah"
+      },
+      "away": {
+        "teamId": "a9d8f59086c83ea9f79149eabe4d6424537f738b",
+        "name": "Aggies",
+        "alias": "USU",
+        "market": "Utah State"
+      },
+      "dayOfWeek": 5,
+      "timezone": "US/Mountain"
+    },
+    {
+      "leagueId": "NCAAFB",
+      "eventId": "2f0783250d06d5ce8e802d74f2f522573fe52e8e",
+      "scheduledTime": "2026-09-12T22:00:00+00:00",
+      "live": false,
+      "status": "pregame",
+      "venue": "Frank Solich Field at Peden Stadium",
+      "network": "ESPN+",
+      "season": 2026,
+      "code": "REG",
+      "home": {
+        "teamId": "fbdeb39115f006a144a4c7925dafc84f78bba37d",
+        "name": "Bobcats",
+        "alias": "OHIO",
+        "market": "Ohio"
+      },
+      "away": {
+        "teamId": "f6efd59222887629a32e48e39e864091cc02f11f",
+        "name": "Gamecocks",
+        "alias": "JVST",
+        "market": "Jacksonville State"
+      },
+      "dayOfWeek": 5,
+      "timezone": "US/Eastern"
+    },
+    {
+      "leagueId": "NCAAFB",
+      "eventId": "10f6ccd88272993aa0035cfc961ece00b2b74537",
+      "scheduledTime": "2026-09-12T23:30:00+00:00",
+      "live": false,
+      "status": "pregame",
+      "venue": "Flagler Credit Union Stadium",
+      "network": "ESPNU",
+      "season": 2026,
+      "code": "REG",
+      "home": {
+        "teamId": "7855cd0d05ca54bcc386ccd744062db7ded8bf46",
+        "name": "Owls",
+        "alias": "FAU",
+        "market": "Florida Atlantic"
+      },
+      "away": {
+        "teamId": "13d9f5a36e09f2ac24b5830cfb3c2e9e3cb33dd2",
+        "name": "Midshipmen",
+        "alias": "NAVY",
+        "market": "Navy"
+      },
+      "dayOfWeek": 5,
+      "timezone": "US/Eastern"
+    },
+    {
+      "leagueId": "NCAAFB",
+      "eventId": "ff24887cdfd090720e170031de6301aab54a921a",
+      "scheduledTime": "2026-11-14T18:00:00+00:00",
+      "live": false,
+      "status": "pregame",
+      "venue": "Tiger Stadium",
+      "season": 2026,
+      "code": "REG",
+      "home": {
+        "teamId": "c4dee06a460e6d842826413dca3dd6cf1b565b49",
+        "name": "Tigers",
+        "alias": "LSU",
+        "market": "LSU"
+      },
+      "away": {
+        "teamId": "d64cdfa484f91bad5617f22079c69db677a8a447",
+        "name": "Longhorns",
+        "alias": "TEX",
+        "market": "Texas"
+      },
+      "dayOfWeek": 5,
+      "timezone": "US/Central"
+    },
+    {
+      "leagueId": "NCAAFB",
+      "eventId": "43a37a1a11244248ffb01d0602d794caf2a1aecc",
+      "scheduledTime": "2026-09-19T20:15:00+00:00",
+      "live": false,
+      "status": "pregame",
+      "venue": "Williams-Brice Stadium",
+      "network": "SEC Network",
+      "season": 2026,
+      "code": "REG",
+      "home": {
+        "teamId": "5bb2a76f4fa017c4793a462fe7bd03a510af3a4d",
+        "name": "Gamecocks",
+        "alias": "SCAR",
+        "market": "South Carolina"
+      },
+      "away": {
+        "teamId": "76fc653eb1bfd17bf9cfb058bf482fd055f9d791",
+        "name": "Bulldogs",
+        "alias": "MSST",
+        "market": "Mississippi State"
+      },
+      "dayOfWeek": 5,
+      "timezone": "US/Eastern"
+    },
+    {
+      "leagueId": "NCAAFB",
+      "eventId": "4c25555807eb427b9012e47dbc77279d09286a95",
+      "scheduledTime": "2026-09-12T19:30:00+00:00",
+      "live": false,
+      "status": "pregame",
+      "venue": "Protective Stadium",
+      "network": "ESPN+",
+      "season": 2026,
+      "code": "REG",
+      "home": {
+        "teamId": "73bef63e557246fda5854a50e88b35fcf6bcce38",
+        "name": "Blazers",
+        "alias": "UAB",
+        "market": "UAB"
+      },
+      "away": {
+        "teamId": "453aef192eb21d5957e8fed06d4c81af4973fce2",
+        "name": "Warhawks",
+        "alias": "ULM",
+        "market": "Louisiana-Monroe"
+      },
+      "dayOfWeek": 5,
+      "timezone": "US/Central"
+    },
+    {
+      "leagueId": "NCAAFB",
+      "eventId": "d127bc858a2a0d085748c730b14ca4e46ec4e2e1",
+      "scheduledTime": "2026-09-12T16:00:00+00:00",
+      "live": false,
+      "status": "pregame",
+      "venue": "Lane Stadium",
+      "network": "The CW",
+      "season": 2026,
+      "code": "REG",
+      "home": {
+        "teamId": "3ae81c2e93aa8d4d6a823594a416f77d98734b8a",
+        "name": "Hokies",
+        "alias": "VT",
+        "market": "Virginia Tech"
+      },
+      "away": {
+        "teamId": "9004298508bb4777c4e876b790af871f01b286ff",
+        "name": "Monarchs",
+        "alias": "ODU",
+        "market": "Old Dominion"
+      },
+      "dayOfWeek": 5,
+      "timezone": "US/Eastern"
+    },
+    {
+      "leagueId": "NCAAFB",
+      "eventId": "c03b69ea7085467342dd6bb56b9c624d5946bd92",
+      "scheduledTime": "2026-09-19T16:00:00+00:00",
+      "live": false,
+      "status": "pregame",
+      "venue": "Donald W. Reynolds Razorback Stadium",
+      "network": "ABC",
+      "season": 2026,
+      "code": "REG",
+      "home": {
+        "teamId": "1b08d849c3407e21923d26bb89182c3890f8c36c",
+        "name": "Razorbacks",
+        "alias": "ARK",
+        "market": "Arkansas"
+      },
+      "away": {
+        "teamId": "14621406f9b98a2e562a42e14a7c018c7bb3cef6",
+        "name": "Bulldogs",
+        "alias": "UGA",
+        "market": "Georgia"
+      },
+      "dayOfWeek": 5,
+      "timezone": "US/Central"
+    },
+    {
+      "leagueId": "NCAAFB",
+      "eventId": "503e84cc618e9cd0e7320562db2ba9059d35cc41",
+      "scheduledTime": "2026-09-19T23:30:00+00:00",
+      "live": false,
+      "status": "pregame",
+      "venue": "Sonny Lubick Field at Canvas Stadium",
+      "network": "CBS/Paramount+",
+      "season": 2026,
+      "code": "REG",
+      "home": {
+        "teamId": "6a49d5119dbfad9053fdf7c00aa222097ef3c7d5",
+        "name": "Rams",
+        "alias": "CSU",
+        "market": "Colorado State"
+      },
+      "away": {
+        "teamId": "c5f2cfaec1d9d6dfa83fb18b391da8b46cd703bc",
+        "name": "Cougars",
+        "alias": "BYU",
+        "market": "BYU"
+      },
+      "dayOfWeek": 5,
+      "timezone": "US/Mountain"
+    },
+    {
+      "leagueId": "NCAAFB",
+      "eventId": "efb0a5f893254b158d3b5cdd040efca78187e706",
+      "scheduledTime": "2026-09-12T19:30:00+00:00",
+      "live": false,
+      "status": "pregame",
+      "venue": "Notre Dame Stadium",
+      "network": "NBC/Peacock",
+      "season": 2026,
+      "code": "REG",
+      "home": {
+        "teamId": "5bf74b9261030678050940db2d7eefbdd14c5ba2",
+        "name": "Fighting Irish",
+        "alias": "ND",
+        "market": "Notre Dame"
+      },
+      "away": {
+        "teamId": "2ea3fcbf9fac166ba22bdeb6dc875a898217defd",
+        "name": "Owls",
+        "alias": "RICE",
+        "market": "Rice"
+      },
+      "dayOfWeek": 5,
+      "timezone": "US/Eastern"
+    },
+    {
+      "leagueId": "NCAAFB",
+      "eventId": "22ad82e88e142e38a73b321b554e3e3948a1fa33",
+      "scheduledTime": "2026-09-12T19:30:00+00:00",
+      "live": false,
+      "status": "pregame",
+      "venue": "Gies Memorial Stadium (Champaign, IL)",
+      "network": "Fox Sports 1",
+      "season": 2026,
+      "code": "REG",
+      "home": {
+        "teamId": "a119071f009afacceea2814be946aec55bf340be",
+        "name": "Fighting Illini",
+        "alias": "ILL",
+        "market": "Illinois"
+      },
+      "away": {
+        "teamId": "32047f13d7099fcf21f4b8b6bbee7f481f51c380",
+        "name": "Blue Devils",
+        "alias": "DUKE",
+        "market": "Duke"
+      },
+      "dayOfWeek": 5,
+      "timezone": "US/Central"
+    },
+    {
+      "leagueId": "NCAAFB",
+      "eventId": "9b877567cd54c148371a3ea163fffe228d26e909",
+      "scheduledTime": "2026-09-12T23:30:00+00:00",
+      "live": false,
+      "status": "pregame",
+      "venue": "Kinnick Stadium",
+      "network": "NBC/Peacock",
+      "season": 2026,
+      "code": "REG",
+      "home": {
+        "teamId": "9d6ffd7f6c844c2a4242925c799b7e9f4aab41cb",
+        "name": "Hawkeyes",
+        "alias": "IOWA",
+        "market": "Iowa"
+      },
+      "away": {
+        "teamId": "e0a32889b039356835ac2dd2f5f981568def8fc5",
+        "name": "Cyclones",
+        "alias": "ISU",
+        "market": "Iowa State"
+      },
+      "dayOfWeek": 5,
+      "timezone": "US/Central"
+    },
+    {
+      "leagueId": "NCAAFB",
+      "eventId": "81c742c0ae89bded769344c8967440a45e89b477",
+      "scheduledTime": "2026-09-19T23:30:00+00:00",
+      "live": false,
+      "status": "pregame",
+      "venue": "Ryan Field",
+      "network": "Fox Networks",
+      "season": 2026,
+      "code": "REG",
+      "home": {
+        "teamId": "32ac2221893922acd0a0c6a3f6ee767c59f5fc58",
+        "name": "Wildcats",
+        "alias": "NW",
+        "market": "Northwestern"
+      },
+      "away": {
+        "teamId": "868cf3c9aa878db6e785366bfcfecbe2a57c9bbc",
+        "name": "Buffaloes",
+        "alias": "COLO",
+        "market": "Colorado"
+      },
+      "dayOfWeek": 5,
+      "timezone": "US/Central"
+    },
+    {
+      "leagueId": "NCAAFB",
+      "eventId": "8cf68b7e9209ef276bef3356c8d8a8f6d78e4f18",
+      "scheduledTime": "2026-09-12T19:30:00+00:00",
+      "live": false,
+      "status": "pregame",
+      "venue": "LaVell Edwards Stadium",
+      "network": "FOX",
+      "season": 2026,
+      "code": "REG",
+      "home": {
+        "teamId": "c5f2cfaec1d9d6dfa83fb18b391da8b46cd703bc",
+        "name": "Cougars",
+        "alias": "BYU",
+        "market": "BYU"
+      },
+      "away": {
+        "teamId": "d206bd108c50cfabccac073bb579bc6dd9b59cbd",
+        "name": "Wildcats",
+        "alias": "ARIZ",
+        "market": "Arizona"
+      },
+      "dayOfWeek": 5,
+      "timezone": "US/Mountain"
+    },
+    {
+      "leagueId": "NCAAFB",
+      "eventId": "db37b4e150e44de3d8e1c288c3aca81ff3237631",
+      "scheduledTime": "2026-09-12T19:30:00+00:00",
+      "live": false,
+      "status": "pregame",
+      "venue": "Huntington Bank Stadium",
+      "network": "CBS",
+      "season": 2026,
+      "code": "REG",
+      "home": {
+        "teamId": "29f0ad8221bd0c5b9917c3f0eaf4d2a193f211f0",
+        "name": "Golden Gophers",
+        "alias": "MINN",
+        "market": "Minnesota"
+      },
+      "away": {
+        "teamId": "76fc653eb1bfd17bf9cfb058bf482fd055f9d791",
+        "name": "Bulldogs",
+        "alias": "MSST",
+        "market": "Mississippi State"
+      },
+      "dayOfWeek": 5,
+      "timezone": "US/Central"
+    },
+    {
+      "leagueId": "NCAAFB",
+      "eventId": "455d42e0efa4048b01a5596d61a6fbc86103f6aa",
+      "scheduledTime": "2026-09-19T23:30:00+00:00",
+      "live": false,
+      "status": "pregame",
+      "venue": "Vaught-Hemingway Stadium",
+      "network": "ABC",
+      "season": 2026,
+      "code": "REG",
+      "home": {
+        "teamId": "4a8bb540687ad9c1cfa64a0382f4bde3570b7d47",
+        "name": "Rebels",
+        "alias": "MISS",
+        "market": "Ole Miss"
+      },
+      "away": {
+        "teamId": "c4dee06a460e6d842826413dca3dd6cf1b565b49",
+        "name": "Tigers",
+        "alias": "LSU",
+        "market": "LSU"
+      },
+      "dayOfWeek": 5,
+      "timezone": "US/Central"
+    },
+    {
+      "leagueId": "NCAAFB",
+      "eventId": "7de07c627beedd60a5d67c780209d6a539408bca",
+      "scheduledTime": "2026-09-12T20:15:00+00:00",
+      "live": false,
+      "status": "pregame",
+      "venue": "FirstBank Stadium",
+      "network": "SEC Network",
+      "season": 2026,
+      "code": "REG",
+      "home": {
+        "teamId": "8d87370250db62cabe449c99dcb07f20023b6008",
+        "name": "Commodores",
+        "alias": "VAN",
+        "market": "Vanderbilt"
+      },
+      "away": {
+        "teamId": "20cd940e87125ceeb53961b9450645bffde56de7",
+        "name": "Fightin' Blue Hens",
+        "alias": "DEL",
+        "market": "Delaware"
+      },
+      "dayOfWeek": 5,
+      "timezone": "US/Central"
+    },
+    {
+      "leagueId": "NCAAFB",
+      "eventId": "e41ee1663d5914b466fd0468134101703d465960",
+      "scheduledTime": "2026-10-10T19:30:00+00:00",
+      "live": false,
+      "status": "pregame",
+      "venue": "Cotton Bowl",
+      "network": "ESPN Networks",
+      "season": 2026,
+      "code": "REG",
+      "home": {
+        "teamId": "3a5199e40f55ad2d425ba509fc615b577f867ddd",
+        "name": "Sooners",
+        "alias": "OKLA",
+        "market": "Oklahoma"
+      },
+      "away": {
+        "teamId": "d64cdfa484f91bad5617f22079c69db677a8a447",
+        "name": "Longhorns",
+        "alias": "TEX",
+        "market": "Texas"
+      },
+      "neutralSite": true,
+      "dayOfWeek": 5,
+      "timezone": "US/Central"
+    },
+    {
+      "leagueId": "NCAAFB",
+      "eventId": "8aa2765dd79a903f4d202a51b653e76387f8e1c7",
+      "scheduledTime": "2026-09-19T19:30:00+00:00",
+      "live": false,
+      "status": "pregame",
+      "venue": "L&N Federal Credit Union Stadium",
+      "network": "ESPN Networks",
+      "season": 2026,
+      "code": "REG",
+      "home": {
+        "teamId": "6afe716c1cf025ca6e68df2388daf561fe2cbf45",
+        "name": "Cardinals",
+        "alias": "LOU",
+        "market": "Louisville"
+      },
+      "away": {
+        "teamId": "8d6fa032056194a90410d770697bc5ce85cb8302",
+        "name": "Mustangs",
+        "alias": "SMU",
+        "market": "SMU"
+      },
+      "dayOfWeek": 5,
+      "timezone": "US/Eastern"
+    },
+    {
+      "leagueId": "NCAAFB",
+      "eventId": "04c5e2a674afa710513d6656844ec7a4bf3d9db9",
+      "scheduledTime": "2026-09-12T23:45:00+00:00",
+      "live": false,
+      "status": "pregame",
+      "venue": "Jordan-Hare Stadium",
+      "network": "SEC Network",
+      "season": 2026,
+      "code": "REG",
+      "home": {
+        "teamId": "bba533c48b17e20faa20a745b3d2fc8860bca3a7",
+        "name": "Tigers",
+        "alias": "AUB",
+        "market": "Auburn"
+      },
+      "away": {
+        "teamId": "bd6ab5ae5f3184083cff30e84abd91dab950b4c2",
+        "name": "Golden Eagles",
+        "alias": "USM",
+        "market": "Southern Miss"
+      },
+      "dayOfWeek": 5,
+      "timezone": "US/Central"
+    },
+    {
+      "leagueId": "NCAAFB",
+      "eventId": "bf09658f36fbdc39f51c52f83d95ce1549706913",
+      "scheduledTime": "2026-09-19T23:00:00+00:00",
+      "live": false,
+      "status": "pregame",
+      "venue": "Memorial Stadium/Faurot Field",
+      "network": "SEC Network+",
+      "season": 2026,
+      "code": "REG",
+      "home": {
+        "teamId": "000a69035699c7ae7f49bdbcba27e06be7682c86",
+        "name": "Tigers",
+        "alias": "MIZZ",
+        "market": "Missouri"
+      },
+      "away": {
+        "teamId": "f47fb823de61f558d075f154f4501cc7a1cdbecc",
+        "name": "Trojans",
+        "alias": "TROY",
+        "market": "Troy"
+      },
+      "dayOfWeek": 5,
+      "timezone": "US/Central"
+    },
+    {
+      "leagueId": "NCAAFB",
+      "eventId": "268086400b242302ab25e08c8a091e8f62e20af5",
+      "scheduledTime": "2026-09-18T23:30:00+00:00",
+      "live": false,
+      "status": "pregame",
+      "venue": "Allegacy Federal Credit Union Stadium",
+      "network": "ESPN",
+      "season": 2026,
+      "code": "REG",
+      "home": {
+        "teamId": "87fd32b85eabc37e2bcb4c31cb78e9fe013f7e94",
+        "name": "Demon Deacons",
+        "alias": "WAKE",
+        "market": "Wake Forest"
+      },
+      "away": {
+        "teamId": "0007a65b6c7690c2c10083d174ede1e6e1aeb2c3",
+        "name": "Hurricanes",
+        "alias": "MIA",
+        "market": "Miami (FL)"
+      },
+      "dayOfWeek": 4,
+      "timezone": "US/Eastern"
+    },
+    {
+      "leagueId": "NCAAFB",
+      "eventId": "47cfcb7dfbf613598604202234134bfd890fd3fa",
+      "scheduledTime": "2026-09-19T23:00:00+00:00",
+      "live": false,
+      "status": "pregame",
+      "venue": "Rice Stadium",
+      "network": "ESPN+",
+      "season": 2026,
+      "code": "REG",
+      "home": {
+        "teamId": "2ea3fcbf9fac166ba22bdeb6dc875a898217defd",
+        "name": "Owls",
+        "alias": "RICE",
+        "market": "Rice"
+      },
+      "away": {
+        "teamId": "07506fd34438ff3cb8b2d5321809e33bf3eebd5c",
+        "name": "Broncos",
+        "alias": "WMU",
+        "market": "Western Michigan"
+      },
+      "dayOfWeek": 5,
+      "timezone": "US/Central"
+    },
+    {
+      "leagueId": "NCAAFB",
+      "eventId": "89db12f506996c8df03bd6cb7823173e8816a605",
+      "scheduledTime": "2026-09-12T16:00:00+00:00",
+      "live": false,
+      "status": "pregame",
+      "venue": "Ross-Ade Stadium",
+      "network": "Fox Sports 1",
+      "season": 2026,
+      "code": "REG",
+      "home": {
+        "teamId": "55a7dda13a8af2a7f7c91744559bc4883bbd8ced",
+        "name": "Boilermakers",
+        "alias": "PUR",
+        "market": "Purdue"
+      },
+      "away": {
+        "teamId": "87fd32b85eabc37e2bcb4c31cb78e9fe013f7e94",
+        "name": "Demon Deacons",
+        "alias": "WAKE",
+        "market": "Wake Forest"
+      },
+      "dayOfWeek": 5,
+      "timezone": "US/Eastern"
+    },
+    {
+      "leagueId": "NCAAFB",
+      "eventId": "9c524cbe002ad7222d0abe4f5e47fa9ec16d0136",
+      "scheduledTime": "2026-09-19T23:30:00+00:00",
+      "live": false,
+      "status": "pregame",
+      "venue": "Gaylord Family Oklahoma Memorial Stadium",
+      "network": "ESPN2",
+      "season": 2026,
+      "code": "REG",
+      "home": {
+        "teamId": "3a5199e40f55ad2d425ba509fc615b577f867ddd",
+        "name": "Sooners",
+        "alias": "OKLA",
+        "market": "Oklahoma"
+      },
+      "away": {
+        "teamId": "69d76dd0331ae00813a30ebde3de6a91b56dd4fb",
+        "name": "Lobos",
+        "alias": "UNM",
+        "market": "New Mexico"
+      },
+      "dayOfWeek": 5,
+      "timezone": "US/Central"
+    },
+    {
+      "leagueId": "NCAAFB",
+      "eventId": "ec8374afef0f04f21ce75428800b618a6b62893c",
+      "scheduledTime": "2026-09-12T16:00:00+00:00",
+      "live": false,
+      "status": "pregame",
+      "venue": "Michigan Stadium",
+      "network": "FOX",
+      "season": 2026,
+      "code": "REG",
+      "home": {
+        "teamId": "cad96e6b40fb81de022cba9ae7c90f2f06f69ce2",
+        "name": "Wolverines",
+        "alias": "MICH",
+        "market": "Michigan"
+      },
+      "away": {
+        "teamId": "3a5199e40f55ad2d425ba509fc615b577f867ddd",
+        "name": "Sooners",
+        "alias": "OKLA",
+        "market": "Oklahoma"
+      },
+      "dayOfWeek": 5,
+      "timezone": "US/Eastern"
+    },
+    {
+      "leagueId": "NCAAFB",
+      "eventId": "dfd5afb4fb0a67cdd672cd2b2469ae98b4f4bcfe",
+      "scheduledTime": "2026-10-10T17:00:00+00:00",
+      "live": false,
+      "status": "pregame",
+      "venue": "Bryant-Denny Stadium",
+      "season": 2026,
+      "code": "REG",
+      "home": {
+        "teamId": "eb2b4cc02d10beac5c536b5f4e7330e19a690287",
+        "name": "Crimson Tide",
+        "alias": "ALA",
+        "market": "Alabama"
+      },
+      "away": {
+        "teamId": "14621406f9b98a2e562a42e14a7c018c7bb3cef6",
+        "name": "Bulldogs",
+        "alias": "UGA",
+        "market": "Georgia"
+      },
+      "dayOfWeek": 5,
+      "timezone": "US/Central"
+    },
+    {
+      "leagueId": "NCAAFB",
+      "eventId": "858be48f5280f4ddd8e433b271cc5e2d6ba881d1",
+      "scheduledTime": "2026-09-12T23:30:00+00:00",
+      "live": false,
+      "status": "pregame",
+      "venue": "Reser Stadium",
+      "network": "CBS/Paramount+",
+      "season": 2026,
+      "code": "REG",
+      "home": {
+        "teamId": "d8c4a9f2dcaea56ad9a647e8cf022c14b5a44e17",
+        "name": "Beavers",
+        "alias": "ORST",
+        "market": "Oregon State"
+      },
+      "away": {
+        "teamId": "9f75e61f901013166f474a968b1d32e60c78aaa6",
+        "name": "Red Raiders",
+        "alias": "TTU",
+        "market": "Texas Tech"
+      },
+      "dayOfWeek": 5,
+      "timezone": "US/Pacific"
+    },
+    {
+      "leagueId": "NCAAFB",
+      "eventId": "20b78697b27bcd33ba8997ea93ae31db38422283",
+      "scheduledTime": "2026-09-19T16:00:00+00:00",
+      "live": false,
+      "status": "pregame",
+      "venue": "Memorial Stadium (Clemson, SC)",
+      "network": "ESPN",
+      "season": 2026,
+      "code": "REG",
+      "home": {
+        "teamId": "5a97295eab1ab5f25aa6687c41aa44cd3127a5b7",
+        "name": "Tigers",
+        "alias": "CLEM",
+        "market": "Clemson"
+      },
+      "away": {
+        "teamId": "9dcb89b0e1c799d78a9af86d97e97d6e34fc7006",
+        "name": "Tar Heels",
+        "alias": "UNC",
+        "market": "North Carolina"
+      },
+      "dayOfWeek": 5,
+      "timezone": "US/Eastern"
+    },
+    {
+      "leagueId": "NCAAFB",
+      "eventId": "ebf043ac208de550354eb76a8f7cb3b0c11ab5ba",
+      "scheduledTime": "2026-09-19T19:30:00+00:00",
+      "live": false,
+      "status": "pregame",
+      "venue": "Kyle Field",
+      "network": "ESPN Networks",
+      "season": 2026,
+      "code": "REG",
+      "home": {
+        "teamId": "b0031decb868583b0dd4b717bd866904e5c27b7f",
+        "name": "Aggies",
+        "alias": "TXAM",
+        "market": "Texas A&M"
+      },
+      "away": {
+        "teamId": "0cbf1b8f2c1ebebb29962826f69d586869d9cbe1",
+        "name": "Wildcats",
+        "alias": "UK",
+        "market": "Kentucky"
+      },
+      "dayOfWeek": 5,
+      "timezone": "US/Central"
+    },
+    {
+      "leagueId": "NCAAFB",
+      "eventId": "cc68c7267fe3adf31e3249df5cb9e71db331fbb0",
+      "scheduledTime": "2026-09-19T00:00:00+00:00",
+      "live": false,
+      "status": "pregame",
+      "venue": "Galaxy Stadium",
+      "network": "FOX",
+      "season": 2026,
+      "code": "REG",
+      "home": {
+        "teamId": "9f75e61f901013166f474a968b1d32e60c78aaa6",
+        "name": "Red Raiders",
+        "alias": "TTU",
+        "market": "Texas Tech"
+      },
+      "away": {
+        "teamId": "b54f310d0b443a82bda5a56d616e680aabb976ca",
+        "name": "Cougars",
+        "alias": "HOU",
+        "market": "Houston"
+      },
+      "dayOfWeek": 4,
+      "timezone": "US/Central"
+    },
+    {
+      "leagueId": "NCAAFB",
+      "eventId": "9f8a91078b890ed2bcf13eb93157764a7334d220",
+      "scheduledTime": "2026-09-19T23:30:00+00:00",
+      "live": false,
+      "status": "pregame",
+      "venue": "Notre Dame Stadium",
+      "network": "NBC/Peacock",
+      "season": 2026,
+      "code": "REG",
+      "home": {
+        "teamId": "5bf74b9261030678050940db2d7eefbdd14c5ba2",
+        "name": "Fighting Irish",
+        "alias": "ND",
+        "market": "Notre Dame"
+      },
+      "away": {
+        "teamId": "c8bf01048bb866cb2188c66686cd07d40033309a",
+        "name": "Spartans",
+        "alias": "MSU",
+        "market": "Michigan State"
+      },
+      "dayOfWeek": 5,
+      "timezone": "US/Eastern"
+    },
+    {
+      "leagueId": "NCAAFB",
+      "eventId": "abf0c3634412cc97705d950ad59dd71729687e9a",
+      "scheduledTime": "2026-09-19T16:00:00+00:00",
+      "live": false,
+      "status": "pregame",
+      "venue": "Wembley Stadium",
+      "network": "Fox Sports 1",
+      "season": 2026,
+      "code": "REG",
+      "home": {
+        "teamId": "71318c6869865695bdf598158dd6e2ad0400bbc1",
+        "name": "Jayhawks",
+        "alias": "KU",
+        "market": "Kansas"
+      },
+      "away": {
+        "teamId": "e604c428ba96a5fa9c6d3628bcd15799c45943df",
+        "name": "Sun Devils",
+        "alias": "ASU",
+        "market": "Arizona State"
+      },
+      "neutralSite": true,
+      "dayOfWeek": 5,
+      "timezone": "Europe/London"
+    },
+    {
+      "leagueId": "NCAAFB",
+      "eventId": "51646cdbdfddfdf3a5dc2debc95dd8272af7a990",
+      "scheduledTime": "2026-09-12T19:45:00+00:00",
+      "live": false,
+      "status": "pregame",
+      "venue": "DATCU Stadium",
+      "network": "ESPNU",
+      "season": 2026,
+      "code": "REG",
+      "home": {
+        "teamId": "3c38337d14def942ec1eb10af2b6dd6072cc4797",
+        "name": "Mean Green",
+        "alias": "UNT",
+        "market": "North Texas"
+      },
+      "away": {
+        "teamId": "170d35a2806d949c1a157ac24b825f2d8fc6dba6",
+        "name": "Rebels",
+        "alias": "UNLV",
+        "market": "UNLV"
+      },
+      "dayOfWeek": 5,
+      "timezone": "US/Central"
+    },
+    {
+      "leagueId": "NCAAFB",
+      "eventId": "054d2b8c594322715b66362e7a026c99813faf67",
+      "scheduledTime": "2026-09-12T19:30:00+00:00",
+      "live": false,
+      "status": "pregame",
+      "venue": "Alaska Airlines Field at Husky Stadium",
+      "network": "BTN",
+      "season": 2026,
+      "code": "REG",
+      "home": {
+        "teamId": "0b32c48fc24b079e458d1a18b62f785c2f30ead4",
+        "name": "Huskies",
+        "alias": "WASH",
+        "market": "Washington"
+      },
+      "away": {
+        "teamId": "a9d8f59086c83ea9f79149eabe4d6424537f738b",
+        "name": "Aggies",
+        "alias": "USU",
+        "market": "Utah State"
+      },
+      "dayOfWeek": 5,
+      "timezone": "US/Pacific"
+    },
+    {
+      "leagueId": "NCAAFB",
+      "eventId": "2b957a39200fe9da60c4aae2d97db6952ef8d8e8",
+      "scheduledTime": "2026-09-12T23:00:00+00:00",
+      "live": false,
+      "status": "pregame",
+      "venue": "Memorial Stadium (Lincoln, NE)",
+      "network": "Fox Sports 1",
+      "season": 2026,
+      "code": "REG",
+      "home": {
+        "teamId": "ee8475e00c0bd3538ef8e9eb521775fe127e9238",
+        "name": "Cornhuskers",
+        "alias": "NEB",
+        "market": "Nebraska"
+      },
+      "away": {
+        "teamId": "c4b5dfe580bd45b0967206ac6a8727628b99c968",
+        "name": "Falcons",
+        "alias": "BGSU",
+        "market": "Bowling Green"
+      },
+      "dayOfWeek": 5,
+      "timezone": "US/Central"
+    },
+    {
+      "leagueId": "NCAAFB",
+      "eventId": "1fedabb68da2bacda9ed82467b1e2ab0c2f40682",
+      "scheduledTime": "2026-09-12T16:45:00+00:00",
+      "live": false,
+      "status": "pregame",
+      "venue": "Sanford Stadium",
+      "network": "SEC Network",
+      "season": 2026,
+      "code": "REG",
+      "home": {
+        "teamId": "14621406f9b98a2e562a42e14a7c018c7bb3cef6",
+        "name": "Bulldogs",
+        "alias": "UGA",
+        "market": "Georgia"
+      },
+      "away": {
+        "teamId": "fd3d3098190db21bae4bb3a6aa43029e93304789",
+        "name": "Hilltoppers",
+        "alias": "WKU",
+        "market": "Western Kentucky"
+      },
+      "dayOfWeek": 5,
+      "timezone": "US/Eastern"
+    },
+    {
+      "leagueId": "NCAAFB",
+      "eventId": "d9cdcbc3544331f9b665273de6a096a08e7ea0f9",
+      "scheduledTime": "2026-09-19T15:30:00+00:00",
+      "live": false,
+      "status": "pregame",
+      "venue": "Tubby Raymond Field at Delaware Stadium",
+      "network": "CBS Sports Network",
+      "season": 2026,
+      "code": "REG",
+      "home": {
+        "teamId": "20cd940e87125ceeb53961b9450645bffde56de7",
+        "name": "Fightin' Blue Hens",
+        "alias": "DEL",
+        "market": "Delaware"
+      },
+      "away": {
+        "teamId": "d6d618349d2d857e647017832d6b777f3a7680c5",
+        "name": "Chanticleers",
+        "alias": "CCAR",
+        "market": "Coastal Carolina"
+      },
+      "dayOfWeek": 5,
+      "timezone": "US/Eastern"
+    }
+  ]
+}
