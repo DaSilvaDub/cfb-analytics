@@ -14,7 +14,7 @@ import os
 import sys
 
 from cfb_analytics import config, db, paths
-from cfb_analytics.errors import CfbAnalyticsError
+from cfb_analytics.errors import CfbAnalyticsError, SchemaError
 
 
 def _cmd_init_db(args: argparse.Namespace) -> int:
@@ -473,7 +473,8 @@ def _cmd_board(args: argparse.Namespace) -> int:
 
 
 def _cmd_futures(args: argparse.Namespace) -> int:
-    """Emit one point-in-time, shadow-only season futures projection as JSON."""
+    """Emit season futures projection summary or JSON."""
+    import math
     from dataclasses import asdict
     from datetime import UTC, datetime
 
@@ -489,41 +490,430 @@ def _cmd_futures(args: argparse.Namespace) -> int:
     canonical_as_of = as_of.astimezone(UTC).isoformat()
     input_manifest: dict[str, object] = {}
 
+    parsed_lines: list[float] = []
+    if args.posted_lines:
+        for item in args.posted_lines:
+            if isinstance(item, (int, float)):
+                val = float(item)
+                if val < 0:
+                    raise SchemaError(f"Posted win-total line cannot be negative, got {val}")
+                parsed_lines.append(val)
+            elif isinstance(item, str):
+                for part in item.split(","):
+                    part = part.strip()
+                    if part:
+                        try:
+                            val = float(part)
+                        except ValueError as exc:
+                            raise SchemaError(f"Invalid line value {part!r}") from exc
+                        if val < 0:
+                            raise SchemaError(
+                                f"Posted win-total line cannot be negative, got {val}"
+                            )
+                        parsed_lines.append(val)
+
+    if any(not math.isfinite(line) for line in parsed_lines):
+        raise SchemaError("Posted win-total lines must be finite")
+    if args.posted_lines and not parsed_lines:
+        raise SchemaError("At least one posted win-total line is required")
+    if args.mc_sims is not None and args.mc_sims < 1:
+        raise SchemaError("--mc-sims must be a positive integer")
+
+    nil_tier = args.nil_tier
+    nil_budget = args.nil_budget_millions
+
+    portal_comp = args.portal_net_composite
+    qb_tier = args.qb_tier
+    qb_continuity = args.qb_continuity
+
     with db.open_db() as conn:
         projection = project_team_futures_from_db(
             conn,
             args.team_id,
             args.season,
             as_of_utc=canonical_as_of,
-            portal_composite=args.portal_net_composite,
-            nil_tier=args.nil_tier,
-            nil_budget_millions=args.nil_budget_millions,
-            qb_tier=args.qb_tier,
-            qb_continuity=args.qb_continuity,
-            posted_lines=args.posted_lines or [],
+            portal_composite=portal_comp,
+            nil_tier=nil_tier,
+            nil_budget_millions=nil_budget,
+            qb_tier=qb_tier,
+            qb_continuity=qb_continuity,
+            posted_lines=parsed_lines,
             input_manifest=input_manifest,
         )
 
-    payload = {
-        "schema_version": 1,
-        "model": "season_futures_v1",
-        "model_status": "uncalibrated_shadow",
-        "is_actionable": False,
-        "as_of_utc": canonical_as_of,
-        "season": args.season,
-        "inputs": {
-            "provenance": "caller_supplied_unverified",
-            "portal_net_composite": args.portal_net_composite,
-            "nil_tier": args.nil_tier,
-            "nil_budget_millions": args.nil_budget_millions,
-            "qb_tier": args.qb_tier,
-            "qb_continuity": args.qb_continuity,
-            "posted_lines": args.posted_lines or [],
-        },
-        "database_inputs": input_manifest,
-        "projection": asdict(projection),
-    }
-    print(json.dumps(payload, allow_nan=False, indent=2, sort_keys=True))
+    sim_results = None
+    if getattr(args, "mc_sims", None) is not None:
+        from cfb_analytics.models.futures import simulate_season_monte_carlo
+
+        probs = [gp.win_probability for gp in projection.schedule_projections]
+        sim_results = simulate_season_monte_carlo(
+            probs, posted_lines=parsed_lines, n_simulations=args.mc_sims
+        )
+
+    output_json = bool(getattr(args, "json", False))
+
+    if output_json:
+        payload = {
+            "schema_version": 1,
+            "model": "season_futures_v1",
+            "model_status": "uncalibrated_shadow",
+            "is_actionable": False,
+            "as_of_utc": canonical_as_of,
+            "season": args.season,
+            "inputs": {
+                "provenance": "caller_supplied_unverified",
+                "portal_net_composite": portal_comp,
+                "nil_tier": nil_tier,
+                "nil_budget_millions": nil_budget,
+                "qb_tier": qb_tier,
+                "qb_continuity": qb_continuity,
+                "posted_lines": parsed_lines,
+            },
+            "database_inputs": input_manifest,
+            "projection": asdict(projection),
+        }
+        if sim_results is not None:
+            payload["simulation"] = asdict(sim_results)
+        print(json.dumps(payload, allow_nan=False, indent=2, sort_keys=True))
+        return 0
+
+    print(f"SEASON FUTURES PROJECTION - {args.team_id} ({args.season})   [{config.SHADOW_STAMP}]")
+    rating = projection.adjusted_rating
+    print(f"\n  True Talent Composite : {rating.true_talent_composite}")
+    print(
+        f"  Adjusted Power Rating : {rating.adjusted_power_rating:+.2f} "
+        f"(Elo ~{rating.elo_equivalent:.0f})"
+    )
+    print(
+        f"  Expected Wins         : {projection.expected_wins:.2f} "
+        f"(stdev: {projection.win_stdev:.2f})"
+    )
+    print(
+        f"  Conference ({projection.conference}) : "
+        f"CCG Reach: {projection.prob_reach_conference_championship * 100:.1f}%, "
+        f"CCG Win: {projection.prob_win_conference_championship * 100:.1f}%"
+    )
+    print(f"  CFP Appearance (12-tm): {projection.prob_cfp_appearance * 100:.1f}%")
+
+    if projection.win_total_evaluations:
+        print("\n  Win Total Line Evaluations:")
+        print(
+            f"    {'Line':>5}  {'Over %':>7}  {'Under %':>7}  "
+            f"{'Fair Over':>9}  {'Fair Under':>10}  {'Edge':>7}  {'Side':<5}"
+        )
+        print("    " + "-" * 57)
+        for line, eval_item in sorted(projection.win_total_evaluations.items()):
+            over_pct = f"{eval_item.prob_over * 100:.1f}%"
+            under_pct = f"{eval_item.prob_under * 100:.1f}%"
+            fair_o = (
+                f"{eval_item.fair_over_american:+d}"
+                if eval_item.fair_over_american is not None
+                else "N/A"
+            )
+            fair_u = (
+                f"{eval_item.fair_under_american:+d}"
+                if eval_item.fair_under_american is not None
+                else "N/A"
+            )
+            edge_str = f"{eval_item.edge * 100:+.1f}%"
+            print(
+                f"    {line:>5.1f}  {over_pct:>7}  {under_pct:>7}  "
+                f"{fair_o:>9}  {fair_u:>10}  {edge_str:>7}  {eval_item.recommended_side:<5}"
+            )
+
+    if sim_results is not None:
+        print(f"\n  Monte Carlo Simulation ({sim_results.n_simulations:,} trials):")
+        print(f"    Mean Wins   : {sim_results.mean_wins:.2f}")
+        print(f"    Median Wins : {sim_results.median_wins:.1f}")
+        print(f"    P10 - P90   : {sim_results.p10_wins:.1f} - {sim_results.p90_wins:.1f} wins")
+        if sim_results.simulated_line_over_probs:
+            print("    Simulated Over Probabilities:")
+            for line, prob in sorted(sim_results.simulated_line_over_probs.items()):
+                print(f"      Over {line:<4.1f}: {prob * 100:>5.1f}%")
+
+    print("\nThis projection is uncalibrated shadow output. Not an actionable recommendation.")
+    return 0
+
+
+def _parse_clock(value: str | int | None) -> int:
+    if value is None:
+        return 900
+    if isinstance(value, int):
+        if not (0 <= value <= 900):
+            raise SchemaError(f"Clock must be between 0 and 900 seconds (15:00), got {value}")
+        return value
+    text = str(value).strip()
+    if ":" in text:
+        parts = text.split(":")
+        if len(parts) == 2:
+            try:
+                mins = int(parts[0])
+                secs = int(parts[1])
+            except ValueError as exc:
+                raise SchemaError(
+                    f"--clock format must be MM:SS or integer seconds, got {value!r}"
+                ) from exc
+            if mins < 0 or not (0 <= secs <= 59):
+                raise SchemaError(f"--clock format must be MM:SS with 0-59 seconds, got {value!r}")
+            total = mins * 60 + secs
+            if not (0 <= total <= 900):
+                raise SchemaError(f"Clock must be between 0 and 900 seconds (15:00), got {value!r}")
+            return total
+        raise SchemaError(f"--clock format must be MM:SS or integer seconds, got {value!r}")
+    try:
+        total = int(text)
+    except ValueError as exc:
+        raise SchemaError(
+            f"--clock format must be MM:SS or integer seconds, got {value!r}"
+        ) from exc
+    if not (0 <= total <= 900):
+        raise SchemaError(f"Clock must be between 0 and 900 seconds (15:00), got {total}")
+    return total
+
+
+def _cmd_live(args: argparse.Namespace) -> int:
+    """Track continuous in-game state and simulate live micro-markets."""
+    from datetime import UTC, datetime
+
+    from cfb_analytics.features.live import GameState
+    from cfb_analytics.models.live import (
+        calculate_win_probability,
+        estimate_next_drive_outcomes,
+        project_live_team_totals,
+        win_probability_to_american_odds,
+    )
+
+    is_completed_in_db = False
+    if args.game_id:
+        paths.ensure_dirs()
+        if not paths.database_path().exists():
+            raise CfbAnalyticsError(
+                "Database does not exist. Run 'cfb-analytics init-db' or provide --home and --away."
+            )
+        with db.open_db() as conn:
+            row = conn.execute(
+                "SELECT game_id, home_team_id, away_team_id, home_points, away_points, "
+                "status, completed "
+                "FROM games WHERE game_id = ?",
+                (args.game_id,),
+            ).fetchone()
+        if row is None:
+            raise CfbAnalyticsError(f"Game {args.game_id!r} not found in database")
+        if args.home or args.away:
+            raise SchemaError("--home and --away cannot override a stored game identity")
+        home_team = str(row["home_team_id"]).strip()
+        away_team = str(row["away_team_id"]).strip()
+        home_score = (
+            args.home_score
+            if args.home_score is not None
+            else (int(row["home_points"]) if row["home_points"] is not None else 0)
+        )
+        away_score = (
+            args.away_score
+            if args.away_score is not None
+            else (int(row["away_points"]) if row["away_points"] is not None else 0)
+        )
+        game_id = args.game_id
+        if row["completed"] == 1 or (
+            row["status"] and str(row["status"]).lower() in ("completed", "final", "status_final")
+        ):
+            is_completed_in_db = True
+        if is_completed_in_db and (row["home_points"] is None or row["away_points"] is None):
+            raise SchemaError("Completed database game is missing final scores")
+        if not is_completed_in_db:
+            required = ("quarter", "clock", "down", "distance", "yardline", "possession")
+            missing = [f"--{name}" for name in required if getattr(args, name) is None]
+            if missing:
+                raise SchemaError("Database has no live situation; provide " + ", ".join(missing))
+            if (row["home_points"] is None and args.home_score is None) or (
+                row["away_points"] is None and args.away_score is None
+            ):
+                raise SchemaError("Database scores are missing; provide explicit score flags")
+    else:
+        if not args.home or not args.away:
+            raise SchemaError("Either --game or both --home and --away must be specified")
+        home_team = args.home.strip()
+        away_team = args.away.strip()
+        home_score = args.home_score if args.home_score is not None else 0
+        away_score = args.away_score if args.away_score is not None else 0
+        game_id = f"sim_{home_team}_{away_team}"
+
+    if home_team.lower() == away_team.lower():
+        raise SchemaError("Home and away team IDs must differ")
+
+    if home_score < 0 or away_score < 0:
+        raise SchemaError("Scores cannot be negative")
+
+    possession = (args.possession or home_team).strip()
+    if possession not in (home_team, away_team):
+        raise SchemaError(
+            f"Possession team {possession!r} must be either home ({home_team!r}) "
+            f"or away ({away_team!r})"
+        )
+
+    default_quarter = 4 if is_completed_in_db else 1
+    quarter = args.quarter if args.quarter is not None else default_quarter
+    if quarter < 1:
+        raise SchemaError(f"Quarter must be >= 1, got {quarter}")
+
+    default_clock = 0 if is_completed_in_db else 900
+    clock_seconds = _parse_clock(args.clock) if args.clock is not None else default_clock
+
+    down = args.down if args.down is not None else 1
+    if not (1 <= down <= 4):
+        raise SchemaError(f"Down must be in [1, 4], got {down}")
+
+    distance = args.distance if args.distance is not None else 10
+    if not (1 <= distance <= 99):
+        raise SchemaError(f"Distance must be in [1, 99], got {distance}")
+
+    yardline = args.yardline if args.yardline is not None else 75
+    if not (1 <= yardline <= 99):
+        raise SchemaError(f"Yardline must be in [1, 99], got {yardline}")
+
+    # Overtime has no regulation clock: a lead at 0:00 does not establish a winner.
+    is_final = bool(args.final or is_completed_in_db)
+    if quarter == 4 and clock_seconds == 0 and home_score != away_score:
+        is_final = True
+
+    if is_final and home_score == away_score:
+        raise SchemaError("A final college-football game cannot have a tied score")
+
+    now_iso = datetime.now(UTC).isoformat()
+    state = GameState(
+        home_team_id=home_team,
+        away_team_id=away_team,
+        possession_team_id=possession,
+        quarter=quarter,
+        clock_seconds=clock_seconds,
+        down=down,
+        distance=distance,
+        yardline=yardline,
+        home_score=home_score,
+        away_score=away_score,
+        game_id=game_id,
+        observed_utc=now_iso,
+        ingested_utc=now_iso,
+        source="cli_live",
+        source_sequence=0,
+        is_final=is_final,
+    )
+
+    pregame_margin = float(args.pregame_margin or 0.0)
+    home_wp = calculate_win_probability(
+        state, pregame_home_margin=pregame_margin, team_id=home_team
+    )
+    away_wp = round(1.0 - home_wp, 4)
+    home_odds = win_probability_to_american_odds(home_wp)
+    away_odds = win_probability_to_american_odds(away_wp)
+
+    drive_outcomes = None if state.is_final else estimate_next_drive_outcomes(state.yardline)
+    totals = project_live_team_totals(state)
+
+    if getattr(args, "json", False):
+        payload = {
+            "schema_version": 1,
+            "model": "live_micro_markets_v1",
+            "model_status": "uncalibrated_shadow",
+            "is_actionable": False,
+            "game_id": game_id,
+            "state": {
+                "home_team_id": home_team,
+                "away_team_id": away_team,
+                "possession_team_id": possession,
+                "quarter": quarter,
+                "clock_seconds": clock_seconds,
+                "clock_display": f"{clock_seconds // 60}:{clock_seconds % 60:02d}",
+                "down": down,
+                "distance": distance,
+                "yardline": yardline,
+                "home_score": home_score,
+                "away_score": away_score,
+                "home_timeouts": state.home_timeouts,
+                "away_timeouts": state.away_timeouts,
+                "is_final": state.is_final,
+            },
+            "win_probability": {
+                "home_team_id": home_team,
+                "away_team_id": away_team,
+                "home_win_prob": home_wp,
+                "away_win_prob": away_wp,
+                "home_american_odds": home_odds,
+                "away_american_odds": away_odds,
+            },
+            "next_drive_outcome": None
+            if drive_outcomes is None
+            else {
+                "possession_team_id": possession,
+                "start_yardline": yardline,
+                "touchdown": drive_outcomes.touchdown,
+                "field_goal": drive_outcomes.field_goal,
+                "punt": drive_outcomes.punt,
+                "turnover_downs": drive_outcomes.turnover_downs,
+                "safety": drive_outcomes.safety,
+                "expected_points": drive_outcomes.expected_points,
+            },
+            "projected_totals": {
+                "home": {
+                    "team_id": home_team,
+                    "current_score": totals.home.current_score,
+                    "projected_total": totals.home.projected_total,
+                    "remaining_expected_points": totals.home.remaining_expected_points,
+                    "remaining_possessions": totals.home.remaining_possessions,
+                },
+                "away": {
+                    "team_id": away_team,
+                    "current_score": totals.away.current_score,
+                    "projected_total": totals.away.projected_total,
+                    "remaining_expected_points": totals.away.remaining_expected_points,
+                    "remaining_possessions": totals.away.remaining_possessions,
+                },
+                "projected_game_total": totals.projected_game_total,
+            },
+        }
+        print(json.dumps(payload, allow_nan=False, indent=2, sort_keys=True))
+        return 0
+
+    clock_str = f"{clock_seconds // 60}:{clock_seconds % 60:02d}"
+    print(f"LIVE GAME STATE & MICRO-MARKETS   [{config.SHADOW_STAMP}]")
+    print(f"\n  Game       : {home_team} vs {away_team} (ID: {game_id})")
+    status_suffix = " [FINAL]" if state.is_final else ""
+    print(
+        f"  Situation  : Q{quarter} {clock_str}{status_suffix} | Down {down} & {distance} "
+        f"at yardline {yardline} "
+        f"({possession} ball)"
+    )
+    print(f"  Score      : {home_team} {home_score} - {away_score} {away_team}")
+
+    home_odds_str = f"{home_odds:+d}" if home_odds is not None else "N/A"
+    away_odds_str = f"{away_odds:+d}" if away_odds is not None else "N/A"
+    print("\n  Win Probability:")
+    print(f"    {home_team:<20} : {home_wp * 100:>6.1f}% ({home_odds_str})")
+    print(f"    {away_team:<20} : {away_wp * 100:>6.1f}% ({away_odds_str})")
+
+    if drive_outcomes is None:
+        print("\n  Next Drive: N/A (game is final)")
+    else:
+        print(f"\n  Next Drive Outcome Distribution ({possession} at yardline {yardline}):")
+        print(f"    Touchdown (TD)        : {drive_outcomes.touchdown * 100:>5.1f}%")
+        print(f"    Field Goal (FG)       : {drive_outcomes.field_goal * 100:>5.1f}%")
+        print(f"    Punt                  : {drive_outcomes.punt * 100:>5.1f}%")
+        print(f"    Turnover / Downs      : {drive_outcomes.turnover_downs * 100:>5.1f}%")
+        print(f"    Safety                : {drive_outcomes.safety * 100:>5.1f}%")
+        print(f"    Drive Expected Points : {drive_outcomes.expected_points:>+6.2f} pts")
+
+    print("\n  Live Projected Totals:")
+    print(
+        f"    {home_team:<20} Projected: {totals.home.projected_total:>5.1f} pts  "
+        f"(current: {home_score}, rem exp: {totals.home.remaining_expected_points:>+5.1f})"
+    )
+    print(
+        f"    {away_team:<20} Projected: {totals.away.projected_total:>5.1f} pts  "
+        f"(current: {away_score}, rem exp: {totals.away.remaining_expected_points:>+5.1f})"
+    )
+    print(f"    Projected Game Total : {totals.projected_game_total:>5.1f} pts")
+
+    print("\nThis simulation is uncalibrated shadow output. Not an actionable recommendation.")
     return 0
 
 
@@ -679,53 +1069,103 @@ def build_parser() -> argparse.ArgumentParser:
 
     futures = sub.add_parser(
         "futures",
-        help="emit an uncalibrated, shadow-only season futures projection",
+        help="season futures projections, win total evaluations, and CFP odds",
     )
-    futures.add_argument("--team-id", required=True, help="canonical CFBD team ID")
-    futures.add_argument("--season", type=int, required=True)
+    futures.add_argument(
+        "--team", "--team-id", dest="team_id", required=True, help="canonical CFBD team ID"
+    )
+    futures.add_argument("--season", type=int, required=True, help="season year (e.g. 2026)")
     futures.add_argument(
         "--as-of",
         required=True,
         help="required ISO point-in-time cutoff; never defaults to now",
     )
     futures.add_argument(
+        "--lines",
+        "--posted-line",
+        dest="posted_lines",
+        action="extend",
+        nargs="+",
+        default=None,
+        help="posted win total lines; repeated, space-separated, or comma-separated",
+    )
+    futures.add_argument(
+        "--mc-sims",
+        type=int,
+        default=None,
+        help="number of Monte Carlo season simulations (e.g. 10000)",
+    )
+    futures.add_argument(
         "--portal-net-composite",
         type=float,
-        required=True,
-        help="externally sourced transfer-portal net composite",
+        default=None,
+        help="externally sourced transfer-portal net composite (required by DB projection)",
     )
-    nil_source = futures.add_mutually_exclusive_group(required=True)
+    nil_source = futures.add_mutually_exclusive_group(required=False)
     nil_source.add_argument(
         "--nil-tier",
         choices=tuple(tier.value for tier in NILTier),
+        default=None,
         help="externally sourced NIL tier",
     )
     nil_source.add_argument(
         "--nil-budget-millions",
         type=float,
+        default=None,
         help="externally sourced NIL budget estimate in millions",
     )
     futures.add_argument(
         "--qb-tier",
-        required=True,
         choices=tuple(tier.value for tier in QBTier),
+        default=None,
         help="externally assessed quarterback tier",
     )
     futures.add_argument(
         "--qb-continuity",
-        required=True,
         choices=tuple(state.value for state in QBContinuity),
+        default=None,
         help="externally assessed quarterback continuity",
     )
     futures.add_argument(
-        "--posted-line",
-        dest="posted_lines",
-        type=float,
-        action="append",
-        default=None,
-        help="posted regular-season win total; repeat for multiple lines",
+        "--json",
+        action="store_true",
+        default=False,
+        help="emit output as structured JSON",
     )
     futures.set_defaults(func=_cmd_futures)
+
+    live = sub.add_parser(
+        "live",
+        help="live in-game state tracking and micro-market simulation",
+    )
+    live.add_argument("--game", "--game-id", dest="game_id", default=None, help="stored game ID")
+    live.add_argument("--home", default=None, help="home team ID")
+    live.add_argument("--away", default=None, help="away team ID")
+    live.add_argument("--quarter", type=int, default=None, help="current quarter (>= 1)")
+    live.add_argument("--clock", default=None, help="game clock (MM:SS or seconds)")
+    live.add_argument("--down", type=int, default=None, help="current down (1-4)")
+    live.add_argument("--distance", type=int, default=None, help="yards to go (1-99)")
+    live.add_argument(
+        "--yardline", type=int, default=None, help="yards to opponent goal line (1-99)"
+    )
+    live.add_argument("--home-score", type=int, default=None, help="home score")
+    live.add_argument("--away-score", type=int, default=None, help="away score")
+    live.add_argument("--possession", default=None, help="possession team ID")
+    live.add_argument(
+        "--pregame-margin", type=float, default=0.0, help="pregame home expected margin"
+    )
+    live.add_argument(
+        "--final",
+        "--is-final",
+        dest="final",
+        action="store_true",
+        default=False,
+        help="mark game as completed / final",
+    )
+    live.add_argument(
+        "--json", action="store_true", default=False, help="emit output as structured JSON"
+    )
+    live.set_defaults(func=_cmd_live)
 
     daily = sub.add_parser("daily", help="scheduled job: ingest available sources, rebuild market")
     daily.add_argument("--season", type=int, default=None, help="season year (default: current)")

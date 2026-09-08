@@ -178,3 +178,36 @@ pandas. With ~800 FBS games a season, regularised linear models, Elo, and
 isotonic calibration beat gradient boosting on variance grounds anyway. The one
 runtime dependency is `tzdata`, a pure-data package needed because Windows ships
 no IANA time-zone database and slate dates are Eastern.
+
+## Futures and live CLI
+
+Both commands always emit uncalibrated, non-actionable shadow output, even when
+other models are promoted. Add `--json` for versioned JSON; text is the default.
+
+`futures` requires a canonical stored team ID, season, and timezone-aware
+`--as-of` cutoff. Supply sourced `--portal-net-composite`, one of `--nil-tier` or
+`--nil-budget-millions`, `--qb-tier`, and `--qb-continuity`; omitted inputs remain
+missing and cannot be inferred as neutral values. The database also needs
+admissible schedule, talent, returning-production, conference, and rating data.
+Use `cfb-analytics futures --help` for accepted tier values. `--lines 9.5 10.0`
+and `--lines 9.5,10.0` are equivalent; `--mc-sims 10000` adds season simulations.
+Previous JSON consumers must now pass `--json` explicitly.
+
+For a completed game already in the database:
+
+```powershell
+cfb-analytics live --game cfbd:401858436 --json
+```
+
+For a manual regulation scenario (hypothetical inputs):
+
+```powershell
+cfb-analytics live --home TEXAS --away OKLAHOMA --quarter 3 --clock 08:30 --down 2 --distance 4 --yardline 34 --possession TEXAS --home-score 21 --away-score 14 --json
+```
+
+`--yardline` means yards to the opponent's goal line. An unfinished `--game`
+requires explicit quarter, clock, down, distance, yardline, and possession;
+missing database scores also require score flags. This command does not fetch a
+live feed. Stored team identities cannot be overridden. Final games have no
+next-drive projection, and unresolved overtime is rejected unless finality is
+explicitly established with `--final` or the database completion flag.

@@ -87,10 +87,27 @@ class TestCliParser:
         parser = cli.build_parser()
         actions = [a for a in parser._actions if hasattr(a, "choices") and a.choices]
         commands = set(actions[0].choices)
-        assert commands == {"init-db", "doctor", "schedule", "status", "ingest",
-                            "backfill-cfbd", "coverage", "market", "board", "daily",
-                            "backfill-fundamentals", "backfill-roster", "backfill-passing",
-                            "backfill-elo", "fit-ratings", "fit-elo", "backtest", "futures"}
+        assert commands == {
+            "init-db",
+            "doctor",
+            "schedule",
+            "status",
+            "ingest",
+            "backfill-cfbd",
+            "coverage",
+            "market",
+            "board",
+            "daily",
+            "backfill-fundamentals",
+            "backfill-roster",
+            "backfill-passing",
+            "backfill-elo",
+            "fit-ratings",
+            "fit-elo",
+            "backtest",
+            "futures",
+            "live",
+        }
 
     def test_unimplemented_phases_are_absent(self):
         """`--help` must not advertise anything that does not run."""
@@ -107,12 +124,18 @@ class TestCliParser:
             cli.build_parser().parse_args(
                 [
                     "futures",
-                    "--team-id", "cfbd:1",
-                    "--season", "2026",
-                    "--portal-net-composite", "0",
-                    "--nil-budget-millions", "10",
-                    "--qb-tier", "unknown",
-                    "--qb-continuity", "unknown",
+                    "--team-id",
+                    "cfbd:1",
+                    "--season",
+                    "2026",
+                    "--portal-net-composite",
+                    "0",
+                    "--nil-budget-millions",
+                    "10",
+                    "--qb-tier",
+                    "unknown",
+                    "--qb-continuity",
+                    "unknown",
                 ]
             )
 
@@ -122,13 +145,20 @@ class TestCliCommands:
         result = cli.main(
             [
                 "futures",
-                "--team-id", "cfbd:1",
-                "--season", "2026",
-                "--as-of", "2026-08-15T00:00:00",
-                "--portal-net-composite", "0",
-                "--nil-budget-millions", "10",
-                "--qb-tier", "unknown",
-                "--qb-continuity", "unknown",
+                "--team-id",
+                "cfbd:1",
+                "--season",
+                "2026",
+                "--as-of",
+                "2026-08-15T00:00:00",
+                "--portal-net-composite",
+                "0",
+                "--nil-budget-millions",
+                "10",
+                "--qb-tier",
+                "unknown",
+                "--qb-continuity",
+                "unknown",
             ]
         )
 
@@ -148,14 +178,16 @@ class TestCliCommands:
         def fake_project(conn, team_id, season, **kwargs):
             captured.update(team_id=team_id, season=season, **kwargs)
             kwargs["input_manifest"]["fixture"] = {"snapshot_id": "fixture:1"}
+            budget = kwargs.get("nil_budget_millions")
+            tier = NILTier.from_budget(budget) if budget is not None else NILTier.TIER_3_MID_P4
             inputs = RosterTalentInputs(
                 team_id=team_id,
                 recruiting_composite=700.0,
-                portal_composite=kwargs["portal_composite"],
-                nil_tier=NILTier.from_budget(kwargs["nil_budget_millions"]),
+                portal_composite=kwargs.get("portal_composite") or 0.0,
+                nil_tier=tier,
                 returning_production=0.60,
-                qb_tier=kwargs["qb_tier"],
-                qb_continuity=kwargs["qb_continuity"],
+                qb_tier=kwargs.get("qb_tier") or "unknown",
+                qb_continuity=kwargs.get("qb_continuity") or "returning_starter_same_system",
                 conference="Big Ten",
             )
             return project_season_futures(
@@ -173,14 +205,23 @@ class TestCliCommands:
         result = cli.main(
             [
                 "futures",
-                "--team-id", "cfbd:1",
-                "--season", "2026",
-                "--as-of", "2026-08-15T00:00:00+00:00",
-                "--portal-net-composite", "2.5",
-                "--nil-budget-millions", "15",
-                "--qb-tier", "tier_2_quality_starter",
-                "--qb-continuity", "returning_starter_same_system",
-                "--posted-line", "0.5",
+                "--team-id",
+                "cfbd:1",
+                "--season",
+                "2026",
+                "--as-of",
+                "2026-08-15T00:00:00+00:00",
+                "--portal-net-composite",
+                "2.5",
+                "--nil-budget-millions",
+                "15",
+                "--qb-tier",
+                "tier_2_quality_starter",
+                "--qb-continuity",
+                "returning_starter_same_system",
+                "--posted-line",
+                "0.5",
+                "--json",
             ]
         )
 
@@ -213,13 +254,21 @@ class TestCliCommands:
         result = cli.main(
             [
                 "futures",
-                "--team-id", "cfbd:1",
-                "--season", "2026",
-                "--as-of", "2026-08-14T20:00:00-04:00",
-                "--portal-net-composite", "2.5",
-                "--nil-budget-millions", "15",
-                "--qb-tier", "tier_2_quality_starter",
-                "--qb-continuity", "returning_starter_same_system",
+                "--team-id",
+                "cfbd:1",
+                "--season",
+                "2026",
+                "--as-of",
+                "2026-08-14T20:00:00-04:00",
+                "--portal-net-composite",
+                "2.5",
+                "--nil-budget-millions",
+                "15",
+                "--qb-tier",
+                "tier_2_quality_starter",
+                "--qb-continuity",
+                "returning_starter_same_system",
+                "--json",
             ]
         )
 
@@ -229,6 +278,25 @@ class TestCliCommands:
         assert no_line_payload["inputs"]["posted_lines"] == []
         assert no_line_payload["projection"]["win_total_evaluations"] == {}
         assert captured["posted_lines"] == []
+
+        # Without --json, output must be human-readable summary by default
+        result = cli.main(
+            [
+                "futures",
+                "--team-id",
+                "cfbd:1",
+                "--season",
+                "2026",
+                "--as-of",
+                "2026-08-15T00:00:00+00:00",
+                "--posted-line",
+                "0.5",
+            ]
+        )
+        assert result == 0
+        text_out = capsys.readouterr().out
+        assert "SEASON FUTURES PROJECTION - cfbd:1 (2026)" in text_out
+        assert "Expected Wins" in text_out
 
     def test_init_db_creates_the_store_and_reports_what_it_applied(self, capsys):
         assert cli.main(["init-db"]) == 0
@@ -267,12 +335,21 @@ class TestCliCommands:
         with db.open_db() as conn:
             store.upsert_team(conn, {"team_id": "h", "school": "H", "alias": "H", "market": "H"})
             store.upsert_team(conn, {"team_id": "a", "school": "A", "alias": "A", "market": "A"})
-            store.upsert_game(conn, {
-                "game_id": "evt-1", "season": 2026,
-                "kickoff_utc": "2026-09-05T23:30:00+00:00",
-                "football_date": "2026-09-05", "day_of_week": 5,
-                "home_team_id": "h", "away_team_id": "a", "venue_name": None,
-                "network": None, "status": "pregame"})
+            store.upsert_game(
+                conn,
+                {
+                    "game_id": "evt-1",
+                    "season": 2026,
+                    "kickoff_utc": "2026-09-05T23:30:00+00:00",
+                    "football_date": "2026-09-05",
+                    "day_of_week": 5,
+                    "home_team_id": "h",
+                    "away_team_id": "a",
+                    "venue_name": None,
+                    "network": None,
+                    "status": "pregame",
+                },
+            )
             store.insert_odds(
                 conn,
                 parse_odds_rows("evt-1", [moneyline_market], "2026-09-01T00:00:00+00:00"),
@@ -296,9 +373,7 @@ class TestCliCommands:
         assert "error:" in capsys.readouterr().err
 
     def test_backfill_rejects_reverse_year_range_before_loading_credentials(self, capsys):
-        assert cli.main(
-            ["backfill-cfbd", "--start-year", "2025", "--end-year", "2024"]
-        ) == 2
+        assert cli.main(["backfill-cfbd", "--start-year", "2025", "--end-year", "2024"]) == 2
         assert "start-year" in capsys.readouterr().err
 
 
@@ -309,7 +384,11 @@ class TestCfbdClient:
         assert "/games?year=2024&seasonType=both&classification=fbs" in http.calls[0]
 
     def test_teams_and_venues_are_array_endpoints(self):
-        http = StubHttp({"/teams/fbs": [{"id": 1, "school": "Ohio State", "location": {}}],
-                         "/venues": [{"id": 1}]})
+        http = StubHttp(
+            {
+                "/teams/fbs": [{"id": 1, "school": "Ohio State", "location": {}}],
+                "/venues": [{"id": 1}],
+            }
+        )
         assert len(CFBDClient(http=http).fetch_fbs_teams(2024)) == 1
         assert len(CFBDClient(http=http).fetch_venues()) == 1
