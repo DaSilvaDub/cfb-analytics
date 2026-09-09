@@ -128,8 +128,7 @@ def upsert_game(conn: sqlite3.Connection, game: dict[str, Any]) -> None:
         "network": None,
         "status": None,
         **game,
-        "venue_id": game.get("venue_id")
-        or resolve_venue_id_by_name(conn, game.get("venue_name")),
+        "venue_id": game.get("venue_id") or resolve_venue_id_by_name(conn, game.get("venue_name")),
         "ingested_utc": now,
     }
     conn.execute(
@@ -175,8 +174,7 @@ def upsert_cfbd_game(conn: sqlite3.Connection, game: dict[str, Any]) -> None:
         "has_completed": 1 if "completed" in game else 0,
         **game,
         "status": status,
-        "venue_id": game.get("venue_id")
-        or resolve_venue_id_by_name(conn, game.get("venue_name")),
+        "venue_id": game.get("venue_id") or resolve_venue_id_by_name(conn, game.get("venue_name")),
         "ingested_utc": now,
     }
     conn.execute(
@@ -412,6 +410,90 @@ def insert_team_talent(conn: sqlite3.Connection, rows: Iterable[dict[str, Any]])
     return _insert_snapshots(conn, "team_talent", columns, rows)
 
 
+def insert_team_recruiting(conn: sqlite3.Connection, rows: Iterable[dict[str, Any]]) -> int:
+    columns = (
+        "snapshot_id",
+        "season",
+        "team_id",
+        "rank",
+        "points",
+        "recruiting_composite",
+        "availability_class",
+        "as_of_utc",
+        "ingested_utc",
+    )
+    return _insert_snapshots(conn, "team_recruiting", columns, rows)
+
+
+def insert_transfer_portal_players(
+    conn: sqlite3.Connection, rows: Iterable[dict[str, Any]]
+) -> int:
+    columns = (
+        "transfer_id",
+        "season",
+        "first_name",
+        "last_name",
+        "position",
+        "origin_team_id",
+        "destination_team_id",
+        "origin_name",
+        "destination_name",
+        "transfer_date",
+        "rating",
+        "stars",
+        "eligibility",
+        "as_of_utc",
+        "ingested_utc",
+    )
+    now = utc_now_iso()
+    payload = []
+    for raw in rows:
+        row = {**raw, "ingested_utc": now}
+        if not row.get("transfer_id"):
+            stable = {
+                "season": row.get("season"),
+                "first_name": row.get("first_name"),
+                "last_name": row.get("last_name"),
+                "origin_name": row.get("origin_name"),
+                "destination_name": row.get("destination_name"),
+                "transfer_date": row.get("transfer_date"),
+                "as_of_utc": row.get("as_of_utc"),
+            }
+            row["transfer_id"] = stable_id(
+                "transfer_portal_player",
+                json.dumps(stable, sort_keys=True, separators=(",", ":")),
+            )
+        payload.append(tuple(row.get(column) for column in columns))
+    if not payload:
+        return 0
+    placeholders = ", ".join("?" for _ in columns)
+    cursor = conn.executemany(
+        f"INSERT OR IGNORE INTO transfer_portal_players ({', '.join(columns)}) "
+        f"VALUES ({placeholders})",
+        payload,
+    )
+    return cursor.rowcount if cursor.rowcount and cursor.rowcount > 0 else 0
+
+
+def insert_team_portal_composites(
+    conn: sqlite3.Connection, rows: Iterable[dict[str, Any]]
+) -> int:
+    columns = (
+        "snapshot_id",
+        "season",
+        "team_id",
+        "additions_score",
+        "departures_score",
+        "net_composite",
+        "additions_count",
+        "departures_count",
+        "availability_class",
+        "as_of_utc",
+        "ingested_utc",
+    )
+    return _insert_snapshots(conn, "team_portal_composites", columns, rows)
+
+
 def upsert_internal_team_ratings(
     conn: sqlite3.Connection,
     ratings: RidgeRatings,
@@ -541,9 +623,7 @@ def insert_odds(conn: sqlite3.Connection, rows: Iterable[OddsRow]) -> int:
     return cursor.rowcount if cursor.rowcount and cursor.rowcount > 0 else 0
 
 
-def insert_team_prop_odds(
-    conn: sqlite3.Connection, rows: Iterable[TeamPropOddsRow]
-) -> int:
+def insert_team_prop_odds(conn: sqlite3.Connection, rows: Iterable[TeamPropOddsRow]) -> int:
     payload = [
         (
             row.snapshot_id,
@@ -619,6 +699,45 @@ def upsert_player_season(conn: sqlite3.Connection, row: dict[str, Any]) -> None:
              ingested_utc = excluded.ingested_utc""",
         {**row, "ingested_utc": utc_now_iso()},
     )
+
+
+def insert_drives(conn: sqlite3.Connection, rows: list[dict[str, Any]]) -> int:
+    """INSERT OR IGNORE historical drives (immutable CFBD data)."""
+    if not rows:
+        return 0
+    now = utc_now_iso()
+    cursor = conn.executemany(
+        """INSERT OR IGNORE INTO drives
+           (drive_id, game_id, drive_number, offense_team_id, defense_team_id,
+            scoring, start_period, start_yardline, start_time_minutes, start_time_seconds,
+            end_period, end_yardline, end_time_minutes, end_time_seconds,
+            plays, yards, result, ingested_utc)
+           VALUES (:drive_id, :game_id, :drive_number, :offense_team_id, :defense_team_id,
+                   :scoring, :start_period, :start_yardline, :start_time_minutes,
+                   :start_time_seconds, :end_period, :end_yardline, :end_time_minutes,
+                   :end_time_seconds, :plays, :yards, :result, :ingested_utc)""",
+        [{**row, "ingested_utc": now} for row in rows],
+    )
+    return cursor.rowcount if cursor.rowcount and cursor.rowcount > 0 else 0
+
+
+def insert_plays(conn: sqlite3.Connection, rows: list[dict[str, Any]]) -> int:
+    """INSERT OR IGNORE historical plays (immutable CFBD data)."""
+    if not rows:
+        return 0
+    now = utc_now_iso()
+    cursor = conn.executemany(
+        """INSERT OR IGNORE INTO plays
+           (play_id, drive_id, game_id, offense_team_id, defense_team_id,
+            play_number, period, clock_minutes, clock_seconds, yard_line,
+            down, distance, yards_gained, play_type, scoring, ppa, ingested_utc)
+           VALUES (:play_id, :drive_id, :game_id, :offense_team_id, :defense_team_id,
+                   :play_number, :period, :clock_minutes, :clock_seconds, :yard_line,
+                   :down, :distance, :yards_gained, :play_type, :scoring, :ppa,
+                   :ingested_utc)""",
+        [{**row, "ingested_utc": now} for row in rows],
+    )
+    return cursor.rowcount if cursor.rowcount and cursor.rowcount > 0 else 0
 
 
 def upsert_player_game_passing(conn: sqlite3.Connection, row: dict[str, Any]) -> None:

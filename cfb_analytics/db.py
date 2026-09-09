@@ -771,6 +771,117 @@ def _merge_outlier_identities(conn: sqlite3.Connection) -> None:
     )
 
 
+MIGRATION_013 = """
+-- Play-by-play data for historical game replay and live model backtesting.
+-- Drives and plays are immutable historical records from CFBD; INSERT OR
+-- IGNORE is the correct semantics (re-ingesting the same season is idempotent).
+CREATE TABLE IF NOT EXISTS drives (
+    drive_id          TEXT PRIMARY KEY,   -- cfbd:<id>
+    game_id           TEXT NOT NULL REFERENCES games(game_id),
+    drive_number      INTEGER NOT NULL,
+    offense_team_id   TEXT NOT NULL REFERENCES teams(team_id),
+    defense_team_id   TEXT NOT NULL REFERENCES teams(team_id),
+    scoring           INTEGER NOT NULL DEFAULT 0,
+    start_period      INTEGER,
+    start_yardline    INTEGER,
+    start_time_minutes INTEGER,
+    start_time_seconds INTEGER,
+    end_period        INTEGER,
+    end_yardline      INTEGER,
+    end_time_minutes  INTEGER,
+    end_time_seconds  INTEGER,
+    plays             INTEGER,
+    yards             INTEGER,
+    result            TEXT,               -- CFBD vocabulary: PUNT, TOUCHDOWN, etc.
+    ingested_utc      TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_drives_game ON drives(game_id, drive_number);
+
+CREATE TABLE IF NOT EXISTS plays (
+    play_id           TEXT PRIMARY KEY,   -- cfbd:<id>
+    drive_id          TEXT NOT NULL REFERENCES drives(drive_id),
+    game_id           TEXT NOT NULL REFERENCES games(game_id),
+    offense_team_id   TEXT NOT NULL REFERENCES teams(team_id),
+    defense_team_id   TEXT NOT NULL REFERENCES teams(team_id),
+    play_number       INTEGER NOT NULL,
+    period            INTEGER,
+    clock_minutes     INTEGER,
+    clock_seconds     INTEGER,
+    yard_line         INTEGER,
+    down              INTEGER,
+    distance          INTEGER,
+    yards_gained      INTEGER,
+    play_type         TEXT,
+    scoring           INTEGER NOT NULL DEFAULT 0,
+    ppa               REAL,
+    ingested_utc      TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_plays_drive ON plays(drive_id);
+CREATE INDEX IF NOT EXISTS idx_plays_game ON plays(game_id, period, play_number);
+"""
+
+MIGRATION_014 = """
+-- Team recruiting class rankings and transfer portal tracking.
+CREATE TABLE IF NOT EXISTS team_recruiting (
+    snapshot_id          TEXT PRIMARY KEY,
+    season               INTEGER NOT NULL,
+    team_id              TEXT NOT NULL REFERENCES teams(team_id),
+    rank                 INTEGER,
+    points               REAL,
+    recruiting_composite REAL,
+    availability_class   TEXT NOT NULL DEFAULT 'preseason'
+        CHECK (availability_class = 'preseason'),
+    as_of_utc            TEXT NOT NULL,
+    ingested_utc         TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_team_recruiting_asof
+    ON team_recruiting(team_id, season, as_of_utc);
+CREATE INDEX IF NOT EXISTS idx_team_recruiting_season
+    ON team_recruiting(season, team_id, ingested_utc);
+
+CREATE TABLE IF NOT EXISTS transfer_portal_players (
+    transfer_id         TEXT PRIMARY KEY,
+    season              INTEGER NOT NULL,
+    first_name          TEXT,
+    last_name           TEXT,
+    position            TEXT,
+    origin_team_id      TEXT REFERENCES teams(team_id),
+    destination_team_id TEXT REFERENCES teams(team_id),
+    origin_name         TEXT,
+    destination_name    TEXT,
+    transfer_date       TEXT,
+    rating              REAL,
+    stars               INTEGER,
+    eligibility         TEXT,
+    as_of_utc           TEXT NOT NULL,
+    ingested_utc        TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_portal_players_dest
+    ON transfer_portal_players(destination_team_id, season, as_of_utc);
+CREATE INDEX IF NOT EXISTS idx_portal_players_origin
+    ON transfer_portal_players(origin_team_id, season, as_of_utc);
+
+CREATE TABLE IF NOT EXISTS team_portal_composites (
+    snapshot_id         TEXT PRIMARY KEY,
+    season              INTEGER NOT NULL,
+    team_id             TEXT NOT NULL REFERENCES teams(team_id),
+    additions_score     REAL NOT NULL DEFAULT 0.0,
+    departures_score    REAL NOT NULL DEFAULT 0.0,
+    net_composite       REAL NOT NULL DEFAULT 0.0,
+    additions_count     INTEGER NOT NULL DEFAULT 0,
+    departures_count    INTEGER NOT NULL DEFAULT 0,
+    availability_class  TEXT NOT NULL DEFAULT 'preseason'
+        CHECK (availability_class = 'preseason'),
+    as_of_utc           TEXT NOT NULL,
+    ingested_utc        TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_team_portal_asof
+    ON team_portal_composites(team_id, season, as_of_utc);
+CREATE INDEX IF NOT EXISTS idx_team_portal_season
+    ON team_portal_composites(season, team_id, ingested_utc);
+"""
+
+
 MIGRATIONS: tuple[tuple[int, str, str, Callable[[sqlite3.Connection], None] | None], ...] = (
     (1, "outlier_ingestion_core", MIGRATION_001, None),
     (2, "games_football_date", MIGRATION_002, _backfill_football_date),
@@ -784,6 +895,8 @@ MIGRATIONS: tuple[tuple[int, str, str, Callable[[sqlite3.Connection], None] | No
     (10, "internal_elo_ratings", MIGRATION_010, None),
     (11, "canonical_game_identity", MIGRATION_011, _merge_outlier_identities),
     (12, "team_prop_market_identity", MIGRATION_012, None),
+    (13, "play_by_play_data", MIGRATION_013, None),
+    (14, "recruiting_and_transfer_portal", MIGRATION_014, None),
 )
 
 

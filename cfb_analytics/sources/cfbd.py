@@ -173,9 +173,7 @@ class CFBDClient:
         by differencing captures taken days apart. That is what makes a daily
         cloud job useful on day one instead of after a week of accumulation.
         """
-        return self._get_rows(
-            "/lines", year=year, week=week, seasonType=season_type
-        )
+        return self._get_rows("/lines", year=year, week=week, seasonType=season_type)
 
     def fetch_sp(self, year: int) -> list[dict[str, Any]]:
         return self._get_rows("/ratings/sp", year=year)
@@ -186,9 +184,7 @@ class CFBDClient:
     def fetch_elo(
         self, year: int, week: int, *, season_type: str = "regular"
     ) -> list[dict[str, Any]]:
-        return self._get_rows(
-            "/ratings/elo", year=year, week=week, seasonType=season_type
-        )
+        return self._get_rows("/ratings/elo", year=year, week=week, seasonType=season_type)
 
     def fetch_advanced(
         self,
@@ -231,9 +227,27 @@ class CFBDClient:
         Verified 2026-09-04: /games/players with no team filter returns all
         137 games and 260 teams for a given week in a single request.
         """
-        return self._get_rows(
-            "/games/players", year=year, week=week, seasonType=season_type
-        )
+        return self._get_rows("/games/players", year=year, week=week, seasonType=season_type)
+
+    def fetch_drives(self, year: int, *, season_type: str = "both") -> list[dict[str, Any]]:
+        """All drives for a season. One call per year."""
+        return self._get_rows("/drives", year=year, seasonType=season_type)
+
+    def fetch_plays(
+        self, year: int, week: int, *, season_type: str = "regular"
+    ) -> list[dict[str, Any]]:
+        """All plays for one week of a season. One call per (year, week)."""
+        return self._get_rows("/plays", year=year, week=week, seasonType=season_type)
+
+    def fetch_recruiting_teams(
+        self, year: int, *, team: str | None = None
+    ) -> list[dict[str, Any]]:
+        """Team recruiting rankings and points for a season."""
+        return self._get_rows("/recruiting/teams", year=year, team=team)
+
+    def fetch_transfer_portal(self, year: int) -> list[dict[str, Any]]:
+        """All transfer portal movements for a season."""
+        return self._get_rows("/player/portal", year=year)
 
 
 def parse_venue(row: dict[str, Any]) -> dict[str, Any] | None:
@@ -338,14 +352,10 @@ def parse_game(row: dict[str, Any]) -> dict[str, Any]:
         raise SchemaError("CFBD game had an unparseable startDate")
     completed = _as_bool(row.get("completed"), "completed")
     home_points = (
-        _as_int(row["homePoints"], "homePoints")
-        if row.get("homePoints") is not None
-        else None
+        _as_int(row["homePoints"], "homePoints") if row.get("homePoints") is not None else None
     )
     away_points = (
-        _as_int(row["awayPoints"], "awayPoints")
-        if row.get("awayPoints") is not None
-        else None
+        _as_int(row["awayPoints"], "awayPoints") if row.get("awayPoints") is not None else None
     )
     return {
         "game_id": f"cfbd:{_as_int(row.get('id'), 'id')}",
@@ -412,9 +422,7 @@ def parse_sp_rating(row: dict[str, Any], *, as_of_utc: str) -> dict[str, Any]:
         "def_rating": _as_float(defense.get("rating"), "defense.rating"),
         "st_rating": _optional_float(special_teams.get("rating"), "specialTeams.rating"),
         "sos": _optional_float(row.get("sos"), "sos"),
-        "second_order_wins": _optional_float(
-            row.get("secondOrderWins"), "secondOrderWins"
-        ),
+        "second_order_wins": _optional_float(row.get("secondOrderWins"), "secondOrderWins"),
     }
 
 
@@ -471,9 +479,7 @@ def parse_elo_rating(
     }
 
 
-def parse_advanced_rows(
-    row: dict[str, Any], *, week: int, as_of_utc: str
-) -> list[dict[str, Any]]:
+def parse_advanced_rows(row: dict[str, Any], *, week: int, as_of_utc: str) -> list[dict[str, Any]]:
     season = _as_int(row.get("season"), "season")
     team_name = _as_str(row.get("team"), "team")
     parsed: list[dict[str, Any]] = []
@@ -493,12 +499,8 @@ def parse_advanced_rows(
                 "plays": _as_int(values.get("plays"), f"{source_key}.plays"),
                 "drives": _as_int(values.get("drives"), f"{source_key}.drives"),
                 "ppa": _as_float(values.get("ppa"), f"{source_key}.ppa"),
-                "total_ppa": _as_float(
-                    values.get("totalPPA"), f"{source_key}.totalPPA"
-                ),
-                "success_rate": _as_float(
-                    values.get("successRate"), f"{source_key}.successRate"
-                ),
+                "total_ppa": _as_float(values.get("totalPPA"), f"{source_key}.totalPPA"),
+                "success_rate": _as_float(values.get("successRate"), f"{source_key}.successRate"),
                 "explosiveness": _optional_float(
                     values.get("explosiveness"), f"{source_key}.explosiveness"
                 ),
@@ -507,18 +509,10 @@ def parse_advanced_rows(
                     f"{source_key}.pointsPerOpportunity",
                 ),
                 "havoc": _optional_float(havoc.get("total"), f"{source_key}.havoc.total"),
-                "line_yards": _as_float(
-                    values.get("lineYards"), f"{source_key}.lineYards"
-                ),
-                "stuff_rate": _as_float(
-                    values.get("stuffRate"), f"{source_key}.stuffRate"
-                ),
-                "passing_ppa": _as_float(
-                    passing.get("ppa"), f"{source_key}.passingPlays.ppa"
-                ),
-                "rushing_ppa": _as_float(
-                    rushing.get("ppa"), f"{source_key}.rushingPlays.ppa"
-                ),
+                "line_yards": _as_float(values.get("lineYards"), f"{source_key}.lineYards"),
+                "stuff_rate": _as_float(values.get("stuffRate"), f"{source_key}.stuffRate"),
+                "passing_ppa": _as_float(passing.get("ppa"), f"{source_key}.passingPlays.ppa"),
+                "rushing_ppa": _as_float(rushing.get("ppa"), f"{source_key}.rushingPlays.ppa"),
                 "passing_success_rate": _as_float(
                     passing.get("successRate"),
                     f"{source_key}.passingPlays.successRate",
@@ -551,10 +545,7 @@ def parse_returning_production(row: dict[str, Any]) -> dict[str, Any]:
         "season": _as_int(row.get("season"), "season"),
         "team_name": _as_str(row.get("team"), "team"),
         "availability_class": "preseason",
-        **{
-            target: _as_float(row.get(source), source)
-            for target, source in fields.items()
-        },
+        **{target: _as_float(row.get(source), source) for target, source in fields.items()},
     }
 
 
@@ -564,6 +555,54 @@ def parse_talent(row: dict[str, Any]) -> dict[str, Any]:
         "team_name": _as_str(row.get("team"), "team"),
         "availability_class": "preseason",
         "talent_composite": _as_float(row.get("talent"), "talent"),
+    }
+
+
+def parse_recruiting_team(
+    row: dict[str, Any], *, as_of_utc: str | None = None
+) -> dict[str, Any]:
+    season = _as_int(row.get("year"), "year")
+    team_name = _as_str(row.get("team"), "team")
+    rank = _optional_int(row.get("rank"), "rank")
+    points = _optional_float(row.get("points"), "points")
+    return {
+        "season": season,
+        "team_name": team_name,
+        "rank": rank,
+        "points": points,
+        "recruiting_composite": points,
+        "availability_class": "preseason",
+        "as_of_utc": as_of_utc or f"{season}-08-01T00:00:00+00:00",
+    }
+
+
+def parse_transfer_player(
+    row: dict[str, Any], *, as_of_utc: str | None = None
+) -> dict[str, Any]:
+    season = _as_int(row.get("season"), "season")
+    first_name = _string_or_none(row.get("firstName"))
+    last_name = _string_or_none(row.get("lastName"))
+    position = _string_or_none(row.get("position"))
+    origin = _string_or_none(row.get("origin"))
+    destination = _string_or_none(row.get("destination"))
+    parsed_date = to_utc_iso(row.get("transferDate"))
+    raw_date = _string_or_none(row.get("transferDate"))
+    transfer_date = parsed_date or raw_date
+    rating = _float_or_none(row.get("rating"))
+    stars = _optional_int(row.get("stars"), "stars")
+    eligibility = _string_or_none(row.get("eligibility"))
+    return {
+        "season": season,
+        "first_name": first_name,
+        "last_name": last_name,
+        "position": position,
+        "origin_name": origin,
+        "destination_name": destination,
+        "transfer_date": transfer_date,
+        "rating": rating,
+        "stars": stars,
+        "eligibility": eligibility,
+        "as_of_utc": parsed_date or as_of_utc or f"{season}-08-01T00:00:00+00:00",
     }
 
 
@@ -580,9 +619,14 @@ def parse_roster_row(row: dict[str, Any]) -> dict[str, Any] | None:
     return {
         "player_id": f"cfbd:{player_id}",
         "name": " ".join(
-            part for part in (_string_or_none(row.get("firstName")),
-                              _string_or_none(row.get("lastName"))) if part
-        ) or None,
+            part
+            for part in (
+                _string_or_none(row.get("firstName")),
+                _string_or_none(row.get("lastName")),
+            )
+            if part
+        )
+        or None,
         "team_name": _as_str(row.get("team"), "team"),
         "position": _string_or_none(row.get("position")),
         "class_year": _optional_int(row.get("year"), "year"),
@@ -634,8 +678,11 @@ def parse_game_player_passing(game_row: dict[str, Any]) -> list[dict[str, Any]]:
         if home_away not in ("home", "away"):
             continue
         passing = next(
-            (cat for cat in team.get("categories") or []
-             if isinstance(cat, dict) and cat.get("name") == "passing"),
+            (
+                cat
+                for cat in team.get("categories") or []
+                if isinstance(cat, dict) and cat.get("name") == "passing"
+            ),
             None,
         )
         if passing is None:
@@ -653,13 +700,20 @@ def parse_game_player_passing(game_row: dict[str, Any]) -> list[dict[str, Any]]:
                 athlete_id = _string_or_none(athlete.get("id"))
                 if athlete_id is None or athlete_id.startswith("-"):
                     continue
-                cell = by_player.setdefault(athlete_id, {
+                cell = by_player.setdefault(
+                    athlete_id,
+                    {
                         "player_id": f"cfbd:{athlete_id}",
                         "name": _string_or_none(athlete.get("name")),
-                    "completions": None, "attempts": None, "yards": None,
-                    "avg_yards": None, "touchdowns": None, "interceptions": None,
+                        "completions": None,
+                        "attempts": None,
+                        "yards": None,
+                        "avg_yards": None,
+                        "touchdowns": None,
+                        "interceptions": None,
                         "qbr": None,
-                })
+                    },
+                )
                 stat = athlete.get("stat")
                 if type_name == "C/ATT":
                     cell["completions"], cell["attempts"] = _split_completions_attempts(stat)
@@ -678,3 +732,75 @@ def parse_game_player_passing(game_row: dict[str, Any]) -> list[dict[str, Any]]:
             rows.append({**cell, "game_id": game_id, "home_away": home_away})
 
     return rows
+
+
+def parse_drive(row: dict[str, Any]) -> dict[str, Any] | None:
+    """Parse one CFBD /drives row into a validated dict.
+
+    Returns None if the drive has no usable id or game id.
+    Team names are returned as ``offense_name`` / ``defense_name`` -- the
+    caller resolves them to ``team_id`` via the school lookup dict.
+    """
+    drive_id = row.get("id")
+    game_id = row.get("gameId")
+    if drive_id in (None, "") or game_id in (None, ""):
+        return None
+    start_time = row.get("startTime") or {}
+    if not isinstance(start_time, dict):
+        start_time = {}
+    end_time = row.get("endTime") or {}
+    if not isinstance(end_time, dict):
+        end_time = {}
+    return {
+        "drive_id": f"cfbd:{_as_int(drive_id, 'id')}",
+        "game_id": f"cfbd:{_as_int(game_id, 'gameId')}",
+        "drive_number": _as_int(row.get("driveNumber"), "driveNumber"),
+        "offense_name": _string_or_none(row.get("offense")),
+        "defense_name": _string_or_none(row.get("defense")),
+        "scoring": 1 if row.get("scoring") else 0,
+        "start_period": _optional_int(start_time.get("period"), "startTime.period"),
+        "start_yardline": _optional_int(row.get("startYardline"), "startYardline"),
+        "start_time_minutes": _optional_int(start_time.get("minutes"), "startTime.minutes"),
+        "start_time_seconds": _optional_int(start_time.get("seconds"), "startTime.seconds"),
+        "end_period": _optional_int((end_time.get("period")), "endTime.period"),
+        "end_yardline": _optional_int(row.get("endYardline"), "endYardline"),
+        "end_time_minutes": _optional_int(end_time.get("minutes"), "endTime.minutes"),
+        "end_time_seconds": _optional_int(end_time.get("seconds"), "endTime.seconds"),
+        "plays": _optional_int(row.get("plays"), "plays"),
+        "yards": _optional_int(row.get("yards"), "yards"),
+        "result": _string_or_none(row.get("driveResult")),
+    }
+
+
+def parse_play(row: dict[str, Any]) -> dict[str, Any] | None:
+    """Parse one CFBD /plays row into a validated dict.
+
+    Returns None if the play has no usable id or drive id.
+    Team names are returned as ``offense_name`` / ``defense_name``.
+    """
+    play_id = row.get("id")
+    drive_id = row.get("driveId")
+    game_id = row.get("gameId")
+    if play_id in (None, "") or drive_id in (None, ""):
+        return None
+    clock = row.get("clock") or {}
+    if not isinstance(clock, dict):
+        clock = {}
+    return {
+        "play_id": f"cfbd:{_as_int(play_id, 'id')}",
+        "drive_id": f"cfbd:{_as_int(drive_id, 'driveId')}",
+        "game_id": f"cfbd:{_as_int(game_id, 'gameId')}" if game_id not in (None, "") else None,
+        "offense_name": _string_or_none(row.get("offense")),
+        "defense_name": _string_or_none(row.get("defense")),
+        "play_number": _as_int(row.get("playNumber"), "playNumber"),
+        "period": _optional_int(row.get("period"), "period"),
+        "clock_minutes": _optional_int(clock.get("minutes"), "clock.minutes"),
+        "clock_seconds": _optional_int(clock.get("seconds"), "clock.seconds"),
+        "yard_line": _optional_int(row.get("yardLine"), "yardLine"),
+        "down": _optional_int(row.get("down"), "down"),
+        "distance": _optional_int(row.get("distance"), "distance"),
+        "yards_gained": _optional_int(row.get("yardsGained"), "yardsGained"),
+        "play_type": _string_or_none(row.get("playType")),
+        "scoring": 1 if row.get("scoring") else 0,
+        "ppa": _float_or_none(row.get("ppa")),
+    }

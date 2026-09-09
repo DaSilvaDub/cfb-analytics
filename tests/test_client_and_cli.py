@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from typing import Any
 
 import pytest
 
@@ -86,7 +87,7 @@ class TestCliParser:
     def test_registers_only_implemented_commands(self):
         parser = cli.build_parser()
         actions = [a for a in parser._actions if hasattr(a, "choices") and a.choices]
-        commands = set(actions[0].choices)
+        commands = set(actions[0].choices or ())
         assert commands == {
             "init-db",
             "doctor",
@@ -102,9 +103,11 @@ class TestCliParser:
             "backfill-roster",
             "backfill-passing",
             "backfill-elo",
+            "backfill-pbp",
             "fit-ratings",
             "fit-elo",
             "backtest",
+            "backtest-live",
             "futures",
             "live",
         }
@@ -112,7 +115,7 @@ class TestCliParser:
     def test_unimplemented_phases_are_absent(self):
         """`--help` must not advertise anything that does not run."""
         parser = cli.build_parser()
-        commands = set([a for a in parser._actions if getattr(a, "choices", None)][0].choices)
+        commands = set([a for a in parser._actions if getattr(a, "choices", None)][0].choices or ())
         assert not commands & {"features", "train", "slate", "parlay", "settle"}
 
     def test_ingest_requires_a_date(self):
@@ -173,7 +176,7 @@ class TestCliCommands:
             project_season_futures,
         )
 
-        captured = {}
+        captured: dict[str, Any] = {}
 
         def fake_project(conn, team_id, season, **kwargs):
             captured.update(team_id=team_id, season=season, **kwargs)

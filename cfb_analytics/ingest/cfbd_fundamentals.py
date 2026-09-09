@@ -11,15 +11,18 @@ from typing import Any
 
 from cfb_analytics.errors import SchemaError, SourceError
 from cfb_analytics.ingest import store
+from cfb_analytics.models.futures import build_team_portal_composites
 from cfb_analytics.sources.cfbd import (
     CFBDClient,
     parse_advanced_rows,
     parse_elo_rating,
+    parse_recruiting_team,
     parse_returning_production,
     parse_sp_rating,
     parse_srs_rating,
     parse_talent,
     parse_team,
+    parse_transfer_player,
 )
 
 
@@ -364,3 +367,168 @@ def backfill_elo(
         ratings=rating_count,
         filtered=filtered,
     )
+
+
+@dataclass(frozen=True)
+class RecruitingBackfillSummary:
+    seasons: int
+    endpoints: int
+    recruiting: int
+    filtered: int
+
+    def as_text(self) -> str:
+        return (
+            f"CFBD recruiting backfill wrote {self.recruiting} recruiting rows across "
+            f"{self.seasons} season(s) and {self.endpoints} healthy endpoints. "
+            f"Filtered {self.filtered} non-FBS rows."
+        )
+
+
+@dataclass(frozen=True)
+class PortalBackfillSummary:
+    seasons: int
+    endpoints: int
+    players: int
+    composites: int
+
+    def as_text(self) -> str:
+        return (
+            f"CFBD transfer portal backfill wrote {self.players} player movements and "
+            f"{self.composites} team composites across {self.seasons} season(s) and "
+            f"{self.endpoints} healthy endpoints."
+        )
+
+
+def _preseason_cutoff(
+    conn: sqlite3.Connection, season: int, explicit_as_of: str | None = None
+) -> str:
+    if explicit_as_of is not None:
+        return explicit_as_of
+    game_row = conn.execute(
+        """SELECT MIN(kickoff_utc) AS min_kickoff FROM games
+           WHERE source = 'cfbd' AND season = ? AND season_type = 'regular'""",
+        (season,),
+    ).fetchone()
+    if game_row and game_row["min_kickoff"]:
+        return str(game_row["min_kickoff"])
+    return f"{season}-08-01T00:00:00+00:00"
+
+
+def backfill_recruiting(
+    conn: sqlite3.Connection,
+    client: CFBDClient,
+    *,
+    start_year: int,
+    end_year: int,
+    as_of_utc: str | None = None,
+) -> RecruitingBackfillSummary:
+    if start_year > end_year:
+        raise SchemaError("start_year must be less than or equal to end_year")
+
+    recruiting_count = filtered = endpoints = 0
+    command = f"backfill-recruiting --start-year {start_year} --end-year {end_year}"
+
+    with store.RunRecorder(conn, command) as run:
+        for year in range(start_year, end_year + 1):
+            season_as_of = _preseason_cutoff(conn, year, as_of_utc)
+            team_rows = _fetch(run, f"teams/fbs:{year}", partial(client.fetch_fbs_teams, year))
+            endpoints += 1
+            for raw in team_rows:
+                store.upsert_team(conn, parse_team(raw))
+            resolver = _team_resolver(team_rows)
+
+            rec_endpoint = f"recruiting/teams:{year}"
+            raw_rec = _fetch(run, rec_endpoint, partial(client.fetch_recruiting_teams, year))
+            endpoints += 1
+            rec = [parse_recruiting_team(row, as_of_utc=season_as_of) for row in raw_rec]
+            _check_season(rec, year, rec_endpoint)
+            rec, skipped = _resolve_rows(
+                rec, resolver, endpoint=rec_endpoint, allow_unresolved=True
+            )
+            filtered += skipped
+            recruiting_count += store.insert_team_recruiting(conn, rec)
+            conn.commit()
+
+        run.add_rows(recruiting_count)
+        conn.commit()
+
+    return RecruitingBackfillSummary(
+        seasons=end_year - start_year + 1,
+        endpoints=endpoints,
+        recruiting=recruiting_count,
+        filtered=filtered,
+    )
+
+
+def backfill_portal(
+    conn: sqlite3.Connection,
+    client: CFBDClient,
+    *,
+    start_year: int,
+    end_year: int,
+    as_of_utc: str | None = None,
+) -> PortalBackfillSummary:
+    if start_year > end_year:
+        raise SchemaError("start_year must be less than or equal to end_year")
+
+    players_count = composites_count = endpoints = 0
+    command = f"backfill-portal --start-year {start_year} --end-year {end_year}"
+
+    with store.RunRecorder(conn, command) as run:
+        for year in range(start_year, end_year + 1):
+            season_as_of = _preseason_cutoff(conn, year, as_of_utc)
+            team_rows = _fetch(run, f"teams/fbs:{year}", partial(client.fetch_fbs_teams, year))
+            endpoints += 1
+            for raw in team_rows:
+                store.upsert_team(conn, parse_team(raw))
+            resolver = _team_resolver(team_rows)
+
+            portal_endpoint = f"player/portal:{year}"
+            raw_portal = _fetch(run, portal_endpoint, partial(client.fetch_transfer_portal, year))
+            endpoints += 1
+            players = [parse_transfer_player(row) for row in raw_portal]
+            _check_season(players, year, portal_endpoint)
+
+            for p in players:
+                p["origin_team_id"] = resolver.get(_name_key(p.get("origin_name")))
+                p["destination_team_id"] = resolver.get(_name_key(p.get("destination_name")))
+
+            players_count += store.insert_transfer_portal_players(conn, players)
+            preseason_players = [
+                p for p in players if str(p.get("as_of_utc") or "") <= season_as_of
+            ]
+            composites = build_team_portal_composites(
+                preseason_players,
+                season=year,
+                as_of_utc=season_as_of,
+                fbs_team_ids=resolver.values(),
+            )
+            composites_count += store.insert_team_portal_composites(conn, composites)
+            conn.commit()
+
+        run.add_rows(players_count + composites_count)
+        conn.commit()
+
+    return PortalBackfillSummary(
+        seasons=end_year - start_year + 1,
+        endpoints=endpoints,
+        players=players_count,
+        composites=composites_count,
+    )
+
+
+def backfill_recruiting_and_portal(
+    conn: sqlite3.Connection,
+    client: CFBDClient,
+    *,
+    start_year: int,
+    end_year: int,
+    as_of_utc: str | None = None,
+) -> tuple[RecruitingBackfillSummary, PortalBackfillSummary]:
+    recruiting = backfill_recruiting(
+        conn, client, start_year=start_year, end_year=end_year, as_of_utc=as_of_utc
+    )
+    portal = backfill_portal(
+        conn, client, start_year=start_year, end_year=end_year, as_of_utc=as_of_utc
+    )
+    return recruiting, portal

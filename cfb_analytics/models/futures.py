@@ -28,7 +28,7 @@ from __future__ import annotations
 
 import math
 import random
-from collections.abc import Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Any
@@ -269,6 +269,104 @@ def calculate_true_talent_composite(
     if composite < 0:
         raise SchemaError(f"True talent composite cannot be negative, got {composite}")
     return round(composite, 2)
+
+
+def calculate_player_portal_score(row: Mapping[str, Any]) -> float:
+    """Calculate an individual transfer player's score contribution.
+
+    Uses 247Sports rating (normalized to 0-10 scale), or star rating,
+    or a default baseline of 5.0 for unrated FBS transfers.
+    """
+    rating = row.get("rating")
+    if rating is not None:
+        try:
+            r = float(rating)
+            if r > 0.0:
+                if r <= 1.0:
+                    score = r * 10.0
+                elif r <= 10.0:
+                    score = r
+                else:
+                    score = r / 10.0
+                return round(max(0.0, min(score, 10.0)), 2)
+        except (TypeError, ValueError):
+            pass
+    stars = row.get("stars")
+    if stars is not None:
+        try:
+            s = int(stars)
+            if s > 0:
+                return round(max(0.0, min(float(s) * 2.0, 10.0)), 2)
+        except (TypeError, ValueError):
+            pass
+    return 5.0
+
+
+def build_team_portal_composites(
+    players: Iterable[Mapping[str, Any]],
+    *,
+    season: int,
+    as_of_utc: str,
+    fbs_team_ids: Iterable[str] | None = None,
+) -> list[dict[str, Any]]:
+    """Aggregate individual transfer portal movements into team portal composites."""
+    dest_map: dict[str, list[Mapping[str, Any]]] = {}
+    orig_map: dict[str, list[Mapping[str, Any]]] = {}
+
+    # Deduplicate players by movement identity, selecting only the latest version
+    deduped: dict[tuple[Any, ...], Mapping[str, Any]] = {}
+    for player in players:
+        key = (
+            player.get("season"),
+            player.get("first_name"),
+            player.get("last_name"),
+            player.get("origin_name") or player.get("origin_team_id"),
+            player.get("destination_name") or player.get("destination_team_id"),
+            player.get("transfer_date"),
+        )
+        existing = deduped.get(key)
+        if existing is None or (
+            str(player.get("as_of_utc", "")),
+            str(player.get("ingested_utc", "")),
+        ) > (
+            str(existing.get("as_of_utc", "")),
+            str(existing.get("ingested_utc", "")),
+        ):
+            deduped[key] = player
+
+    for player in deduped.values():
+        dest = player.get("destination_team_id")
+        if dest:
+            dest_map.setdefault(str(dest), []).append(player)
+        orig = player.get("origin_team_id")
+        if orig:
+            orig_map.setdefault(str(orig), []).append(player)
+
+    all_teams: set[str] = set(dest_map.keys()) | set(orig_map.keys())
+    if fbs_team_ids is not None:
+        all_teams.update(str(tid) for tid in fbs_team_ids)
+
+    results: list[dict[str, Any]] = []
+    for team_id in sorted(all_teams):
+        additions = dest_map.get(team_id, [])
+        departures = orig_map.get(team_id, [])
+        add_score = round(sum(calculate_player_portal_score(p) for p in additions), 2)
+        dep_score = round(sum(calculate_player_portal_score(p) for p in departures), 2)
+        net_comp = round(add_score - dep_score, 2)
+        results.append(
+            {
+                "season": season,
+                "team_id": team_id,
+                "additions_score": add_score,
+                "departures_score": dep_score,
+                "net_composite": net_comp,
+                "additions_count": len(additions),
+                "departures_count": len(departures),
+                "availability_class": "preseason",
+                "as_of_utc": as_of_utc,
+            }
+        )
+    return results
 
 
 @dataclass(frozen=True)
