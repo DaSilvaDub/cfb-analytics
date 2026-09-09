@@ -141,7 +141,7 @@ def _as_int(value: Any) -> int | None:
 
 
 class OutlierClient:
-    def __init__(self, http: HttpClient | None = None, league: str = LEAGUE_TOKEN) -> None:
+    def __init__(self, http: Any = None, league: str = LEAGUE_TOKEN) -> None:
         self.league = league
         if http is not None:
             self.http = http

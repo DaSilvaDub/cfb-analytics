@@ -22,6 +22,7 @@ from cfb_analytics.models.futures import (
     RosterTalentInputs,
     ScheduledOpponent,
     SeasonFuturesProjection,
+    calculate_player_portal_score,
     project_season_futures,
 )
 
@@ -63,12 +64,14 @@ def load_team_roster_inputs(
     true_talent_composite: float | None = None,
     strength_of_schedule: float | None = None,
     input_manifest: dict[str, Any] | None = None,
+    recruiting_composite: float | None = None,
 ) -> RosterTalentInputs:
     """Build RosterTalentInputs from database records and optional caller overrides.
 
-    Pulls recruiting talent composite from ``team_talent``, returning production
-    from ``returning_production``, historical conference from ``team_seasons``,
-    and strength of schedule from ``team_ratings`` or a caller override.
+    Pulls recruiting talent composite from ``team_recruiting`` or ``team_talent``,
+    portal composite from ``team_portal_composites`` or ``transfer_portal_players``,
+    returning production from ``returning_production``, historical conference from
+    ``team_seasons``, and strength of schedule from ``team_ratings`` or a caller override.
     """
     reader = (
         AsOfReader(game_id="futures-roster-lookup", kickoff_utc=as_of_utc, season=season)
@@ -78,21 +81,76 @@ def load_team_roster_inputs(
     if reader is not None:
         _ = reader.kickoff
 
-    talent_row = conn.execute(
-        """SELECT snapshot_id, season, availability_class, ingested_utc, talent_composite
-           FROM team_talent
-           WHERE team_id = ? AND season = ? AND availability_class = 'preseason'
-           ORDER BY ingested_utc DESC, snapshot_id DESC LIMIT 1""",
-        (team_id, season),
-    ).fetchone()
-    if talent_row is None:
-        raise SchemaError(f"No preseason talent row for team {team_id!r} in season {season}")
-    if reader is not None:
-        reader.check_availability_class(
-            str(talent_row["availability_class"]), feature="team_talent"
-        )
-        reader.check_preseason_season(talent_row["season"], feature="team_talent")
-    recruiting_comp = float(talent_row["talent_composite"])
+    recruiting_comp: float | None = None
+    if recruiting_composite is not None:
+        recruiting_comp = float(recruiting_composite)
+        if input_manifest is not None:
+            input_manifest["recruiting_composite"] = {
+                "value": recruiting_comp,
+                "resolution": "caller_supplied",
+            }
+    else:
+        talent_row = conn.execute(
+            """SELECT snapshot_id, season, availability_class, ingested_utc, talent_composite
+               FROM team_talent
+               WHERE team_id = ? AND season = ? AND availability_class = 'preseason'
+               ORDER BY ingested_utc DESC, snapshot_id DESC LIMIT 1""",
+            (team_id, season),
+        ).fetchone()
+        if talent_row is not None:
+            if reader is not None:
+                reader.check_availability_class(
+                    str(talent_row["availability_class"]), feature="team_talent"
+                )
+                reader.check_preseason_season(talent_row["season"], feature="team_talent")
+            if input_manifest is not None:
+                input_manifest["team_talent"] = dict(talent_row)
+            recruiting_comp = float(talent_row["talent_composite"])
+
+        rec_rows = conn.execute(
+            """SELECT snapshot_id, season, availability_class, as_of_utc, ingested_utc,
+                      rank, points, recruiting_composite
+               FROM team_recruiting
+               WHERE team_id = ? AND season = ? AND availability_class = 'preseason'""",
+            (team_id, season),
+        ).fetchall()
+        if rec_rows:
+            admissible_rec = (
+                reader.admissible(
+                    [dict(r) for r in rec_rows],
+                    what="team_recruiting",
+                    as_of_field="as_of_utc",
+                )
+                if reader is not None
+                else [dict(r) for r in rec_rows]
+            )
+            if admissible_rec:
+                rec_row = max(
+                    admissible_rec,
+                    key=lambda r: (
+                        str(r.get("as_of_utc", "")),
+                        str(r.get("ingested_utc", "")),
+                        str(r.get("snapshot_id", "")),
+                    ),
+                )
+                if reader is not None:
+                    reader.check_availability_class(
+                        str(rec_row["availability_class"]), feature="team_recruiting"
+                    )
+                    reader.check_preseason_season(
+                        rec_row["season"], feature="team_recruiting"
+                    )
+                if input_manifest is not None:
+                    input_manifest["team_recruiting"] = dict(rec_row)
+                if recruiting_comp is None:
+                    val = rec_row.get("recruiting_composite")
+                    if val is not None:
+                        recruiting_comp = float(val)
+
+        if recruiting_comp is None:
+            raise SchemaError(
+                f"No preseason recruiting or talent row for team {team_id!r} in season {season}"
+            )
 
     ret_row = conn.execute(
         """SELECT snapshot_id, season, availability_class, ingested_utc, percent_ppa
@@ -125,7 +183,6 @@ def load_team_roster_inputs(
     conference = str(team_row["conference"])
 
     if input_manifest is not None:
-        input_manifest["team_talent"] = dict(talent_row)
         input_manifest["returning_production"] = dict(ret_row)
         input_manifest["team_season"] = {
             "team_id": team_id,
@@ -179,7 +236,128 @@ def load_team_roster_inputs(
         resolved_nil_tier: NILTier | str = NILTier.from_budget(nil_budget_millions)
     else:
         resolved_nil_tier = nil_tier
-    if portal_composite is None:
+
+    resolved_portal: PortalComposite | float | None = portal_composite
+    if resolved_portal is None:
+        portal_rows = conn.execute(
+            """SELECT snapshot_id, season, availability_class, as_of_utc, ingested_utc,
+                      additions_score, departures_score, net_composite,
+                      additions_count, departures_count
+               FROM team_portal_composites
+               WHERE team_id = ? AND season = ? AND availability_class = 'preseason'""",
+            (team_id, season),
+        ).fetchall()
+        if portal_rows:
+            admissible_portal = (
+                reader.admissible(
+                    [dict(r) for r in portal_rows],
+                    what="team_portal_composites",
+                    as_of_field="as_of_utc",
+                )
+                if reader is not None
+                else [dict(r) for r in portal_rows]
+            )
+            if admissible_portal:
+                portal_row = max(
+                    admissible_portal,
+                    key=lambda r: (
+                        str(r.get("as_of_utc", "")),
+                        str(r.get("ingested_utc", "")),
+                        str(r.get("snapshot_id", "")),
+                    ),
+                )
+                if reader is not None:
+                    reader.check_availability_class(
+                        str(portal_row["availability_class"]),
+                        feature="team_portal_composites",
+                    )
+                    reader.check_preseason_season(
+                        portal_row["season"], feature="team_portal_composites"
+                    )
+                resolved_portal = PortalComposite(
+                    additions_score=float(portal_row["additions_score"]),
+                    departures_score=float(portal_row["departures_score"]),
+                    net_composite=float(portal_row["net_composite"]),
+                    additions_count=int(portal_row["additions_count"]),
+                    departures_count=int(portal_row["departures_count"]),
+                )
+                if input_manifest is not None:
+                    input_manifest["team_portal"] = dict(portal_row)
+
+        if resolved_portal is None:
+            player_rows = conn.execute(
+                """SELECT transfer_id, season, first_name, last_name, origin_team_id,
+                          destination_team_id, origin_name, destination_name,
+                          rating, stars, transfer_date, as_of_utc, ingested_utc
+                   FROM transfer_portal_players
+                   WHERE season = ? AND (origin_team_id = ? OR destination_team_id = ?)""",
+                (season, team_id, team_id),
+            ).fetchall()
+            if player_rows:
+                admissible_players = (
+                    reader.admissible(
+                        [dict(r) for r in player_rows],
+                        what="transfer_portal_players",
+                        as_of_field="as_of_utc",
+                    )
+                    if reader is not None
+                    else [dict(r) for r in player_rows]
+                )
+                if admissible_players:
+                    deduped: dict[tuple[Any, ...], Mapping[str, Any]] = {}
+                    for p in admissible_players:
+                        movement_key = (
+                            p.get("season"),
+                            p.get("first_name"),
+                            p.get("last_name"),
+                            p.get("origin_name") or p.get("origin_team_id"),
+                            p.get("destination_name") or p.get("destination_team_id"),
+                            p.get("transfer_date"),
+                        )
+                        existing = deduped.get(movement_key)
+                        if existing is None or (
+                            str(p.get("as_of_utc", "")),
+                            str(p.get("ingested_utc", "")),
+                        ) > (
+                            str(existing.get("as_of_utc", "")),
+                            str(existing.get("ingested_utc", "")),
+                        ):
+                            deduped[movement_key] = p
+
+                    unique_admissible = list(deduped.values())
+                    additions = [
+                        p for p in unique_admissible if p.get("destination_team_id") == team_id
+                    ]
+                    departures = [
+                        p for p in unique_admissible if p.get("origin_team_id") == team_id
+                    ]
+                    add_score = round(
+                        sum(calculate_player_portal_score(p) for p in additions), 2
+                    )
+                    dep_score = round(
+                        sum(calculate_player_portal_score(p) for p in departures), 2
+                    )
+                    net = round(add_score - dep_score, 2)
+                    resolved_portal = PortalComposite(
+                        additions_score=add_score,
+                        departures_score=dep_score,
+                        net_composite=net,
+                        additions_count=len(additions),
+                        departures_count=len(departures),
+                    )
+                    if input_manifest is not None:
+                        input_manifest["team_portal"] = {
+                            "team_id": team_id,
+                            "season": season,
+                            "additions_score": add_score,
+                            "departures_score": dep_score,
+                            "net_composite": net,
+                            "additions_count": len(additions),
+                            "departures_count": len(departures),
+                            "resolution": "aggregated_from_players",
+                        }
+
+    if resolved_portal is None:
         raise SchemaError(
             "Portal composite is required; missing transfer data cannot be treated as neutral"
         )
@@ -191,7 +369,7 @@ def load_team_roster_inputs(
     return RosterTalentInputs(
         team_id=team_id,
         recruiting_composite=recruiting_comp,
-        portal_composite=portal_composite,
+        portal_composite=resolved_portal,
         nil_tier=resolved_nil_tier,
         nil_budget_millions=nil_budget_millions,
         returning_production=ret_prod,
@@ -387,6 +565,7 @@ def project_team_futures_from_db(
     true_talent_composite: float | None = None,
     strength_of_schedule: float | None = None,
     input_manifest: dict[str, Any] | None = None,
+    recruiting_composite: float | None = None,
 ) -> SeasonFuturesProjection:
     """End-to-end integration: query database and generate SeasonFuturesProjection."""
     if as_of_utc is None:
@@ -435,6 +614,7 @@ def project_team_futures_from_db(
         true_talent_composite=true_talent_composite,
         strength_of_schedule=resolved_sos,
         input_manifest=input_manifest,
+        recruiting_composite=recruiting_composite,
     )
 
     return project_season_futures(
