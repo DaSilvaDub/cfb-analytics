@@ -45,8 +45,14 @@ games are played, exactly the case that blocker exists for.
 `.github/workflows/daily-ingest.yml` runs at 11:00 UTC daily (7am ET, ahead of
 the day's moves — a *consistent* capture time matters more than the hour, since
 day-over-day movement is only comparable between like snapshots). It restores
-the SQLite store from the `data` branch, ingests, rebuilds the market, and
-force-pushes a single-commit snapshot back.
+the SQLite store from the `data` branch (`cfb.sqlite3.gz` → gunzip into
+`data/cfb.sqlite3`), ingests, rebuilds the market, and force-pushes a
+single-commit gzip snapshot back. Manual restore:
+
+```bash
+git fetch origin data
+git show origin/data:cfb.sqlite3.gz | gunzip > data/cfb.sqlite3
+```
 
 Requires one repository secret: **`CFBD_API_KEY`**.
 

@@ -55,8 +55,18 @@ jobs:
           mkdir -p data
           if git ls-remote --exit-code --heads origin data >/dev/null 2>&1; then
             git fetch --depth=1 origin data
-            git show FETCH_HEAD:cfb.sqlite3 > data/cfb.sqlite3
-            echo "restored $(stat -c%s data/cfb.sqlite3) bytes from the data branch"
+            # Prefer gzip snapshot (under GitHub's 50 MB soft limit). Fall back to
+            # legacy raw cfb.sqlite3 so the first run after this change still
+            # bootstraps from the last uncompressed publish.
+            if git cat-file -e FETCH_HEAD:cfb.sqlite3.gz 2>/dev/null; then
+              git show FETCH_HEAD:cfb.sqlite3.gz | gunzip > data/cfb.sqlite3
+              echo "restored $(stat -c%s data/cfb.sqlite3) bytes from cfb.sqlite3.gz"
+            elif git cat-file -e FETCH_HEAD:cfb.sqlite3 2>/dev/null; then
+              git show FETCH_HEAD:cfb.sqlite3 > data/cfb.sqlite3
+              echo "restored $(stat -c%s data/cfb.sqlite3) bytes from legacy raw cfb.sqlite3"
+            else
+              echo "data branch has no cfb.sqlite3(.gz) - starting a fresh store"
+            fi
           else
             echo "no data branch yet - starting a fresh store"
           fi
@@ -158,8 +168,15 @@ jobs:
           # Single-commit orphan branch, force-pushed. The database is itself an
           # append-only history, so keeping git history of the binary too would
           # grow the repo without adding information.
+          #
+          # Publish gzip-compressed: raw cfb.sqlite3 already exceeds GitHub's
+          # 50 MB soft limit (~58 MB on 2026-09-24) and the push started failing
+          # with remote Internal Server Error after the GH001 large-file warning.
+          # Consumers (this workflow's Restore step) gunzip back to data/cfb.sqlite3.
+          RAW_BYTES=$(stat -c%s data/cfb.sqlite3)
           rm -rf "$RUNNER_TEMP/pub" && mkdir -p "$RUNNER_TEMP/pub"
-          cp data/cfb.sqlite3 "$RUNNER_TEMP/pub/cfb.sqlite3"
+          gzip -c -6 data/cfb.sqlite3 > "$RUNNER_TEMP/pub/cfb.sqlite3.gz"
+          GZ_BYTES=$(stat -c%s "$RUNNER_TEMP/pub/cfb.sqlite3.gz")
           cd "$RUNNER_TEMP/pub"
           git init -q
           # Identity must be set HERE. This is a brand-new repository; config
@@ -171,12 +188,16 @@ jobs:
           {
             echo "# Data branch"
             echo
-            echo "Single-commit snapshot of \`data/cfb.sqlite3\`, force-pushed by"
-            echo "the Daily ingest workflow. Not source; see \`master\` for code."
+            echo "Single-commit snapshot of \`cfb.sqlite3.gz\` (gzip of \`data/cfb.sqlite3\`),"
+            echo "force-pushed by the Daily ingest workflow. Not source; see \`master\` for code."
+            echo
+            echo "Restore: \`git show origin/data:cfb.sqlite3.gz | gunzip > data/cfb.sqlite3\`"
             echo
             echo "Last updated: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo "Raw size: ${RAW_BYTES} bytes"
+            echo "Gzip size: ${GZ_BYTES} bytes"
           } > README.md
-          git add cfb.sqlite3 README.md
+          git add cfb.sqlite3.gz README.md
           git commit -q -m "data: snapshot $(date -u +%Y-%m-%dT%H:%M:%SZ)"
           git push -q --force "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" data:data
-          echo "published $(stat -c%s cfb.sqlite3) bytes to the data branch"
+          echo "published ${GZ_BYTES} gzip bytes (raw ${RAW_BYTES}) to the data branch"
