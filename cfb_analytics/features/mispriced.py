@@ -333,11 +333,11 @@ def _scan_team_prop_mispricing(
     pipeline.
     """
     try:
-        inputs_by_game = load_team_props_inputs_for_slate(conn, date)
+        inputs_by_team = load_team_props_inputs_for_slate(conn, date)
     except Exception:
         return []
 
-    if not inputs_by_game:
+    if not inputs_by_team:
         return []
 
     # Query team prop consensus (if any)
@@ -367,14 +367,13 @@ def _scan_team_prop_mispricing(
 
     candidates: list[MispricedCandidate] = []
     for row in rows:
-        game_id = row["game_id"]
-        if game_id not in inputs_by_game:
+        home_team_id = str(row["home_team_id"]) if row["home_team_id"] else None
+        away_team_id = str(row["away_team_id"]) if row["away_team_id"] else None
+        if not home_team_id or not away_team_id:
             continue
 
-        # Determine which team's prop and project production
-        prop_market = row["prop_market"]
-        home_inputs = inputs_by_game[game_id].get("home")
-        away_inputs = inputs_by_game[game_id].get("away")
+        home_inputs = inputs_by_team.get(home_team_id)
+        away_inputs = inputs_by_team.get(away_team_id)
         if home_inputs is None or away_inputs is None:
             continue
 
@@ -510,14 +509,26 @@ def _load_model_totals(
     Uses team props inputs to project home + away points.
     """
     try:
-        inputs_by_game = load_team_props_inputs_for_slate(conn, date)
+        inputs_by_team = load_team_props_inputs_for_slate(conn, date)
     except Exception:
         return {}
 
+    games = conn.execute(
+        """SELECT game_id, home_team_id, away_team_id
+           FROM games
+           WHERE football_date = ?""",
+        (date,),
+    ).fetchall()
+
     totals: dict[str, float] = {}
-    for game_id, teams in inputs_by_game.items():
-        home_inputs = teams.get("home")
-        away_inputs = teams.get("away")
+    for g in games:
+        game_id = str(g["game_id"])
+        home_id = str(g["home_team_id"]) if g["home_team_id"] else None
+        away_id = str(g["away_team_id"]) if g["away_team_id"] else None
+        if not home_id or not away_id:
+            continue
+        home_inputs = inputs_by_team.get(home_id)
+        away_inputs = inputs_by_team.get(away_id)
         if home_inputs is None or away_inputs is None:
             continue
 
