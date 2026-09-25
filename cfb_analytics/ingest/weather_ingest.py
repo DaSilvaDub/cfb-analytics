@@ -19,6 +19,7 @@ from cfb_analytics.sources.weather import (
     WeatherClient,
     choose_endpoint,
     observation_at,
+    resolve_venue_coordinates,
 )
 from cfb_analytics.utils import utc_now_iso
 
@@ -59,10 +60,19 @@ def _games_needing_weather(
         return []
     placeholders = ",".join("?" for _ in slate_dates)
     rows = conn.execute(
-        f"""SELECT g.game_id, g.kickoff_utc, g.venue_id, g.venue_name,
-                   v.latitude, v.longitude, v.dome
+        f"""SELECT g.game_id, g.kickoff_utc,
+                   COALESCE(g.venue_id, tv.venue_id) AS venue_id,
+                   COALESCE(g.venue_name, v.name, tv.name) AS venue_name,
+                   COALESCE(v.latitude, tv.latitude) AS latitude,
+                   COALESCE(v.longitude, tv.longitude) AS longitude,
+                   COALESCE(v.dome, tv.dome) AS dome
             FROM games g
             LEFT JOIN venues v ON v.venue_id = g.venue_id
+            LEFT JOIN teams t ON t.team_id = g.home_team_id
+            LEFT JOIN venues tv ON tv.venue_id = t.venue_id
+                AND g.neutral_site = 0
+                AND g.venue_id IS NULL
+                AND NULLIF(TRIM(g.venue_name), '') IS NULL
             WHERE g.football_date IN ({placeholders})
             ORDER BY g.kickoff_utc""",
         slate_dates,
@@ -77,6 +87,7 @@ def ingest_weather(
     client: WeatherClient | None = None,
     now: datetime | None = None,
     as_of_utc: str | None = None,
+    fallback_lookup: Any | None = None,
 ) -> WeatherIngestSummary:
     summary = WeatherIngestSummary()
     games = _games_needing_weather(conn, slate_dates)
@@ -89,15 +100,54 @@ def ingest_weather(
     weather_client = client or WeatherClient()
 
     for game in games:
-        if game.get("dome"):
-            _write(conn, game["game_id"], stamp, game["kickoff_utc"], moment,
-                   observation=None, is_indoor=True, is_forecast=False)
+        dome = bool(game.get("dome"))
+        if dome:
+            _write(
+                conn,
+                game["game_id"],
+                stamp,
+                game["kickoff_utc"],
+                moment,
+                observation=None,
+                is_indoor=True,
+                is_forecast=False,
+            )
             summary.indoor += 1
             continue
-        if not game.get("venue_id"):
+
+        venue_id = game.get("venue_id")
+        venue_name = game.get("venue_name")
+        latitude, longitude = game.get("latitude"), game.get("longitude")
+
+        if latitude is None or longitude is None or not venue_id:
+            res_lat, res_lon, res_dome = resolve_venue_coordinates(
+                conn,
+                venue_id=venue_id,
+                venue_name=venue_name,
+                fallback_lookup=fallback_lookup,
+            )
+            if res_dome:
+                _write(
+                    conn,
+                    game["game_id"],
+                    stamp,
+                    game["kickoff_utc"],
+                    moment,
+                    observation=None,
+                    is_indoor=True,
+                    is_forecast=False,
+                )
+                summary.indoor += 1
+                continue
+            if latitude is None and res_lat is not None:
+                latitude = res_lat
+            if longitude is None and res_lon is not None:
+                longitude = res_lon
+
+        if not venue_id and not venue_name and latitude is None:
             summary.no_venue += 1
             continue
-        latitude, longitude = game.get("latitude"), game.get("longitude")
+
         if latitude is None or longitude is None:
             summary.no_coordinates += 1
             continue
@@ -110,7 +160,8 @@ def ingest_weather(
 
         try:
             hourly = weather_client.fetch_hourly(
-                float(latitude), float(longitude),
+                float(latitude),
+                float(longitude),
                 str(game["kickoff_utc"])[:10],
                 archive=endpoint == "archive",
             )
@@ -125,9 +176,16 @@ def ingest_weather(
             summary.failed += 1
             continue
 
-        _write(conn, game["game_id"], stamp, game["kickoff_utc"], moment,
-               observation=observation, is_indoor=False,
-               is_forecast=endpoint == "forecast")
+        _write(
+            conn,
+            game["game_id"],
+            stamp,
+            game["kickoff_utc"],
+            moment,
+            observation=observation,
+            is_indoor=False,
+            is_forecast=endpoint == "forecast",
+        )
         summary.written += 1
 
     return summary
@@ -156,7 +214,9 @@ def _write(
             is_indoor, source)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
-            game_id, as_of_utc, hours_to_kick,
+            game_id,
+            as_of_utc,
+            hours_to_kick,
             getattr(observation, "temp_c", None),
             getattr(observation, "wind_kph", None),
             getattr(observation, "wind_gust_kph", None),

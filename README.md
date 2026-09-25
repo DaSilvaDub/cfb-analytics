@@ -88,6 +88,8 @@ python -m cfb_analytics.cli backfill-roster --start-year 2025 --end-year 2025
 python -m cfb_analytics.cli backfill-passing --start-year 2024 --end-year 2024
 python -m cfb_analytics.cli status                      # row counts, last run
 python -m cfb_analytics.cli coverage                    # books per capture
+python -m cfb_analytics.cli backfill-rankings --year 2026 --week 3
+python -m cfb_analytics.cli over-board --date 2026-09-19  # ranked OVER rush/rec board
 ```
 
 `CFB_HTTP_MODE` controls the HTTP layer: `live` (default), `refresh` (ignore

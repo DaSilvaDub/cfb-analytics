@@ -90,7 +90,7 @@ class HttpClient:
     def _backoff(self, attempt: int) -> float:
         return min(8.0, 0.5 * (2 ** (attempt - 1))) * (0.5 + random.random() / 2)
 
-    def get_payload(self, url: str) -> JsonPayload:
+    def get_payload(self, url: str, *, ignore_ttl: bool = False) -> JsonPayload:
         """Return a cached JSON object or array.
 
         Outlier uses object envelopes while CollegeFootballData returns
@@ -108,7 +108,7 @@ class HttpClient:
                 )
             return cached
 
-        if mode != "refresh":
+        if mode != "refresh" and not ignore_ttl:
             cached = self._read_cache(url)
             if cached is not None:
                 return cached

@@ -33,6 +33,11 @@ packages = [
     "cfb_analytics.ingest",
     "cfb_analytics.features",
     "cfb_analytics.models",
+    "cfb_analytics.backtest",
+    "cfb_analytics.reasoning",
+    "cfb_analytics.scanner",
+    "cfb_analytics.governance",
+    "cfb_analytics.reporting",
 ]
 
 [tool.pytest.ini_options]

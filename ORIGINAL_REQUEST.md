@@ -105,3 +105,56 @@ Extend `cfb_analytics/sources/outlier.py`. Respect two documented traps (and pro
 - Use the reference slate `2026-09-05` for realistic fixtures (30 games, 12 books, ~630 prices).
 - Read conventions in `README.md` and module docstrings before assuming a house style.
 - If R1 shows Outlier offers no usable NCAAFB props, **say so and stop.** Truthful negative findings close this project successfully.
+
+## 2026-09-23T23:49:25Z
+
+Build an end-to-end, multi-factor reasoning and market-mispricing pipeline for NCAA College Football that evaluates Moneylines, Game Spreads, Game Totals, and Team Props using deep situational data (recent game tape/form, live/upcoming weather, opponent injuries, roster/talent composite grades, recruiting classes, and program structural stability) rather than defaulting to favorites.
+
+Working directory: c:/Users/dasil/Dev/GitHub/cfb-analytics
+Integrity mode: development
+
+Reference material:
+- Foundational architectural spec: docs/plans/NCAA College Football Outlier Pipeline — Three-Model Betting System.md
+- Decision rules & governance: docs/grok_rules.md (compiled directly from the user's Grok conversation)
+
+## Requirements
+
+### R1. Multi-Factor Contextual Game Reasoning Engine
+For any candidate pick across supported markets (Moneyline, Spread, Total, Team Props), generate a complete data-backed reasoning card before any pick is recommended. Every card must evaluate and synthesize:
+- Recent Games & Form: Margin of victory, offensive/defensive EPA/success trends, game script tendencies, and quality of recent opponents (filtering out cupcake tape).
+- Venue & Weather: Forecast conditions at kickoff and throughout the game (temperature, sustained winds, wind gusts, precipitation probability) and their historical impact on run/pass ratios and scoring.
+- Injuries & Availability: Opponent and team injury reports, depth chart scratches, QB status/continuity, and trench (OL/DL) attrition.
+- Roster Talent & Recruiting: 247/On3 roster talent composites, recruiting class rankings, blue-chip ratios, and transfer portal composite ratings comparing the two programs.
+- Program Structure & Coaching: Coaching continuity, coordinator changes, rest advantages (bye weeks, short turnaround), and road/travel dynamics.
+- Negative Gate: Strict refusal to endorse favorites purely based on market price or ranking without affirmative edge verification across these factors.
+
+### R2. Comprehensive Mispriced Line Scanner (Spreads, Totals, Props)
+Expand the pipeline's consensus and devig engines beyond moneyline and rush/receiving boards to systematically detect line discrepancies:
+- Game Spreads & Alternate Spreads: Model-projected spread margin vs. devigged multi-book consensus spread.
+- Game Totals & Alternate Totals: Fundamental offensive/defensive tempo and weather-adjusted scoring projections vs. consensus game totals.
+- Team Props (Team Points, Team Yards): Opponent-adjusted team production projections vs. posted book lines.
+- Edge Quantification: Report edge percentage, vig-free fair probability (Shin/Multiplicative), method spread, and confidence score for each identified misprice.
+
+### R3. Grok Decision Rule Integration & Governance
+Incorporate the specific decision rules and heuristic constraints documented in docs/grok_rules.md as mandatory gating criteria for bet qualification, market grading, and parlay construction.
+
+### R4. CLI Interface & Reporting
+Expose the multi-factor reasoning and mispriced board via CLI commands:
+- Integration into python -m cfb_analytics.cli (e.g., cfb-analytics board --with-reasoning --date <YYYY-MM-DD> and cfb-analytics mispriced --date <YYYY-MM-DD>).
+- Output structured, readable terminal cards as well as exportable structured JSON records.
+
+## Acceptance Criteria
+
+### Automated Reasoning Coverage
+- [ ] Every recommended Moneyline, Spread, Game Total, or Team Prop outputs an auditable reasoning card containing all six contextual dimensions (recent form, weather, injuries, talent/recruiting, program structure, model edge).
+- [ ] Any favorite where the underlying situational data contradicts the market line is automatically flagged or disqualified with an explicit counter-thesis.
+
+### Market Mispricing Engine
+- [ ] Automated scanner identifies and ranks mispriced opportunities across Game Spreads, Game Totals, and Team Props against consensus books.
+- [ ] All detected edges compute and report vig-free fair price, market consensus line, edge percentage, and book disagreement spread.
+
+### Rule Compliance & Test Verification
+- [ ] Passes all existing test suites without breaking repository invariants (pytest tests/).
+- [ ] New unit tests verify reasoning card assembly, edge calculation for spreads/totals, and enforcement of the Grok governance gates.
+- [ ] All generated outputs maintain the shadow mode disclaimer: UNPROMOTED - shadow output, not decision-grade.
+

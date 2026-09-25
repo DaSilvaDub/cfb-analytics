@@ -80,8 +80,12 @@ def schedule_event():
         "network": "ESPN",
         "venue": "Some Stadium",
         "home": {"teamId": "t-home", "name": "Tulsa", "alias": "TLSA", "market": "Tulsa"},
-        "away": {"teamId": "t-away", "name": "Oklahoma State", "alias": "OKST",
-                 "market": "Oklahoma State"},
+        "away": {
+            "teamId": "t-away",
+            "name": "Oklahoma State",
+            "alias": "OKST",
+            "market": "Oklahoma State",
+        },
     }
 
 
@@ -98,30 +102,64 @@ def schedule_event():
 def seed_canonical_team(conn, cfbd_id, school, alias, *, aliases=()):
     """One CFBD team, plus any alternate names it publishes."""
     team_id = f"cfbd:{cfbd_id}"
-    store.upsert_team(conn, {
-        "team_id": team_id, "cfbd_id": cfbd_id, "school": school,
-        "alias": alias, "market": school,
-    })
+    store.upsert_team(
+        conn,
+        {
+            "team_id": team_id,
+            "cfbd_id": cfbd_id,
+            "school": school,
+            "alias": alias,
+            "market": school,
+        },
+    )
     if aliases:
-        store.insert_team_aliases(conn, [
-            {"team_id": team_id, "source": "cfbd", "alias": name,
-             "alias_type": "alternate_name"}
-            for name in aliases
-        ])
+        store.insert_team_aliases(
+            conn,
+            [
+                {
+                    "team_id": team_id,
+                    "source": "cfbd",
+                    "alias": name,
+                    "alias_type": "alternate_name",
+                }
+                for name in aliases
+            ],
+        )
     return team_id
 
 
-def seed_canonical_game(conn, game_id, home, away, *,
-                        football_date="2026-09-05",
-                        kickoff="2026-09-05T23:30:00+00:00"):
-    store.upsert_cfbd_game(conn, {
-        "game_id": game_id, "season": 2026, "week": 2, "season_type": "regular",
-        "kickoff_utc": kickoff, "football_date": football_date,
-        "neutral_site": 0, "conference_game": 0,
-        "home_team_id": home, "away_team_id": away,
-        "venue_name": "Some Stadium", "venue_id": None, "status": "scheduled",
-        "home_points": None, "away_points": None, "completed": 0, "source": "cfbd",
-    })
+def seed_canonical_game(
+    conn,
+    game_id,
+    home,
+    away,
+    *,
+    football_date="2026-09-05",
+    kickoff="2026-09-05T23:30:00+00:00",
+    week: int = 2,
+):
+    store.upsert_cfbd_game(
+        conn,
+        {
+            "game_id": game_id,
+            "season": 2026,
+            "week": week,
+            "season_type": "regular",
+            "kickoff_utc": kickoff,
+            "football_date": football_date,
+            "neutral_site": 0,
+            "conference_game": 0,
+            "home_team_id": home,
+            "away_team_id": away,
+            "venue_name": "Some Stadium",
+            "venue_id": None,
+            "status": "scheduled",
+            "home_points": None,
+            "away_points": None,
+            "completed": 0,
+            "source": "cfbd",
+        },
+    )
     return game_id
 
 
@@ -137,5 +175,10 @@ def canonical_slate(conn):
         "evt-2": seed_canonical_game(conn, "cfbd:1002", duke, tulane),
     }
     conn.commit()
-    return {"games": games, "tulsa": tulsa, "oklahoma_state": oklahoma_state,
-            "duke": duke, "tulane": tulane}
+    return {
+        "games": games,
+        "tulsa": tulsa,
+        "oklahoma_state": oklahoma_state,
+        "duke": duke,
+        "tulane": tulane,
+    }

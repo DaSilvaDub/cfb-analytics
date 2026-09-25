@@ -19,13 +19,14 @@ from __future__ import annotations
 import sqlite3
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 from cfb_analytics import config
 from cfb_analytics.errors import CfbAnalyticsError
 from cfb_analytics.utils import FOOTBALL_TZ, football_date, utc_now_iso
 
 if TYPE_CHECKING:
+    from cfb_analytics.models.team_props import GameTotalsProjection
     from cfb_analytics.scoring import CandidateScore
 
 
@@ -42,6 +43,16 @@ class SourceOutcome:
 
 
 @dataclass
+class ResearchGameTotal:
+    """Uncalibrated model output, without an executable recommendation."""
+
+    projection: GameTotalsProjection
+    as_of_utc: str
+    status: Literal["uncalibrated_shadow"] = field(default="uncalibrated_shadow", init=False)
+    actionable: Literal[False] = field(default=False, init=False)
+
+
+@dataclass
 class DailyReport:
     started_utc: str
     slates: list[str] = field(default_factory=list)
@@ -52,6 +63,7 @@ class DailyReport:
     weather_rows: int = 0
     candidates_scored: int = 0
     candidate_scores: list[CandidateScore] = field(default_factory=list)
+    research_game_totals: dict[str, ResearchGameTotal] = field(default_factory=dict)
     bootstrapped: bool = False
 
     @property
@@ -83,7 +95,17 @@ class DailyReport:
             f"  movement rows    : {self.movement_rows}",
             f"  weather rows     : {self.weather_rows}",
             f"  candidates scored: {self.candidates_scored}",
+            f"  research totals  : {len(self.research_game_totals)} "
+            "(uncalibrated_shadow; actionable=false)",
         ]
+        for game_id, research in sorted(self.research_game_totals.items()):
+            projection = research.projection
+            lines.append(
+                f"    {game_id}: total={projection.projected_game_total:.2f}, "
+                f"home={projection.home_projected_points:.2f}, "
+                f"away={projection.away_projected_points:.2f} "
+                f"(uncalibrated_shadow; actionable=false; as_of={research.as_of_utc})"
+            )
         if config.is_shadow_mode():
             lines.append(f"\n  {config.SHADOW_STAMP}")
         return "\n".join(lines)
@@ -126,6 +148,7 @@ def _bootstrap_if_empty(conn: sqlite3.Connection, report: DailyReport, season: i
     """
     if games_for_season(conn, season) > 0:
         return
+
     if not config.has_cfbd_key():
         report.outcomes.append(
             SourceOutcome(
@@ -180,6 +203,91 @@ def _run_cfbd_lines(conn: sqlite3.Connection, report: DailyReport, season: int) 
         )
     except CfbAnalyticsError as exc:
         report.outcomes.append(SourceOutcome("cfbd", "failed", str(exc)[:200]))
+
+
+def _run_cfbd_rankings(
+    conn: sqlite3.Connection,
+    report: DailyReport,
+    season: int,
+    *,
+    now: datetime | None = None,
+) -> None:
+    """Pull the current week's AP/Coaches poll. Skip cleanly without a CFBD key."""
+    if not config.has_cfbd_key():
+        report.outcomes.append(
+            SourceOutcome("rankings", "skipped", f"no {config.CFBD_ENV_VAR} configured")
+        )
+        return
+    moment = now or datetime.now(FOOTBALL_TZ)
+    today = football_date(moment.astimezone(FOOTBALL_TZ).isoformat())
+    week_row = conn.execute(
+        """SELECT MAX(week) AS week FROM games
+           WHERE season = ? AND season_type = 'regular' AND football_date <= ?""",
+        (season, today),
+    ).fetchone()
+    week = int(week_row["week"]) if week_row is not None and week_row["week"] is not None else None
+    try:
+        from cfb_analytics.ingest.cfbd_rankings import ingest_rankings
+        from cfb_analytics.sources.cfbd import CFBDClient
+
+        summary = ingest_rankings(conn, CFBDClient(), season, week=week)
+        report.outcomes.append(
+            SourceOutcome(
+                "rankings",
+                "ok",
+                f"{summary.rows} poll ranks, {summary.weeks} week(s), "
+                f"{summary.unresolved} unresolved names",
+                rows=summary.rows,
+            )
+        )
+    except CfbAnalyticsError as exc:
+        report.outcomes.append(SourceOutcome("rankings", "failed", str(exc)[:200]))
+
+
+def _run_cfbd_elo(conn: sqlite3.Connection, report: DailyReport, season: int) -> None:
+    """Weekly CFBD Elo for the current season so conference top-two is not AP-only."""
+    if not config.has_cfbd_key():
+        report.outcomes.append(
+            SourceOutcome("elo", "skipped", f"no {config.CFBD_ENV_VAR} configured")
+        )
+        return
+    try:
+        from cfb_analytics.ingest.cfbd_fundamentals import backfill_elo
+        from cfb_analytics.sources.cfbd import CFBDClient
+
+        summary = backfill_elo(conn, CFBDClient(), start_year=season, end_year=season)
+        report.outcomes.append(SourceOutcome("elo", "ok", summary.as_text(), rows=summary.ratings))
+    except CfbAnalyticsError as exc:
+        report.outcomes.append(SourceOutcome("elo", "failed", str(exc)[:200]))
+
+
+def _run_refresh_scores(conn: sqlite3.Connection, report: DailyReport, season: int) -> None:
+    """Refresh final scores and completion status for games played this season."""
+    if not config.has_cfbd_key():
+        return
+    try:
+        from cfb_analytics.ingest import store
+        from cfb_analytics.sources.cfbd import CFBDClient, parse_game
+
+        client = CFBDClient()
+        raw_games = client.fetch_games(season, refresh=True)
+        completed_count = 0
+        for raw in raw_games:
+            if raw.get("completed"):
+                parsed = parse_game(raw)
+                store.upsert_cfbd_game(conn, parsed)
+                completed_count += 1
+        if completed_count > 0:
+            report.outcomes.append(
+                SourceOutcome(
+                    "game_scores",
+                    "ok",
+                    f"updated {completed_count} completed games for {season}",
+                    rows=completed_count,
+                )
+            )
+    except CfbAnalyticsError as exc:
+        report.outcomes.append(SourceOutcome("game_scores", "failed", str(exc)[:200]))
 
 
 def _run_outlier(
@@ -296,6 +404,29 @@ def _run_player_passing(conn: sqlite3.Connection, report: DailyReport, season: i
         report.outcomes.append(SourceOutcome("player_passing", "failed", str(exc)[:200]))
 
 
+def _run_team_boxes(conn: sqlite3.Connection, report: DailyReport, season: int) -> None:
+    """Store rushing / net-passing boxes for completed games (same-night settle)."""
+    if not config.has_cfbd_key():
+        report.outcomes.append(
+            SourceOutcome(
+                "team_boxes",
+                "skipped",
+                f"no {config.CFBD_ENV_VAR} configured. {config.CFBD_HOW}",
+            )
+        )
+        return
+    try:
+        from cfb_analytics.ingest.cfbd_boxes import ingest_completed_boxes
+        from cfb_analytics.sources.cfbd import CFBDClient
+
+        summary = ingest_completed_boxes(conn, CFBDClient(), season)
+        report.outcomes.append(
+            SourceOutcome("team_boxes", "ok", summary.as_text(), rows=summary.rows)
+        )
+    except CfbAnalyticsError as exc:
+        report.outcomes.append(SourceOutcome("team_boxes", "failed", str(exc)[:200]))
+
+
 def _run_internal_ratings(conn: sqlite3.Connection, report: DailyReport, season: int) -> None:
     """Fit and persist the internal ridge team-strength ratings as of right now.
 
@@ -374,6 +505,8 @@ def _run_candidate_scoring(
     slates: list[str],
     season: int,
     now: datetime,
+    *,
+    with_weather: bool,
 ) -> None:
     """Score Model 3 team props and devigged consensus fair odds across daily slates."""
     try:
@@ -381,7 +514,9 @@ def _run_candidate_scoring(
         from cfb_analytics.utils import to_utc_iso
 
         as_of_utc = to_utc_iso(now) or utc_now_iso()
-        scored = score_daily_slates(conn, slates, season=season, as_of_utc=as_of_utc)
+        scored = score_daily_slates(
+            conn, slates, season=season, as_of_utc=as_of_utc, with_weather=with_weather
+        )
         report.candidate_scores = scored
         report.candidates_scored = len(scored)
         report.outcomes.append(
@@ -394,6 +529,43 @@ def _run_candidate_scoring(
         )
     except CfbAnalyticsError as exc:
         report.outcomes.append(SourceOutcome("scoring", "failed", str(exc)[:200]))
+
+
+def _run_research_game_totals(
+    conn: sqlite3.Connection,
+    report: DailyReport,
+    slates: list[str],
+    season: int,
+    now: datetime,
+    *,
+    with_weather: bool,
+) -> None:
+    """Expose game-total projections as explicitly non-actionable research."""
+    try:
+        from cfb_analytics.features.weather import project_slate_game_totals
+        from cfb_analytics.utils import to_utc_iso
+
+        as_of_utc = to_utc_iso(now) or utc_now_iso()
+        totals: dict[str, ResearchGameTotal] = {}
+        for slate in slates:
+            projections = project_slate_game_totals(
+                conn, slate, season=season, as_of_utc=as_of_utc, with_weather=with_weather
+            )
+            totals.update(
+                (game_id, ResearchGameTotal(projection, as_of_utc))
+                for game_id, projection in projections.items()
+            )
+        report.research_game_totals = totals
+        report.outcomes.append(
+            SourceOutcome(
+                "game_totals",
+                "ok",
+                f"{len(totals)} research projections (uncalibrated_shadow; actionable=false)",
+                rows=len(totals),
+            )
+        )
+    except CfbAnalyticsError as exc:
+        report.outcomes.append(SourceOutcome("game_totals", "failed", str(exc)[:200]))
 
 
 def run_daily(
@@ -420,6 +592,9 @@ def run_daily(
         _bootstrap_if_empty(conn, report, year)
 
     _run_cfbd_lines(conn, report, year)
+    _run_cfbd_rankings(conn, report, year, now=moment)
+    _run_cfbd_elo(conn, report, year)
+    _run_refresh_scores(conn, report, year)
 
     slates = slates_in_window(conn, now=moment)
     if with_outlier and slates:
@@ -431,6 +606,8 @@ def run_daily(
 
     if with_player_passing:
         _run_player_passing(conn, report, year)
+
+    _run_team_boxes(conn, report, year)
 
     if with_internal_ratings:
         _run_internal_ratings(conn, report, year)
@@ -452,6 +629,14 @@ def run_daily(
             report.games += summary.games
 
         if with_scoring:
-            _run_candidate_scoring(conn, report, report.slates, year, moment)
+            # Live ingestion timestamps arrive after the run starts. Include
+            # those captures while retaining explicit historical cutoffs.
+            scoring_moment = now if now is not None else datetime.now(FOOTBALL_TZ)
+            _run_candidate_scoring(
+                conn, report, report.slates, year, scoring_moment, with_weather=with_weather
+            )
+            _run_research_game_totals(
+                conn, report, report.slates, year, scoring_moment, with_weather=with_weather
+            )
 
     return report

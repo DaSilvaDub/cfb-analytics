@@ -25,7 +25,7 @@ from cfb_analytics.utils import football_date, to_utc_iso
 
 
 class PayloadClient(Protocol):
-    def get_payload(self, url: str) -> Any: ...
+    def get_payload(self, url: str, *, ignore_ttl: bool = False) -> Any: ...
 
 
 def _as_int(value: Any, field: str) -> int:
@@ -137,8 +137,17 @@ class CFBDClient:
             return f"{self.base_url}{path}"
         return f"{self.base_url}{path}?{urlencode(filtered)}"
 
-    def _get_rows(self, path: str, **params: Any) -> list[dict[str, Any]]:
-        payload = self.http.get_payload(self._url(path, **params))
+    def _get_rows(
+        self, path: str, *, ignore_ttl: bool = False, **params: Any
+    ) -> list[dict[str, Any]]:
+        url = self._url(path, **params)
+        if ignore_ttl:
+            try:
+                payload = self.http.get_payload(url, ignore_ttl=True)
+            except TypeError:
+                payload = self.http.get_payload(url)
+        else:
+            payload = self.http.get_payload(url)
         if not isinstance(payload, list):
             raise SchemaError(f"CFBD {path} did not return a JSON array")
         rows = [row for row in payload if isinstance(row, dict)]
@@ -153,10 +162,16 @@ class CFBDClient:
         return self._get_rows("/teams/fbs", year=year)
 
     def fetch_games(
-        self, year: int, *, season_type: str = "both", classification: str = "fbs"
+        self,
+        year: int,
+        *,
+        season_type: str = "both",
+        classification: str = "fbs",
+        refresh: bool = False,
     ) -> list[dict[str, Any]]:
         return self._get_rows(
             "/games",
+            ignore_ttl=refresh,
             year=year,
             seasonType=season_type,
             classification=classification,
@@ -185,6 +200,18 @@ class CFBDClient:
         self, year: int, week: int, *, season_type: str = "regular"
     ) -> list[dict[str, Any]]:
         return self._get_rows("/ratings/elo", year=year, week=week, seasonType=season_type)
+
+    def fetch_game_teams(
+        self, year: int, week: int, *, season_type: str = "regular"
+    ) -> list[dict[str, Any]]:
+        """Team box scores for one week (rushingYards, netPassingYards)."""
+        return self._get_rows("/games/teams", year=year, week=week, seasonType=season_type)
+
+    def fetch_rankings(
+        self, year: int, *, week: int | None = None, season_type: str = "regular"
+    ) -> list[dict[str, Any]]:
+        """Weekly human polls. ``week`` omitted returns every published week."""
+        return self._get_rows("/rankings", year=year, week=week, seasonType=season_type)
 
     def fetch_advanced(
         self,
@@ -239,9 +266,7 @@ class CFBDClient:
         """All plays for one week of a season. One call per (year, week)."""
         return self._get_rows("/plays", year=year, week=week, seasonType=season_type)
 
-    def fetch_recruiting_teams(
-        self, year: int, *, team: str | None = None
-    ) -> list[dict[str, Any]]:
+    def fetch_recruiting_teams(self, year: int, *, team: str | None = None) -> list[dict[str, Any]]:
         """Team recruiting rankings and points for a season."""
         return self._get_rows("/recruiting/teams", year=year, team=team)
 
@@ -526,6 +551,47 @@ def parse_advanced_rows(row: dict[str, Any], *, week: int, as_of_utc: str) -> li
     return parsed
 
 
+def parse_rankings(row: dict[str, Any], *, as_of_utc: str) -> list[dict[str, Any]]:
+    """Flatten one CFBD ``/rankings`` week payload into ``team_polls`` rows.
+
+    Each payload element is a week containing nested polls and ranks. Computer
+    polls are stored too; slate selection only reads AP.
+    """
+    season = _as_int(row.get("season") or row.get("year"), "season")
+    week = _as_int(row.get("week"), "week")
+    season_type = _as_str(row.get("seasonType") or "regular", "seasonType")
+    polls = row.get("polls")
+    if not isinstance(polls, list):
+        raise SchemaError("CFBD rankings week had no polls list")
+    parsed: list[dict[str, Any]] = []
+    for poll in polls:
+        if not isinstance(poll, dict):
+            raise SchemaError("CFBD rankings contained a non-object poll")
+        poll_name = _as_str(poll.get("poll"), "poll")
+        ranks = poll.get("ranks")
+        if not isinstance(ranks, list):
+            raise SchemaError(f"CFBD poll {poll_name!r} had no ranks list")
+        for rank_row in ranks:
+            if not isinstance(rank_row, dict):
+                raise SchemaError(f"CFBD poll {poll_name!r} contained a non-object rank")
+            parsed.append(
+                {
+                    "season": season,
+                    "week": week,
+                    "season_type": season_type,
+                    "poll": poll_name,
+                    "rank": _as_int(rank_row.get("rank"), "rank"),
+                    "team_name": _as_str(rank_row.get("school") or rank_row.get("team"), "school"),
+                    "points": _optional_int(rank_row.get("points"), "points"),
+                    "first_place_votes": _optional_int(
+                        rank_row.get("firstPlaceVotes"), "firstPlaceVotes"
+                    ),
+                    "as_of_utc": as_of_utc,
+                }
+            )
+    return parsed
+
+
 def parse_returning_production(row: dict[str, Any]) -> dict[str, Any]:
     fields = {
         "total_ppa": "totalPPA",
@@ -558,9 +624,7 @@ def parse_talent(row: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def parse_recruiting_team(
-    row: dict[str, Any], *, as_of_utc: str | None = None
-) -> dict[str, Any]:
+def parse_recruiting_team(row: dict[str, Any], *, as_of_utc: str | None = None) -> dict[str, Any]:
     season = _as_int(row.get("year"), "year")
     team_name = _as_str(row.get("team"), "team")
     rank = _optional_int(row.get("rank"), "rank")
@@ -576,9 +640,7 @@ def parse_recruiting_team(
     }
 
 
-def parse_transfer_player(
-    row: dict[str, Any], *, as_of_utc: str | None = None
-) -> dict[str, Any]:
+def parse_transfer_player(row: dict[str, Any], *, as_of_utc: str | None = None) -> dict[str, Any]:
     season = _as_int(row.get("season"), "season")
     first_name = _string_or_none(row.get("firstName"))
     last_name = _string_or_none(row.get("lastName"))
