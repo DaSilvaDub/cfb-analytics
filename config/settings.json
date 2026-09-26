@@ -2,7 +2,7 @@
   "schema_version": 1,
   "tiers": {
     "core": {
-      "min_blend_prob": 0.90,
+      "min_blend_prob": 0.9,
       "min_confidence": 85,
       "require_qb_confirmed": true,
       "min_edge": 0.0
@@ -50,8 +50,14 @@
   },
   "market": {
     "devig_method": "multiplicative",
-    "devig_methods_stored": ["multiplicative", "shin", "power"],
+    "devig_methods_stored": [
+      "multiplicative",
+      "shin",
+      "power"
+    ],
     "min_books_for_consensus": 3,
+    "historical_cfbd_min_books": null,
+    "_historical_cfbd_min_books_comment": "Baseline-only floor for CFBD historical consensus rebuild/scoring. null = use min_books_for_consensus. Set to 1 when CFBD provider count is thin. NEVER used for live CORE emission.",
     "odds_stale_after_minutes": 360,
     "max_days_to_kickoff_for_report": 5,
     "_comment": "Measured 2026-09-01 across 7 slates: within 5 days of kickoff every game carries 11-12 moneyline books; at 11 days out the MEDIAN game carries 1 and 36 of 42 games fall below min_books_for_consensus. A single far-out book is not a market consensus and must never be devigged as one. Run `cfb-analytics coverage` to re-measure."

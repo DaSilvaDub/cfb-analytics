@@ -16,25 +16,26 @@ Both are scored on exactly the same games ridge was, so every comparison is
 apples to apples: a game the ridge model could not predict never enters any
 model's metrics (see ``harness.py``'s module docstring).
 
-The other two required baselines are still not computable leakage-safely
-against this store's historical seasons:
+Market close consensus becomes available once
+``ingest/cfbd_lines_historical`` has dual-stamped a season into
+``odds_snapshots`` (``source='cfbd_historical'``) and ``build_market_for_slate``
+has rebuilt ``market_consensus``. When close ML consensus exists for the
+same games the walk-forward scores, this module reports a market Brier /
+log-loss slice; when coverage is thin or absent it prints an explicit
+``market: N/A (coverage)`` rather than silently skipping. Live
+``source='cfbd'`` rows are never mixed into historical baseline scoring.
 
-* Market: ``odds_snapshots`` only holds the current season's live capture
-  (daily ingest started 2026); there is no historical market to compare
-  against 2014-2025 outcomes.
-* SP+-only: ``team_ratings`` only has ``season_final`` SP+ snapshots (see
-  ``ingest/cfbd_fundamentals``) -- CFBD's own ``/ratings/sp`` endpoint was
-  live-tested and found to silently ignore its own ``week`` parameter for
-  historical seasons, always returning the season-final number. There is no
-  way to reconstruct a genuine weekly SP+ history from this API at all, so
-  this gap (unlike Elo's, which was a fixable bug) is not closable by
-  backfilling harder.
+SP+-only remains not computable leakage-safely: ``team_ratings`` only has
+``season_final`` SP+ snapshots (see ``ingest/cfbd_fundamentals``) -- CFBD's
+own ``/ratings/sp`` endpoint was live-tested and found to silently ignore
+its own ``week`` parameter for historical seasons. That gap is not closable
+by backfilling harder.
 
 So this backtest is real, useful evidence -- is the model's stated
-confidence trustworthy, and does it actually beat a simple Elo baseline --
-but it is NOT a full promotion decision by itself: ``config/promotion.json``
-also requires beating a market and an SP+ baseline, neither of which exist
-yet. That is a tracked gap, not an oversight.
+confidence trustworthy, and does it beat Elo / (when present) market --
+but it is NOT a full promotion decision by itself until market covers
+``min_seasons_backtested`` and SP+ is resolved. Promotion status stays
+``shadow`` until then.
 
 It also reports ``P_logit`` alone (``features/ensemble.py``'s IRLS logistic
 regression on talent/returning-production/home-field/rest/advanced-stat-net
@@ -117,6 +118,9 @@ class MoneylineBacktestReport:
     ensemble_weights: dict[str, float] | None
     ensemble_seasons: SliceMetrics | None
     ensemble_stress: SliceMetrics | None
+    market_seasons: SliceMetrics | None = None
+    market_note: str | None = None
+    skipped_market_unpriced: int = 0
 
     def as_text(self) -> str:
         lines = [
@@ -182,11 +186,24 @@ class MoneylineBacktestReport:
             lines.append("  (no games had any ensemble member's prediction available)")
         if self.ensemble_stress is not None:
             lines += ["", _slice_text(self.ensemble_stress)]
+        lines += ["", "== market close baseline (plan section 8, baseline #1) =="]
+        if self.market_seasons is not None:
+            lines.append(_slice_text(self.market_seasons))
+            lines.append(
+                f"    {_comparison_line('ridge', self.seasons, 'market', self.market_seasons)}"
+            )
+            lines.append(
+                f"    skipped (no close ML consensus): {self.skipped_market_unpriced}"
+            )
+        else:
+            note = self.market_note or "market: N/A (coverage)"
+            lines.append(f"  {note}")
         lines += [
             "",
-            "  NOTE: market and SP+-only baselines are still not computable (no leakage-safe",
-            "  historical series in this store -- see moneyline.py module docstring). This is",
-            "  a calibration and model-comparison check, not a full promotion decision.",
+            "  NOTE: SP+-only baseline is still not computable (CFBD /ratings/sp has no",
+            "  weekly historical series -- see moneyline.py module docstring). Market is",
+            "  scored when cfbd_historical close consensus exists; otherwise the report",
+            "  states market: N/A (coverage) explicitly. This is not a full promotion decision.",
         ]
         return "\n".join(lines)
 
@@ -321,6 +338,60 @@ def _ensemble_predictions(
     return result
 
 
+
+def _load_market_home_probs(
+    conn: sqlite3.Connection,
+    game_ids: list[str],
+    *,
+    min_books: int,
+) -> dict[str, float]:
+    """Latest pre-kickoff ML HOME vig-free prob per game from market_consensus.
+
+    Prefers shin, falls back to multiplicative. Rows with n_books below
+    ``min_books`` are excluded (thin markets stay out of the promotion
+    compare unless the caller lowered the floor via
+    ``historical_cfbd_min_books``).
+    """
+    if not game_ids:
+        return {}
+    placeholders = ",".join("?" * len(game_ids))
+    rows = conn.execute(
+        f"""SELECT c.game_id, c.prob_shin, c.prob_multiplicative, c.n_books, c.as_of_utc
+            FROM market_consensus c
+            WHERE c.market = 'ML' AND c.side = 'HOME'
+              AND c.game_id IN ({placeholders})
+              AND c.n_books >= ?
+            ORDER BY c.game_id, c.as_of_utc DESC""",
+        (*game_ids, int(min_books)),
+    ).fetchall()
+    out: dict[str, float] = {}
+    for row in rows:
+        gid = str(row["game_id"])
+        if gid in out:
+            continue  # already took the latest as_of
+        prob = row["prob_shin"] if row["prob_shin"] is not None else row["prob_multiplicative"]
+        if prob is None:
+            continue
+        out[gid] = float(prob)
+    return out
+
+
+def _market_probs(
+    predictions: list[GamePrediction],
+    home_probs: dict[str, float],
+) -> tuple[list[Prediction], int]:
+    """Market close probabilities on the same game set as ridge."""
+    probs: list[Prediction] = []
+    skipped = 0
+    for prediction in predictions:
+        prob = home_probs.get(prediction.game_id)
+        if prob is None:
+            skipped += 1
+            continue
+        probs.append((prob, prediction.home_won))
+    return probs, skipped
+
+
 def run_moneyline_backtest(
     conn: sqlite3.Connection,
     seasons: tuple[int, ...] = DEFAULT_SEASONS,
@@ -334,6 +405,7 @@ def run_moneyline_backtest(
     logit_l2_lambda: float = DEFAULT_LOGIT_L2_LAMBDA,
     logit_min_n: int = 30,
     ensemble_grid_step: float = 0.05,
+    historical_cfbd_min_books: int | None = None,
 ) -> MoneylineBacktestReport:
     run = run_walk_forward(
         conn, list(seasons), ridge_lambda=ridge_lambda, min_games=min_games,
@@ -420,6 +492,39 @@ def run_moneyline_backtest(
                 "ensemble, 2020 stress slice", ensemble_stress_probs
             )
 
+    from cfb_analytics import config as _config
+
+    market_settings = _config.settings().get("market", {})
+    if historical_cfbd_min_books is not None:
+        market_min_books = int(historical_cfbd_min_books)
+    elif market_settings.get("historical_cfbd_min_books") is not None:
+        # Baseline-only override documented in settings; never used for live CORE.
+        market_min_books = int(market_settings["historical_cfbd_min_books"])
+    else:
+        market_min_books = int(market_settings.get("min_books_for_consensus", 3))
+
+    market_home = _load_market_home_probs(
+        conn,
+        [p.game_id for p in fit_predictions],
+        min_books=market_min_books,
+    )
+    market_fit_probs, market_fit_skipped = _market_probs(fit_predictions, market_home)
+    # Require meaningful overlap with the ridge game set; otherwise say so.
+    coverage = (len(market_fit_probs) / len(fit_predictions)) if fit_predictions else 0.0
+    market_seasons_metrics = None
+    market_note = None
+    if market_fit_probs and coverage >= 0.5:
+        market_seasons_metrics = _score_slice(
+            "market close, same seasons/games as ridge (covered subset)",
+            market_fit_probs,
+        )
+    else:
+        market_note = (
+            f"market: N/A (coverage) — "
+            f"{len(market_fit_probs)}/{len(fit_predictions)} games had close ML "
+            f"consensus with n_books>={market_min_books}"
+        )
+
     return MoneylineBacktestReport(
         sigma_0=sigma_0,
         n_games_calibrated=len(fit_predictions),
@@ -439,4 +544,7 @@ def run_moneyline_backtest(
         ensemble_weights=ensemble_weights,
         ensemble_seasons=ensemble_seasons_metrics,
         ensemble_stress=ensemble_stress_metrics,
+        market_seasons=market_seasons_metrics,
+        market_note=market_note,
+        skipped_market_unpriced=market_fit_skipped,
     )
