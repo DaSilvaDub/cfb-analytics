@@ -95,9 +95,12 @@ from cfb_analytics.models.market_blend import (
     market_weight_floor_from_settings,
 )
 from cfb_analytics.features.open_market_prior import (
+    OPEN_MARKET_BLEND_MAX_WEEK,
+    OPEN_MARKET_BLEND_WEIGHT,
     OPEN_MARKET_PRIOR_MAX_WEEK,
     OPEN_MARKET_PRIOR_WEIGHT,
     load_open_home_spreads,
+    open_prior_weight_for_week,
     open_spread_to_home_prob,
 )
 from cfb_analytics.models.elo import DEFAULT_K as DEFAULT_ELO_K
@@ -126,15 +129,17 @@ DEFAULT_SEASONS = tuple(range(2014, 2026))
 EARLY_SEASON_MAX_WEEK = 4
 EARLY_SEASON_RIDGE_SIGMA_SCALE = 1.5
 
-# Opening-line market prior for weeks 1–2 (spike 2026-09-26). Uses CFBD
-# spreadOpen @ kickoff-7d only — never close. When an open HOME spread exists,
-# the ensemble raw prob is replaced (weight=1.0) / blended toward the
-# open-implied Phi(-spread/sigma) for weeks ≤ OPEN_MARKET_PRIOR_MAX_WEEK.
+# Opening-line market prior (spike 2026-09-26). Uses CFBD spreadOpen @
+# kickoff-7d only — never close. Weeks ≤ OPEN_MARKET_PRIOR_MAX_WEEK replace
+# ensemble raw P(home) with open-implied Phi(-spread/sigma) (weight=1.0).
+# Weeks prior_max < week ≤ OPEN_MARKET_BLEND_MAX_WEEK soft-blend with
+# OPEN_MARKET_BLEND_WEIGHT < 1 (default 0 until W3–4 spike ships a winner).
 # Week-1 games skipped by the ridge min_games blackout are unlocked as
 # open-only synthetic predictions so promote overlap covers week 1 without
 # bare Elo/ridge priors (those lost to market by ~0.13 LL). See
-# docs/scorecards/moneyline_scorecard_2023_2025_market_prior_early.md.
-# Note: open≈close, so W1–2 rows partially borrow market info vs the close
+# docs/scorecards/moneyline_scorecard_2023_2025_market_prior_early.md and
+# docs/scorecards/moneyline_scorecard_2023_2025_open_blend_w34.md.
+# Note: open≈close, so early rows partially borrow market info vs the close
 # baseline; beat_market still fails full-season and promotion stays shadow.
 
 
@@ -496,22 +501,34 @@ def _ensemble_raw_prob(
     *,
     open_prior_max_week: int = OPEN_MARKET_PRIOR_MAX_WEEK,
     open_prior_weight: float = OPEN_MARKET_PRIOR_WEIGHT,
+    open_blend_max_week: int = OPEN_MARKET_BLEND_MAX_WEEK,
+    open_blend_weight: float = OPEN_MARKET_BLEND_WEIGHT,
 ) -> float | None:
-    """Ensemble P(home), with optional weeks-1–2 open-spread prior."""
+    """Ensemble P(home), with optional early-season open-spread prior.
+
+    Weeks ≤ ``open_prior_max_week`` use ``open_prior_weight`` (production:
+    replace). Weeks through ``open_blend_max_week`` use ``open_blend_weight``
+    (soft blend, typically weeks 3–4). See ``open_prior_weight_for_week``.
+    """
     member_probs = _member_probs(prediction, sigma_0)
     available = {name: w for name, w in weights.items() if name in member_probs}
     if not available or sum(available.values()) <= 0:
         return None
     p = pool_probabilities(member_probs, available)
-    if (
-        open_spreads
-        and open_prior_weight > 0
-        and prediction.week <= open_prior_max_week
-    ):
+    if not open_spreads:
+        return p
+    w_open = open_prior_weight_for_week(
+        prediction.week,
+        prior_max_week=open_prior_max_week,
+        prior_weight=open_prior_weight,
+        blend_max_week=open_blend_max_week,
+        blend_weight=open_blend_weight,
+    )
+    if w_open > 0:
         spread = open_spreads.get(prediction.game_id)
         if spread is not None:
             p_open = open_spread_to_home_prob(spread, sigma_0)
-            p = _blend_open_prior(p, p_open, open_prior_weight)
+            p = _blend_open_prior(p, p_open, w_open)
     return p
 
 

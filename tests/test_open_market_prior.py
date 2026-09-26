@@ -13,8 +13,11 @@ from cfb_analytics.backtest.moneyline import (
     _ensemble_raw_prob,
 )
 from cfb_analytics.features.open_market_prior import (
+    OPEN_MARKET_BLEND_MAX_WEEK,
+    OPEN_MARKET_BLEND_WEIGHT,
     OPEN_MARKET_PRIOR_MAX_WEEK,
     OPEN_MARKET_PRIOR_WEIGHT,
+    open_prior_weight_for_week,
     open_spread_to_home_prob,
 )
 
@@ -99,3 +102,64 @@ class TestEnsembleRawOpenPrior:
         assert OPEN_MARKET_PRIOR_MAX_WEEK == 2
         assert OPEN_MARKET_PRIOR_WEIGHT == 1.0
         assert math.isfinite(OPEN_MARKET_PRIOR_WEIGHT)
+        assert OPEN_MARKET_BLEND_MAX_WEEK == 4
+        assert OPEN_MARKET_BLEND_WEIGHT == 0.75
+        assert 0.0 < OPEN_MARKET_BLEND_WEIGHT < 1.0
+
+    def test_week3_soft_blend_when_weight_set(self):
+        weights = {"ridge": 0.15, "internal_elo": 0.85}
+        p_base = _ensemble_raw_prob(
+            _pred(3, margin=0.0),
+            20.0,
+            weights,
+            open_spreads={"g1": -21.0},
+            open_blend_weight=0.0,
+        )
+        p_blend = _ensemble_raw_prob(
+            _pred(3, margin=0.0),
+            20.0,
+            weights,
+            open_spreads={"g1": -21.0},
+            open_blend_weight=0.5,
+        )
+        p_open = open_spread_to_home_prob(-21.0, 20.0)
+        assert p_base != pytest.approx(p_open)
+        assert min(p_base, p_open) < p_blend < max(p_base, p_open)
+
+    def test_week2_still_full_replace_with_blend_on(self):
+        weights = {"ridge": 0.15, "internal_elo": 0.85}
+        p = _ensemble_raw_prob(
+            _pred(2, margin=0.0),
+            20.0,
+            weights,
+            open_spreads={"g1": -21.0},
+            open_blend_weight=0.5,
+        )
+        assert p == pytest.approx(open_spread_to_home_prob(-21.0, 20.0))
+
+    def test_week5_ignores_blend(self):
+        weights = {"ridge": 0.15, "internal_elo": 0.85}
+        p_with = _ensemble_raw_prob(
+            _pred(5, margin=0.0),
+            20.0,
+            weights,
+            open_spreads={"g1": -21.0},
+            open_blend_weight=0.75,
+        )
+        p_without = _ensemble_raw_prob(
+            _pred(5, margin=0.0), 20.0, weights, open_spreads=None
+        )
+        assert p_with == pytest.approx(p_without)
+
+
+class TestOpenPriorWeightForWeek:
+    def test_w12_replace_w34_soft_later_zero(self):
+        assert open_prior_weight_for_week(1) == 1.0
+        assert open_prior_weight_for_week(2) == 1.0
+        assert open_prior_weight_for_week(3, blend_weight=0.5) == 0.5
+        assert open_prior_weight_for_week(4, blend_weight=0.5) == 0.5
+        assert open_prior_weight_for_week(5, blend_weight=0.5) == 0.0
+
+    def test_default_blend_weight(self):
+        assert open_prior_weight_for_week(3) == OPEN_MARKET_BLEND_WEIGHT
+        assert open_prior_weight_for_week(4) == OPEN_MARKET_BLEND_WEIGHT
