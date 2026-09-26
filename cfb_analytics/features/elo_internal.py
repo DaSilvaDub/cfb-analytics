@@ -188,6 +188,7 @@ def fit_internal_elo_as_of(
     previous_season_ratings: EloRatings | None = None,
     talent_coeff: float = DEFAULT_PRESEASON_TALENT_COEFF,
     returning_coeff: float = DEFAULT_PRESEASON_RETURNING_COEFF,
+    allow_prior_only: bool = False,
 ) -> EloRatings:
     """Fit internal Elo ratings from this season's CFBD games completed
     before ``as_of_utc``.
@@ -218,4 +219,5 @@ def fit_internal_elo_as_of(
     return fit_elo(
         _pool_non_fbs_teams(games, fbs_team_ids),
         initial_ratings=seeds, k=k, hfa=hfa, min_games=min_games,
+        allow_prior_only=allow_prior_only,
     )

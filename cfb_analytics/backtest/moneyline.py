@@ -110,6 +110,16 @@ STRESS_SEASONS = frozenset({2020})
 
 DEFAULT_SEASONS = tuple(range(2014, 2026))
 
+# Early-season ridge confidence deflation (spike 2026-09-26, weeks 1–4 path).
+# Global sigma_0 is fit on full-season residuals; early-week ridge margins are
+# noisier (tiny per-team n after the week-1 blackout clears at min_games=30),
+# so Phi(M/sigma) is overconfident. Inflating sigma for weeks 1–4 on the ridge
+# member only cut weeks-1–4 ridge logloss ~0.67→0.57 and ensemble gap vs
+# market ~0.0538→0.0501 on the 2023–2025 same-game set without moving weeks
+# 5+. See docs/scorecards/moneyline_scorecard_2023_2025_early_season.md.
+EARLY_SEASON_MAX_WEEK = 4
+EARLY_SEASON_RIDGE_SIGMA_SCALE = 1.5
+
 
 @dataclass(frozen=True)
 class SliceMetrics:
@@ -410,15 +420,37 @@ def _logit_probs(predictions: list[GamePrediction]) -> tuple[list[Prediction], i
     return probs, skipped
 
 
+def ridge_sigma_for_week(sigma_0: float, week: int) -> float:
+    """Effective sigma for converting a ridge margin in ``week``.
+
+    Weeks 1–4 use ``EARLY_SEASON_RIDGE_SIGMA_SCALE``; later weeks use
+    ``sigma_0`` unchanged. Leakage-safe (week index is known at prediction
+    time; no future outcomes).
+    """
+    if sigma_0 <= 0:
+        raise ValueError(f"sigma_0 must be positive, got {sigma_0!r}")
+    if week <= EARLY_SEASON_MAX_WEEK:
+        return sigma_0 * EARLY_SEASON_RIDGE_SIGMA_SCALE
+    return sigma_0
+
+
+def _ridge_prob(prediction: GamePrediction, sigma_0: float) -> float:
+    return margin_to_prob(
+        prediction.predicted_margin,
+        ridge_sigma_for_week(sigma_0, prediction.week),
+    )
+
+
 def _member_probs(prediction: GamePrediction, sigma_0: float) -> dict[str, float]:
     """Every ensemble member's probability for one game, omitting whichever
     are unavailable (internal Elo's own insufficient-history weeks, P_logit
     before it has cleared its own min_n) rather than fabricating one --
     ``pool_probabilities`` renormalizes among whatever is actually present.
     Ridge is always present: once a ``GamePrediction`` exists at all, its
-    margin (and so ``P_ridge``) is always defined.
+    margin (and so ``P_ridge``) is always defined. Early-season ridge uses
+    an inflated sigma (see ``ridge_sigma_for_week``).
     """
-    probs = {"ridge": margin_to_prob(prediction.predicted_margin, sigma_0)}
+    probs = {"ridge": _ridge_prob(prediction, sigma_0)}
     if prediction.internal_elo_win_prob is not None:
         probs["internal_elo"] = prediction.internal_elo_win_prob
     if prediction.logit_win_prob is not None:
@@ -663,7 +695,7 @@ def _build_same_game_set(
         (market_home[p.game_id], p.home_won) for p in overlap_preds
     ]
     ridge_probs: list[Prediction] = [
-        (margin_to_prob(p.predicted_margin, sigma_0), p.home_won) for p in overlap_preds
+        (_ridge_prob(p, sigma_0), p.home_won) for p in overlap_preds
     ]
     elo_probs, _ = _elo_probs(overlap_preds)
 
@@ -884,7 +916,7 @@ def run_moneyline_backtest(
     sigma_0 = calibrate_sigma([p.actual_margin - p.predicted_margin for p in fit_predictions])
 
     def to_probs(preds: list[GamePrediction]) -> list[Prediction]:
-        return [(margin_to_prob(p.predicted_margin, sigma_0), p.home_won) for p in preds]
+        return [(_ridge_prob(p, sigma_0), p.home_won) for p in preds]
 
     fit_probs = to_probs(fit_predictions)
     stress_metrics = (
