@@ -1,27 +1,38 @@
-# CFBD 2024 `/lines` probe notes
+# CFBD 2024 lines probe + backfill notes
 
 **Date:** 2026-09-25 (ET)  
-**Spike:** `feat/cfbd-historical-lines-2024`  
-**Status:** live probe deferred — `CFBD_API_KEY` not present in the agent environment
+**Branch / PR:** `feat/cfbd-historical-lines-2024` / #17  
+**Status:** live probe + backfill **completed** (local `data/cfb.sqlite3`; not published to `data` branch)
 
-## What was implemented without the key
+## Probe (`backfill-lines --year 2024 --probe-only`)
 
-- Dual-stamp historical ingest (`source=cfbd_historical`) + CLI `backfill-lines`
-- Unit/acceptance tests A1–A6 with fixtures (no invented prices)
-- Thin moneyline wiring that reports `market: N/A (coverage)` when closes are absent
+| Metric | Value |
+|---|---:|
+| Games in CFBD feed (weeks 1–15 regular) | 1518 |
+| Games with ML both sides | 783 |
+| Games with spread open | 814 |
+| Games with total open | 814 |
+| Feed ML coverage rate | 0.516 |
+| Providers | BOVADA, DRAFTKINGS, ESPN BET |
 
-## What needs the key
+## Backfill (`--rebuild-market --historical-cfbd-min-books 1`)
 
-```bash
-# Read-only coverage tally (weeks 1–15)
-cfb-analytics backfill-lines --year 2024 --probe-only
+| Metric | Value |
+|---|---:|
+| Priced locally (matched store games) | 873 |
+| Odds rows (`source=cfbd_historical`) | 21642 |
+| Movement rows | 7758 |
+| Not in store (FCS / unmatched) | 645 |
+| Open / close odds rows | 7766 / 13876 |
+| Games with ML close | 783 |
+| Market rebuild | 81 slates, 920 games, 1544 consensus rows |
+| **A4 join rate (ML close / FBS games)** | **783/803 = 0.975** (target ≥ 0.85) |
+| A2 leakage (`captured_utc >= kickoff`) | **0** |
+| Live `source=cfbd` 2026 rows | unchanged (79432) |
+| `promotion.json` | still `shadow` (A7) |
 
-# Idempotent backfill + market rebuild (baseline-only min books = 1)
-cfb-analytics backfill-lines --year 2024 --rebuild-market --historical-cfbd-min-books 1
-```
+## Interpretation
 
-Acceptance A4 target: `COUNT(DISTINCT game_id with ML close) / COUNT(FBS 2024 games) >= 0.85`.
-
-## Promotion
-
-`config/promotion.json` status remains **`shadow`**. No CORE / live betting changes.
+- Acceptance **A4 passed**. Thin feed-wide ML rate (~52%) is mostly non-store / FCS games; among FBS store games with closable MLs we hit 97.5%.
+- `historical_cfbd_min-books=1` used for baseline-only rebuild (documented; not for live CORE).
+- Local DB only — publishing historical odds onto the `data` branch is a separate ops decision (gzip size / daily ingest scope).
