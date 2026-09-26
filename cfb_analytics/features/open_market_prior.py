@@ -31,6 +31,35 @@ OPEN_MARKET_PRIOR_MAX_WEEK = 2
 # docs/scorecards/moneyline_scorecard_2023_2025_market_prior_early.md.
 OPEN_MARKET_PRIOR_WEIGHT = 1.0
 
+# Soft open blend for weeks after the full-replace window (typically 3–4).
+# Weight must stay < 1.0 (full replace through week 4 was deferred). Spike
+# 2026-09-26: w=0.75 won W3–4 / full gap on 2023–2025 WF without moving
+# weeks 5+. See docs/scorecards/moneyline_scorecard_2023_2025_open_blend_w34.md.
+OPEN_MARKET_BLEND_MAX_WEEK = 4
+OPEN_MARKET_BLEND_WEIGHT = 0.75
+
+
+def open_prior_weight_for_week(
+    week: int,
+    *,
+    prior_max_week: int = OPEN_MARKET_PRIOR_MAX_WEEK,
+    prior_weight: float = OPEN_MARKET_PRIOR_WEIGHT,
+    blend_max_week: int = OPEN_MARKET_BLEND_MAX_WEEK,
+    blend_weight: float = OPEN_MARKET_BLEND_WEIGHT,
+) -> float:
+    """Open-prior blend weight by week: full replace W≤prior, soft W≤blend.
+
+    Weeks 1–2 keep production replace (``prior_weight``, typically 1.0).
+    Weeks ``prior_max_week < week ≤ blend_max_week`` use ``blend_weight``
+    (``w < 1`` soft blend). Later weeks return 0.
+    """
+    w = int(week)
+    if w <= int(prior_max_week):
+        return float(prior_weight)
+    if w <= int(blend_max_week):
+        return float(blend_weight)
+    return 0.0
+
 
 def load_open_home_spreads(
     conn: sqlite3.Connection,
@@ -109,9 +138,12 @@ def open_home_probs(
 __all__ = [
     "OPEN_LOOKBACK_DAYS_HI",
     "OPEN_LOOKBACK_DAYS_LO",
+    "OPEN_MARKET_BLEND_MAX_WEEK",
+    "OPEN_MARKET_BLEND_WEIGHT",
     "OPEN_MARKET_PRIOR_MAX_WEEK",
     "OPEN_MARKET_PRIOR_WEIGHT",
     "load_open_home_spreads",
     "open_home_probs",
+    "open_prior_weight_for_week",
     "open_spread_to_home_prob",
 ]
