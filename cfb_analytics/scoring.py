@@ -16,6 +16,7 @@ import math
 import sqlite3
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from datetime import datetime, timedelta
 from typing import Any
 
 from cfb_analytics.errors import DevigError, SchemaError
@@ -28,13 +29,14 @@ from cfb_analytics.models.team_props import (
     SUPPORTED_TEAM_PROPS,
     TeamPropsInputs,
     TeamPropsProjection,
+    adjust_team_props_inputs_for_weather,
     default_team_props_inputs,
     is_player_prop,
     is_supported_team_prop,
     normalize_team_prop_market,
     project_team_production,
 )
-from cfb_analytics.utils import american_to_decimal, implied_probability, to_utc_iso
+from cfb_analytics.utils import american_to_decimal, implied_probability, to_utc_iso, utc_now_iso
 
 
 @dataclass(frozen=True)
@@ -160,6 +162,8 @@ def calculate_model_probability(
         std_dev = 7.0
     elif canonical_market in ("team_rushing_yards", "team_receiving_yards"):
         std_dev = 35.0
+    elif canonical_market in ("game_rushing_yards", "game_receiving_yards"):
+        std_dev = 50.0
     else:  # team_offensive_yards
         std_dev = 50.0
 
@@ -656,9 +660,7 @@ def build_team_props_inputs_from_db(
             sr_mult = _opponent_multiplier(
                 row_opp_def["success_rate"], baseline.offensive_success_rate
             )
-            exp_mult = _opponent_multiplier(
-                row_opp_def["explosiveness"], baseline.explosiveness
-            )
+            exp_mult = _opponent_multiplier(row_opp_def["explosiveness"], baseline.explosiveness)
 
     query_pass = """
         SELECT SUM(p.completions) as comp, SUM(p.attempts) as att,
@@ -734,6 +736,25 @@ def build_team_props_inputs_from_db(
         expected_pass = baseline.expected_pass_attempts
         expected_rush = baseline.expected_rushing_attempts
 
+    # Incorporate QB injury / availability status if recorded
+    query_qb = """
+        SELECT designation
+        FROM availability
+        WHERE team_id = ? AND position = 'QB' AND as_of_utc <= ?
+        ORDER BY as_of_utc DESC LIMIT 1
+    """
+    row_qb = conn.execute(query_qb, (team_id, cutoff)).fetchone()
+    if row_qb and row_qb["designation"]:
+        desig = str(row_qb["designation"]).lower()
+        if "out" in desig or "doubtful" in desig:
+            qb_mult = 0.85
+        elif "questionable" in desig:
+            qb_mult = 0.95
+        else:
+            qb_mult = 1.0
+        comp_prob = round(max(0.40, min(0.85, comp_prob * qb_mult)), 3)
+        ypc = round(max(6.0, min(20.0, ypc * qb_mult)), 2)
+
     data_quality_score = 0.0
     if row_adv is not None:
         data_quality_score += 50.0
@@ -761,14 +782,30 @@ def load_team_props_inputs_for_slate(
     *,
     season: int | None = None,
     as_of_utc: str | None = None,
+    with_weather: bool = False,
 ) -> dict[str, TeamPropsInputs]:
-    """Load or derive TeamPropsInputs for all teams playing on a given slate."""
+    """Load or derive TeamPropsInputs for all teams playing on a given slate.
+
+    When ``with_weather`` is True, applies point-in-time weather adjustments
+    (wind, precipitation, temperature) for each game.
+    """
+    as_of = to_utc_iso(as_of_utc if as_of_utc is not None else utc_now_iso())
+    if as_of is None:
+        raise SchemaError("Invalid team props cutoff")
     games = conn.execute(
-        "SELECT home_team_id, away_team_id, season FROM games WHERE football_date = ?",
+        "SELECT game_id, home_team_id, away_team_id, season, kickoff_utc "
+        "FROM games WHERE football_date = ?",
         (slate_date,),
     ).fetchall()
     inputs_by_team: dict[str, TeamPropsInputs] = {}
     for g in games:
+        kickoff = to_utc_iso(g["kickoff_utc"])
+        if kickoff is None:
+            raise SchemaError("Invalid game kickoff for team props")
+        game_cutoff = min(
+            datetime.fromisoformat(as_of),
+            datetime.fromisoformat(kickoff) - timedelta(seconds=1),
+        ).isoformat()
         game_season = season
         if game_season is None and g["season"] is not None:
             game_season = int(g["season"])
@@ -780,7 +817,7 @@ def load_team_props_inputs_for_slate(
                 home_id,
                 opponent_team_id=away_id,
                 season=game_season,
-                as_of_utc=as_of_utc,
+                as_of_utc=game_cutoff,
             )
         if away_id and away_id not in inputs_by_team:
             inputs_by_team[away_id] = build_team_props_inputs_from_db(
@@ -788,8 +825,30 @@ def load_team_props_inputs_for_slate(
                 away_id,
                 opponent_team_id=home_id,
                 season=game_season,
-                as_of_utc=as_of_utc,
+                as_of_utc=game_cutoff,
             )
+
+    if with_weather and games:
+        from cfb_analytics.features.weather import load_weather_for_games
+
+        game_ids = [str(g["game_id"]) for g in games if g["game_id"]]
+        weather_by_game = load_weather_for_games(conn, game_ids, as_of_utc=as_of)
+        for g in games:
+            game_id = str(g["game_id"]) if g["game_id"] else None
+            if not game_id:
+                continue
+            weather = weather_by_game.get(game_id)
+            if weather is not None:
+                home_id = str(g["home_team_id"]) if g["home_team_id"] else None
+                away_id = str(g["away_team_id"]) if g["away_team_id"] else None
+                if home_id and home_id in inputs_by_team:
+                    inputs_by_team[home_id] = adjust_team_props_inputs_for_weather(
+                        inputs_by_team[home_id], weather
+                    )
+                if away_id and away_id in inputs_by_team:
+                    inputs_by_team[away_id] = adjust_team_props_inputs_for_weather(
+                        inputs_by_team[away_id], weather
+                    )
     return inputs_by_team
 
 
@@ -830,6 +889,7 @@ def score_slate_team_props(
     inputs_by_team: Mapping[str, TeamPropsInputs] | None = None,
     season: int | None = None,
     as_of_utc: str | None = None,
+    with_weather: bool = False,
 ) -> list[CandidateScore]:
     """Score all team props available for games on a given slate."""
     cutoff = to_utc_iso(as_of_utc)
@@ -899,7 +959,9 @@ def score_slate_team_props(
     inputs_map = (
         dict(inputs_by_team)
         if inputs_by_team is not None
-        else load_team_props_inputs_for_slate(conn, slate_date, season=season, as_of_utc=cutoff)
+        else load_team_props_inputs_for_slate(
+            conn, slate_date, season=season, as_of_utc=cutoff, with_weather=with_weather
+        )
     )
 
     for row in consensus_rows:
@@ -952,13 +1014,19 @@ def score_daily_slates(
     inputs_by_team: Mapping[str, TeamPropsInputs] | None = None,
     season: int | None = None,
     as_of_utc: str | None = None,
+    with_weather: bool = False,
 ) -> list[CandidateScore]:
     """Score all team props across active slates."""
     all_scores: list[CandidateScore] = []
     for slate in slates:
         all_scores.extend(
             score_slate_team_props(
-                conn, slate, inputs_by_team=inputs_by_team, season=season, as_of_utc=as_of_utc
+                conn,
+                slate,
+                inputs_by_team=inputs_by_team,
+                season=season,
+                as_of_utc=as_of_utc,
+                with_weather=with_weather,
             )
         )
     return sorted(all_scores, key=lambda s: s.play_score, reverse=True)

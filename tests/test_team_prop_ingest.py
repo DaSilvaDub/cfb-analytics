@@ -54,14 +54,45 @@ def test_parser_whitelists_full_game_families_and_deduplicates_cards():
     markets = [
         _market(),
         _market(),
-        _market("PASSING_YARDS"),
+        _market("NOT_A_TEAM_PROP"),
         _market(periods=[{"period": 1}]),
     ]
     rows = parse_team_prop_rows("g", markets, CAPTURED, {"feed-home": "canonical-home"})
     assert len(rows) == 6
     assert {row.market for row in rows} == {"team_total_points"}
+
+
+def test_parser_maps_passing_yards_to_team_receiving() -> None:
+    rows = parse_team_prop_rows(
+        "g",
+        [_market("PASSING_YARDS"), _market("RUSHING_YARDS"), _market("RECEIVING_YARDS")],
+        CAPTURED,
+        {"feed-home": "canonical-home"},
+    )
+    assert {row.market for row in rows} == {
+        "team_receiving_yards",
+        "team_rushing_yards",
+    }
     assert {row.team_id for row in rows} == {"canonical-home"}
-    assert len({row.snapshot_id for row in rows}) == 6
+    # PASSING_YARDS aliases RECEIVING_YARDS; the parser de-dupes on snapshot id.
+    # Two markets × two sides × three books.
+    assert len(rows) == 12
+    assert len({row.snapshot_id for row in rows}) == 12
+
+
+def test_parser_prefers_receiving_yards_over_passing_alias() -> None:
+    passing = _market("PASSING_YARDS")
+    receiving = _market("RECEIVING_YARDS")
+    passing["outcomes"][0]["line"] = 320.5
+    passing["outcomes"][1]["line"] = 320.5
+    receiving["outcomes"][0]["line"] = 289.5
+    receiving["outcomes"][1]["line"] = 289.5
+    rows = parse_team_prop_rows(
+        "g", [passing, receiving], CAPTURED, {"feed-home": "canonical-home"}
+    )
+    rec = [row for row in rows if row.market == "team_receiving_yards"]
+    assert rec
+    assert {row.line for row in rec} == {289.5}
 
 
 def test_consensus_requires_three_books_and_both_sides(conn, canonical_slate):

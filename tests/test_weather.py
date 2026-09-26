@@ -13,6 +13,7 @@ from cfb_analytics.sources.weather import (
     WeatherClient,
     choose_endpoint,
     observation_at,
+    resolve_venue_coordinates,
 )
 
 KICKOFF = "2026-09-05T23:30:00+00:00"
@@ -23,9 +24,7 @@ def hourly(start_hour=20, hours=6, **overrides):
     # Real Open-Meteo hours roll into the next day; naive "start+i" arithmetic
     # produces T24:00, which is not a valid timestamp.
     base = datetime(2026, 9, 5, start_hour, tzinfo=UTC)
-    times = [
-        (base + timedelta(hours=i)).strftime("%Y-%m-%dT%H:%M") for i in range(hours)
-    ]
+    times = [(base + timedelta(hours=i)).strftime("%Y-%m-%dT%H:%M") for i in range(hours)]
     series = {
         "time": times,
         "temperature_2m": [18.0 + i for i in range(hours)],
@@ -112,47 +111,90 @@ class TestWeatherClient:
         client.fetch_hourly(35.0, -97.0, "2026-08-01", archive=True)
         client.fetch_hourly(35.0, -97.0, "2026-09-05", archive=False)
         assert "archive-api" in http.urls[0]
+        assert "precipitation_probability" not in http.urls[0]
         assert "archive-api" not in http.urls[1]
+        assert "precipitation_probability" in http.urls[1]
 
     def test_missing_hourly_block_raises(self):
         with pytest.raises(SchemaError, match="hourly"):
             WeatherClient(http=StubHttp({"latitude": 35.0})).fetch_hourly(
-                35.0, -97.0, "2026-09-05", archive=False)
+                35.0, -97.0, "2026-09-05", archive=False
+            )
 
 
 @pytest.fixture
 def seeded(conn):
-    store.upsert_venue(conn, {
-        "venue_id": "v-out", "name": "Open Air Field", "city": "Norman", "state": "OK",
-        "latitude": 35.205, "longitude": -97.442, "elevation_m": 350.0,
-        "surface": "grass", "dome": 0, "capacity": 80000, "timezone": "America/Chicago"})
-    store.upsert_venue(conn, {
-        "venue_id": "v-dome", "name": "Indoor Dome", "city": "Syracuse", "state": "NY",
-        "latitude": 43.036, "longitude": -76.136, "elevation_m": 120.0,
-        "surface": "turf", "dome": 1, "capacity": 49000, "timezone": "America/New_York"})
-    store.upsert_venue(conn, {
-        "venue_id": "v-nogeo", "name": "Unmapped Field", "city": None, "state": None,
-        "latitude": None, "longitude": None, "elevation_m": None,
-        "surface": None, "dome": 0, "capacity": None, "timezone": None})
+    store.upsert_venue(
+        conn,
+        {
+            "venue_id": "v-out",
+            "name": "Open Air Field",
+            "city": "Norman",
+            "state": "OK",
+            "latitude": 35.205,
+            "longitude": -97.442,
+            "elevation_m": 350.0,
+            "surface": "grass",
+            "dome": 0,
+            "capacity": 80000,
+            "timezone": "America/Chicago",
+        },
+    )
+    store.upsert_venue(
+        conn,
+        {
+            "venue_id": "v-dome",
+            "name": "Indoor Dome",
+            "city": "Syracuse",
+            "state": "NY",
+            "latitude": 43.036,
+            "longitude": -76.136,
+            "elevation_m": 120.0,
+            "surface": "turf",
+            "dome": 1,
+            "capacity": 49000,
+            "timezone": "America/New_York",
+        },
+    )
+    store.upsert_venue(
+        conn,
+        {
+            "venue_id": "v-nogeo",
+            "name": "Unmapped Field",
+            "city": None,
+            "state": None,
+            "latitude": None,
+            "longitude": None,
+            "elevation_m": None,
+            "surface": None,
+            "dome": 0,
+            "capacity": None,
+            "timezone": None,
+        },
+    )
     for tid, name in (("h", "Home U"), ("a", "Away U")):
         store.upsert_team(conn, {"team_id": tid, "school": name, "alias": name, "market": name})
     return conn
 
 
-def add_game(conn, game_id, venue_id, kickoff=KICKOFF, slate="2026-09-05"):
+def add_game(conn, game_id, venue_id, kickoff=KICKOFF, slate="2026-09-05", venue_name=None):
     conn.execute(
         """INSERT INTO games (game_id, season, kickoff_utc, football_date, home_team_id,
-                              away_team_id, venue_id, source, ingested_utc)
-           VALUES (?, 2026, ?, ?, 'h', 'a', ?, 'cfbd', 'x')""",
-        (game_id, kickoff, slate, venue_id))
+                              away_team_id, venue_id, venue_name, source, ingested_utc)
+           VALUES (?, 2026, ?, ?, 'h', 'a', ?, ?, 'cfbd', 'x')""",
+        (game_id, kickoff, slate, venue_id, venue_name),
+    )
 
 
 class TestIngestWeather:
     def test_writes_an_observation_for_an_outdoor_game(self, seeded):
         add_game(seeded, "g-out", "v-out")
         summary = ingest_weather(
-            seeded, ["2026-09-05"],
-            client=WeatherClient(http=StubHttp({"hourly": hourly()})), now=NOW)
+            seeded,
+            ["2026-09-05"],
+            client=WeatherClient(http=StubHttp({"hourly": hourly()})),
+            now=NOW,
+        )
         assert summary.written == 1
         row = seeded.execute("SELECT * FROM weather WHERE game_id='g-out'").fetchone()
         assert row["wind_kph"] == pytest.approx(13.0)
@@ -164,8 +206,11 @@ class TestIngestWeather:
         KNOWN absence of wind; a missing row is an unknown."""
         add_game(seeded, "g-dome", "v-dome")
         summary = ingest_weather(
-            seeded, ["2026-09-05"],
-            client=WeatherClient(http=StubHttp({"hourly": hourly()})), now=NOW)
+            seeded,
+            ["2026-09-05"],
+            client=WeatherClient(http=StubHttp({"hourly": hourly()})),
+            now=NOW,
+        )
         assert summary.indoor == 1
         assert summary.written == 0
         row = seeded.execute("SELECT * FROM weather WHERE game_id='g-dome'").fetchone()
@@ -173,26 +218,34 @@ class TestIngestWeather:
         assert row["wind_kph"] is None
 
     def test_venue_without_coordinates_is_counted_not_guessed(self, seeded):
-        add_game(seeded, "g-nogeo", "v-nogeo")
+        add_game(seeded, "g-nogeo", "v-nogeo", venue_name="Unmapped Field")
         summary = ingest_weather(
-            seeded, ["2026-09-05"],
-            client=WeatherClient(http=StubHttp({"hourly": hourly()})), now=NOW)
+            seeded,
+            ["2026-09-05"],
+            client=WeatherClient(http=StubHttp({"hourly": hourly()})),
+            now=NOW,
+        )
         assert summary.no_coordinates == 1
         assert summary.written == 0
 
     def test_game_with_no_venue_link_is_counted(self, seeded):
         add_game(seeded, "g-novenue", None)
         summary = ingest_weather(
-            seeded, ["2026-09-05"],
-            client=WeatherClient(http=StubHttp({"hourly": hourly()})), now=NOW)
+            seeded,
+            ["2026-09-05"],
+            client=WeatherClient(http=StubHttp({"hourly": hourly()})),
+            now=NOW,
+        )
         assert summary.no_venue == 1
 
     def test_game_beyond_the_forecast_horizon_is_reported(self, seeded):
-        add_game(seeded, "g-far", "v-out",
-                 kickoff="2026-11-01T23:30:00+00:00", slate="2026-11-01")
+        add_game(seeded, "g-far", "v-out", kickoff="2026-11-01T23:30:00+00:00", slate="2026-11-01")
         summary = ingest_weather(
-            seeded, ["2026-11-01"],
-            client=WeatherClient(http=StubHttp({"hourly": hourly()})), now=NOW)
+            seeded,
+            ["2026-11-01"],
+            client=WeatherClient(http=StubHttp({"hourly": hourly()})),
+            now=NOW,
+        )
         assert summary.outside_window == 1
         assert summary.written == 0
 
@@ -208,8 +261,13 @@ class TestIngestWeather:
         add_game(seeded, "g-out", "v-out")
         client = WeatherClient(http=StubHttp({"hourly": hourly()}))
         for _ in range(2):
-            ingest_weather(seeded, ["2026-09-05"], client=client, now=NOW,
-                           as_of_utc="2026-09-04T12:00:00+00:00")
+            ingest_weather(
+                seeded,
+                ["2026-09-05"],
+                client=client,
+                now=NOW,
+                as_of_utc="2026-09-04T12:00:00+00:00",
+            )
         n = seeded.execute("SELECT COUNT(*) n FROM weather").fetchone()["n"]
         assert n == 1
 
@@ -218,22 +276,69 @@ class TestIngestWeather:
         what was known at any point before kickoff."""
         add_game(seeded, "g-out", "v-out")
         client = WeatherClient(http=StubHttp({"hourly": hourly()}))
-        ingest_weather(seeded, ["2026-09-05"], client=client, now=NOW,
-                       as_of_utc="2026-09-04T12:00:00+00:00")
-        ingest_weather(seeded, ["2026-09-05"], client=client, now=NOW,
-                       as_of_utc="2026-09-05T12:00:00+00:00")
+        ingest_weather(
+            seeded, ["2026-09-05"], client=client, now=NOW, as_of_utc="2026-09-04T12:00:00+00:00"
+        )
+        ingest_weather(
+            seeded, ["2026-09-05"], client=client, now=NOW, as_of_utc="2026-09-05T12:00:00+00:00"
+        )
         n = seeded.execute("SELECT COUNT(*) n FROM weather").fetchone()["n"]
         assert n == 2
 
     def test_records_hours_to_kickoff(self, seeded):
         add_game(seeded, "g-out", "v-out")
-        ingest_weather(seeded, ["2026-09-05"],
-                       client=WeatherClient(http=StubHttp({"hourly": hourly()})), now=NOW)
+        ingest_weather(
+            seeded,
+            ["2026-09-05"],
+            client=WeatherClient(http=StubHttp({"hourly": hourly()})),
+            now=NOW,
+        )
         row = seeded.execute("SELECT hours_to_kick FROM weather").fetchone()
         assert row["hours_to_kick"] == pytest.approx(35.5, abs=0.1)
 
     def test_empty_slate_list_does_nothing(self, seeded):
         assert ingest_weather(seeded, [], now=NOW).games_considered == 0
+
+    def test_fallback_lookup_resolves_outdoor_stadium(self, seeded):
+        """When DB venue lacks lat/lon, built-in fallback table resolves it."""
+        add_game(seeded, "g-rose", None, venue_name="Rose Bowl")
+        summary = ingest_weather(
+            seeded,
+            ["2026-09-05"],
+            client=WeatherClient(http=StubHttp({"hourly": hourly()})),
+            now=NOW,
+        )
+        assert summary.written == 1
+        row = seeded.execute("SELECT * FROM weather WHERE game_id='g-rose'").fetchone()
+        assert row["is_indoor"] == 0
+        assert row["wind_kph"] == pytest.approx(13.0)
+
+    def test_fallback_lookup_resolves_dome_stadium(self, seeded):
+        """Dome stadiums in the fallback lookup are marked as indoor."""
+        add_game(seeded, "g-superdome", None, venue_name="Caesars Superdome")
+        summary = ingest_weather(
+            seeded,
+            ["2026-09-05"],
+            client=WeatherClient(http=StubHttp({"hourly": hourly()})),
+            now=NOW,
+        )
+        assert summary.indoor == 1
+        assert summary.written == 0
+        row = seeded.execute("SELECT * FROM weather WHERE game_id='g-superdome'").fetchone()
+        assert row["is_indoor"] == 1
+
+    def test_custom_fallback_lookup_parameter(self, seeded):
+        """User-provided fallback dictionary overrides or supplements lookups."""
+        add_game(seeded, "g-custom", None, venue_name="Unique Memorial Field")
+        custom_lookup = {"Unique Memorial Field": (32.5, -85.5, False)}
+        summary = ingest_weather(
+            seeded,
+            ["2026-09-05"],
+            client=WeatherClient(http=StubHttp({"hourly": hourly()})),
+            now=NOW,
+            fallback_lookup=custom_lookup,
+        )
+        assert summary.written == 1
 
 
 class TestVenueResolution:
@@ -243,14 +348,38 @@ class TestVenueResolution:
         assert store.resolve_venue_id_by_name(seeded, "Open Air Field") == "v-out"
 
     def test_ambiguous_name_resolves_to_none(self, seeded):
-        store.upsert_venue(seeded, {
-            "venue_id": "v-dup1", "name": "Memorial Stadium", "city": "A", "state": "A",
-            "latitude": 1.0, "longitude": 1.0, "elevation_m": None, "surface": None,
-            "dome": 0, "capacity": None, "timezone": None})
-        store.upsert_venue(seeded, {
-            "venue_id": "v-dup2", "name": "Memorial Stadium", "city": "B", "state": "B",
-            "latitude": 50.0, "longitude": 50.0, "elevation_m": None, "surface": None,
-            "dome": 0, "capacity": None, "timezone": None})
+        store.upsert_venue(
+            seeded,
+            {
+                "venue_id": "v-dup1",
+                "name": "Memorial Stadium",
+                "city": "A",
+                "state": "A",
+                "latitude": 1.0,
+                "longitude": 1.0,
+                "elevation_m": None,
+                "surface": None,
+                "dome": 0,
+                "capacity": None,
+                "timezone": None,
+            },
+        )
+        store.upsert_venue(
+            seeded,
+            {
+                "venue_id": "v-dup2",
+                "name": "Memorial Stadium",
+                "city": "B",
+                "state": "B",
+                "latitude": 50.0,
+                "longitude": 50.0,
+                "elevation_m": None,
+                "surface": None,
+                "dome": 0,
+                "capacity": None,
+                "timezone": None,
+            },
+        )
         assert store.resolve_venue_id_by_name(seeded, "Memorial Stadium") is None
 
     def test_unknown_name_is_none(self, seeded):
@@ -260,10 +389,114 @@ class TestVenueResolution:
         assert store.resolve_venue_id_by_name(seeded, None) is None
 
     def test_outlier_game_links_itself_on_insert(self, seeded):
-        store.upsert_game(seeded, {
-            "game_id": "g-link", "season": 2026, "kickoff_utc": KICKOFF,
-            "football_date": "2026-09-05", "day_of_week": 5,
-            "home_team_id": "h", "away_team_id": "a",
-            "venue_name": "Open Air Field", "network": None, "status": "pregame"})
+        store.upsert_game(
+            seeded,
+            {
+                "game_id": "g-link",
+                "season": 2026,
+                "kickoff_utc": KICKOFF,
+                "football_date": "2026-09-05",
+                "day_of_week": 5,
+                "home_team_id": "h",
+                "away_team_id": "a",
+                "venue_name": "Open Air Field",
+                "network": None,
+                "status": "pregame",
+            },
+        )
         row = seeded.execute("SELECT venue_id FROM games WHERE game_id='g-link'").fetchone()
         assert row["venue_id"] == "v-out"
+
+    def test_resolve_venue_coordinates_direct(self, seeded):
+        lat, lon, dome = resolve_venue_coordinates(seeded, venue_id="v-out")
+        assert lat == pytest.approx(35.205)
+        assert lon == pytest.approx(-97.442)
+        assert dome is False
+
+    def test_resolve_venue_coordinates_fallback(self):
+        lat, lon, dome = resolve_venue_coordinates(None, venue_name="Michigan Stadium")
+        assert lat == pytest.approx(42.2658)
+        assert lon == pytest.approx(-83.7487)
+        assert dome is False
+
+    def test_resolve_venue_coordinates_with_prefixes_and_suffixes(self):
+        # Prefix "The" and suffix "Stadium"
+        lat1, lon1, dome1 = resolve_venue_coordinates(None, venue_name="The Rose Bowl")
+        assert lat1 == pytest.approx(34.1613)
+        assert dome1 is False
+
+        lat2, lon2, dome2 = resolve_venue_coordinates(None, venue_name="Rose Bowl Stadium")
+        assert lat2 == pytest.approx(34.1613)
+        assert dome2 is False
+
+        # Stem matching "Michigan" -> "Michigan Stadium"
+        lat3, lon3, dome3 = resolve_venue_coordinates(None, venue_name="Michigan")
+        assert lat3 == pytest.approx(42.2658)
+        assert dome3 is False
+
+    def test_resolve_venue_coordinates_db_name_fallback(self, seeded):
+        # Venue exists in DB with name but NULL coordinates; resolves via fallback mapping
+        store.upsert_venue(
+            seeded,
+            {
+                "venue_id": "v-mich",
+                "name": "Michigan Stadium",
+                "city": "Ann Arbor",
+                "state": "MI",
+                "latitude": None,
+                "longitude": None,
+                "elevation_m": None,
+                "surface": "turf",
+                "dome": 0,
+                "capacity": 107601,
+                "timezone": "America/Detroit",
+            },
+        )
+        lat, lon, dome = resolve_venue_coordinates(seeded, venue_id="v-mich")
+        assert lat == pytest.approx(42.2658)
+        assert lon == pytest.approx(-83.7487)
+        assert dome is False
+
+
+@pytest.mark.parametrize(
+    "neutral,venue_id,venue_name",
+    [
+        (1, None, "Rose Bowl"),
+        (1, "v-nogeo", "Rose Bowl"),
+        (0, None, "Rose Bowl"),
+    ],
+)
+def test_actual_venue_never_inherits_home_dome(seeded, neutral, venue_id, venue_name):
+    from urllib.parse import parse_qs, urlparse
+
+    seeded.execute("UPDATE teams SET venue_id='v-dome' WHERE team_id='h'")
+    add_game(seeded, "g-neutral", venue_id, venue_name=venue_name)
+    seeded.execute("UPDATE games SET neutral_site=?", (neutral,))
+    http = StubHttp({"hourly": hourly()})
+    summary = ingest_weather(seeded, ["2026-09-05"], client=WeatherClient(http=http), now=NOW)
+    assert summary.indoor == 0
+    assert summary.written == 1
+    params = parse_qs(urlparse(http.urls[0]).query)
+    assert float(params["latitude"][0]) == pytest.approx(34.1613)
+    assert float(params["longitude"][0]) == pytest.approx(-118.1676)
+
+
+def test_unknown_neutral_venue_stays_unknown(seeded):
+    seeded.execute("UPDATE teams SET venue_id='v-dome' WHERE team_id='h'")
+    add_game(seeded, "g-neutral", None)
+    seeded.execute("UPDATE games SET neutral_site=1")
+    http = StubHttp({"hourly": hourly()})
+    summary = ingest_weather(seeded, ["2026-09-05"], client=WeatherClient(http=http), now=NOW)
+    assert summary.no_venue == 1
+    assert summary.indoor == 0
+    assert http.urls == []
+
+
+def test_home_venue_fallback_requires_no_explicit_game_venue(seeded):
+    seeded.execute("UPDATE teams SET venue_id='v-dome' WHERE team_id='h'")
+    add_game(seeded, "g-home", None)
+    seeded.execute("UPDATE games SET neutral_site=0")
+    summary = ingest_weather(
+        seeded, ["2026-09-05"], client=WeatherClient(http=StubHttp({})), now=NOW
+    )
+    assert summary.indoor == 1

@@ -1,8 +1,8 @@
 """Command-line entry point.
 
 Only the commands backed by working code are registered. Phases 2-9 add
-``features``, ``train``, ``slate``, ``parlay`` and ``settle``; they are
-deliberately absent rather than present-and-stubbed, so ``--help`` never
+``features``, ``train``, ``slate`` and ``parlay``; ``settle`` is implemented.
+They are deliberately absent rather than present-and-stubbed, so ``--help`` never
 advertises something that does not run.
 """
 
@@ -106,6 +106,7 @@ def _cmd_backfill_cfbd(args: argparse.Namespace) -> int:
             client,
             start_year=args.start_year,
             end_year=args.end_year,
+            refresh_games=bool(getattr(args, "refresh", False)),
         )
     print(summary.as_text())
     return 0
@@ -452,6 +453,76 @@ def _cmd_market(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_over_board(args: argparse.Namespace) -> int:
+    """Ranked OVER board: team/game rushing and receiving, kickoff times included."""
+    from cfb_analytics.features.over_confidence import (
+        build_over_confidence_board,
+        persist_over_board,
+        render_over_confidence_board,
+    )
+
+    if not paths.database_path().exists():
+        print("No database yet. Run: cfb-analytics init-db")
+        return 1
+    with db.open_db() as conn:
+        rows = build_over_confidence_board(
+            conn,
+            args.date,
+            min_prob=args.min_prob,
+        )
+        persist_over_board(conn, args.date, rows)
+        conn.commit()
+    if args.json:
+        payload = {
+            "date": args.date,
+            "stamp": config.SHADOW_STAMP if config.is_shadow_mode() else None,
+            "min_prob": args.min_prob,
+            "picks": [
+                {
+                    "rank": row.rank,
+                    "over_prob": row.over_prob,
+                    "confidence": row.confidence,
+                    "tier": row.tier,
+                    "market": row.market,
+                    "pick": row.pick,
+                    "line": row.line,
+                    "projected": row.projected,
+                    "kickoff_et": row.kickoff_et,
+                    "kickoff_utc": row.kickoff_utc,
+                    "family": row.family,
+                    "game": row.game_label,
+                    "game_id": row.game_id,
+                    "side": row.side,
+                    "inclusion_reasons": list(row.inclusion_reasons),
+                    "flags": list(row.flags),
+                }
+                for row in rows
+            ],
+        }
+        print(json.dumps(payload, indent=2))
+        return 0
+    print(render_over_confidence_board(args.date, rows, min_prob=args.min_prob))
+    return 0
+
+
+def _cmd_backfill_rankings(args: argparse.Namespace) -> int:
+    from cfb_analytics.ingest.cfbd_rankings import ingest_rankings
+    from cfb_analytics.sources.cfbd import CFBDClient
+
+    paths.ensure_dirs()
+    client = CFBDClient()
+    with db.open_db() as conn:
+        summary = ingest_rankings(
+            conn,
+            client,
+            args.year,
+            week=args.week,
+            season_type=args.season_type,
+        )
+    print(summary.as_text())
+    return 0
+
+
 def _cmd_board(args: argparse.Namespace) -> int:
     """Moneyline board for a slate: the M model's output, ranked."""
     if not paths.database_path().exists():
@@ -472,41 +543,366 @@ def _cmd_board(args: argparse.Namespace) -> int:
                ORDER BY c.prob_shin DESC""",
             (args.date,),
         ).fetchall()
-    if not rows:
+
+        if not rows:
+            if getattr(args, "json", False):
+                payload = {
+                    "date": args.date,
+                    "stamp": config.SHADOW_STAMP if config.is_shadow_mode() else None,
+                    "disclaimer": config.SHADOW_STAMP if config.is_shadow_mode() else None,
+                    "min_prob": args.min_prob,
+                    "with_reasoning": bool(getattr(args, "with_reasoning", False)),
+                    "entries": [],
+                    "cards": [],
+                }
+                print(json.dumps(payload, indent=2))
+                return 0
+            print(
+                f"No moneyline consensus for {args.date}. Run: cfb-analytics market --date {args.date}"
+            )
+            return 0
+
+        # Filter by min_prob
+        eligible_rows = []
+        for r in rows:
+            prob = r["prob_shin"] or r["prob_multiplicative"]
+            if prob is not None and prob >= args.min_prob:
+                eligible_rows.append(r)
+
+        with_reasoning = bool(getattr(args, "with_reasoning", False))
+        as_json = bool(getattr(args, "json", False))
+
+        cards_by_entry: dict[str, Any] = {}
+        verdicts_by_entry: dict[str, Any] = {}
+
+        if with_reasoning or as_json:
+            from cfb_analytics.governance.gate import GovernanceGate
+            from cfb_analytics.reasoning.context import load_slate_situational_contexts
+            from cfb_analytics.reasoning.engine import MultiFactorReasoningEngine
+            from cfb_analytics.reasoning.models import (
+                SituationalContext,
+                TapeProfile,
+                WeatherProfile,
+            )
+
+            contexts = load_slate_situational_contexts(conn, args.date)
+            engine = MultiFactorReasoningEngine()
+            gate = GovernanceGate()
+
+            for r in eligible_rows:
+                entry_key = f"{r['game_id']}:ML:{r['side']}"
+                ctx = contexts.get(r["game_id"])
+                prob = r["prob_shin"] or r["prob_multiplicative"] or 0.50
+
+                if ctx is None:
+                    ctx = SituationalContext(
+                        game_id=r["game_id"],
+                        home_team=r["home"] or "HOME",
+                        away_team=r["away"] or "AWAY",
+                        kickoff_utc=r["kickoff_utc"] or "",
+                        kickoff_et="",
+                        tape_home=TapeProfile(team_name=r["home"] or "HOME"),
+                        tape_away=TapeProfile(team_name=r["away"] or "AWAY"),
+                        weather=WeatherProfile(
+                            temperature_c=20.0,
+                            wind_kph=0.0,
+                            gust_kph=0.0,
+                            precip_mm=0.0,
+                            is_dome=False,
+                            pass_vol_mult=1.0,
+                            rush_vol_mult=1.0,
+                            scoring_mult=1.0,
+                        ),
+                        qb_home_confirmed=True,
+                        qb_away_confirmed=True,
+                        trench_attrition_home=0.0,
+                        trench_attrition_away=0.0,
+                        talent_composite_home=650.0,
+                        talent_composite_away=650.0,
+                        rest_days_home=7.0,
+                        rest_days_away=7.0,
+                        travel_fatigue_tax_away=0.0,
+                    )
+
+                card = engine.evaluate_candidate(
+                    ctx,
+                    market="ML",
+                    side=r["side"],
+                    line=0.0,
+                    model_prob=prob,
+                    consensus_fair_prob=prob,
+                    price_american=r["consensus_price"],
+                )
+                verdict = gate.evaluate_candidate(card, reasoning_card=card, context=ctx)
+                cards_by_entry[entry_key] = card
+                verdicts_by_entry[entry_key] = verdict
+
+        if as_json:
+            from cfb_analytics.reporting.export import export_board_json
+
+            payload_str = export_board_json(
+                date=args.date,
+                rows=eligible_rows,
+                min_prob=args.min_prob,
+                with_reasoning=with_reasoning,
+                cards=cards_by_entry,
+                verdicts=verdicts_by_entry,
+            )
+            print(payload_str)
+            return 0
+
         print(
-            f"No moneyline consensus for {args.date}. Run: cfb-analytics market --date {args.date}"
+            f"MONEYLINE BOARD - {args.date}   [{config.SHADOW_STAMP}]"
+            if config.is_shadow_mode()
+            else f"MONEYLINE BOARD - {args.date}"
         )
+        print(
+            f"\n{'team':<7} {'opp':<7} {'price':>7} {'best':>7} {'book':<11} "
+            f"{'fair%':>7} {'spread':>7} {'hold':>6} {'bk':>3}  flags"
+        )
+        for row in eligible_rows:
+            prob = row["prob_shin"] or row["prob_multiplicative"]
+            team = row["home"] if row["side"] == "HOME" else row["away"]
+            opp = row["away"] if row["side"] == "HOME" else row["home"]
+            flags_raw = row["flags"] if "flags" in row.keys() else "[]"
+            flags = ",".join(json.loads(flags_raw or "[]")) if isinstance(flags_raw, str) else ""
+            print(
+                f"{team or '?':<7} {opp or '?':<7} {row['consensus_price']:>7} "
+                f"{row['best_price']:>7} {(row['best_book'] or ''):<11} "
+                f"{prob * 100:>6.1f}% {(row['prob_spread'] or 0) * 100:>6.2f}pp "
+                f"{(row['hold'] or 0) * 100:>5.1f}% {row['n_books']:>3}  {flags}"
+            )
+
+        if with_reasoning:
+            _print_reasoning_cards(args.date, eligible_rows, cards=cards_by_entry, verdicts=verdicts_by_entry)
+
+        print(
+            "\nfair% is the vig-free market probability (Shin). spread is the "
+            "disagreement\nbetween devig methods - wide means the fair number is "
+            "method-dependent."
+        )
+        if config.is_shadow_mode():
+            print("This is the MARKET's view only. No model probability or edge exists yet.")
+            print(f"\n{config.SHADOW_STAMP}")
         return 0
 
-    print(
-        f"MONEYLINE BOARD - {args.date}   [{config.SHADOW_STAMP}]"
-        if config.is_shadow_mode()
-        else f"MONEYLINE BOARD - {args.date}"
-    )
-    print(
-        f"\n{'team':<7} {'opp':<7} {'price':>7} {'best':>7} {'book':<11} "
-        f"{'fair%':>7} {'spread':>7} {'hold':>6} {'bk':>3}  flags"
-    )
+
+def _print_reasoning_cards(
+    date: str,
+    rows: list,
+    cards: dict | None = None,
+    verdicts: dict | None = None,
+) -> None:
+    """Print reasoning cards for each moneyline board entry."""
+    from cfb_analytics.reporting.terminal import render_reasoning_card
+
+    print(f"\n{'=' * 80}")
+    print("MULTI-FACTOR REASONING CARDS")
+    print(f"{'=' * 80}")
+
+    cards_map = cards or {}
+    verdicts_map = verdicts or {}
+
     for row in rows:
         prob = row["prob_shin"] or row["prob_multiplicative"]
-        if prob is None or prob < args.min_prob:
+        if prob is None:
             continue
-        team = row["home"] if row["side"] == "HOME" else row["away"]
-        opp = row["away"] if row["side"] == "HOME" else row["home"]
-        flags = ",".join(json.loads(row["flags"] or "[]"))
-        print(
-            f"{team or '?':<7} {opp or '?':<7} {row['consensus_price']:>7} "
-            f"{row['best_price']:>7} {(row['best_book'] or ''):<11} "
-            f"{prob * 100:>6.1f}% {(row['prob_spread'] or 0) * 100:>6.2f}pp "
-            f"{(row['hold'] or 0) * 100:>5.1f}% {row['n_books']:>3}  {flags}"
-        )
-    print(
-        "\nfair% is the vig-free market probability (Shin). spread is the "
-        "disagreement\nbetween devig methods - wide means the fair number is "
-        "method-dependent."
+        entry_key = f"{row['game_id']}:ML:{row['side']}"
+        card = cards_map.get(entry_key)
+        verdict = verdicts_map.get(entry_key)
+        if card is not None:
+            print("\n" + render_reasoning_card(card, verdict=verdict))
+
+
+def _cmd_mispriced(args: argparse.Namespace) -> int:
+    """Mispriced line scanner: spreads, totals, and team props vs model."""
+    from cfb_analytics.features.mispriced import build_mispriced_board
+    from cfb_analytics.governance.gate import GovernanceGate
+    from cfb_analytics.governance.models import (
+        SHADOW_MODE_DISCLAIMER,
+        GovernanceAction,
+        GovernanceVerdict,
     )
-    if config.is_shadow_mode():
-        print("This is the MARKET's view only. No model probability or edge exists yet.")
+    from cfb_analytics.reasoning.context import load_slate_situational_contexts
+    from cfb_analytics.reasoning.engine import MultiFactorReasoningEngine
+    from cfb_analytics.scanner.engine import MispricedScanner
+
+    if not paths.database_path().exists():
+        print("No database yet. Run: cfb-analytics init-db")
+        return 1
+
+    with db.open_db() as conn:
+        contexts = load_slate_situational_contexts(conn, args.date)
+
+        slate_games = conn.execute(
+            "SELECT COUNT(*) AS n FROM games WHERE football_date = ?", (args.date,)
+        ).fetchone()
+        has_games = bool(slate_games and slate_games["n"] > 0)
+
+        legacy_candidates = build_mispriced_board(conn, args.date, min_edge=0.0) if has_games else []
+        raw_candidates = [
+            {
+                "game_id": c.game_id,
+                "market_type": c.market,
+                "market": c.market,
+                "side": c.side,
+                "line": c.line,
+                "posted_price_american": c.best_price or -110,
+                "consensus_fair_prob": c.consensus_fair_prob,
+                "model_prob": c.model_prob,
+                "projected_margin": c.model_projected if c.market == "SPREAD" else None,
+                "projected_total": c.model_projected if c.market == "TOTAL" else None,
+                "projected_value": c.model_projected,
+                "method_spread": c.method_spread,
+                "n_books": c.n_books,
+                "best_book": c.best_book,
+                "game_label": c.game_label,
+                "kickoff_et": c.kickoff_et,
+                "flags": c.flags,
+            }
+            for c in legacy_candidates
+        ]
+
+        reasoning_engine = MultiFactorReasoningEngine()
+        reasoning_cards: dict[str, Any] = {}
+        for c in raw_candidates:
+            gid = c["game_id"]
+            ctx = contexts.get(gid)
+            if ctx is not None:
+                card_key = f"{gid}:{c['market_type']}:{c['side']}"
+                try:
+                    card = reasoning_engine.evaluate_candidate(
+                        ctx,
+                        market=c["market_type"],
+                        side=c["side"],
+                        line=c["line"],
+                        model_prob=c.get("model_prob"),
+                        consensus_fair_prob=c.get("consensus_fair_prob"),
+                        price_american=c.get("posted_price_american"),
+                    )
+                    reasoning_cards[card_key] = card
+                except Exception:
+                    pass
+
+        scanner = MispricedScanner()
+        try:
+            opportunities = scanner.scan_slate(args.date, min_edge=args.min_edge)
+        except TypeError:
+            try:
+                opportunities = scanner.scan_slate(raw_candidates, reasoning_cards=reasoning_cards)
+            except TypeError:
+                opportunities = scanner.scan_slate(raw_candidates)
+
+        min_edge = getattr(args, "min_edge", 0.02)
+        filtered = [opp for opp in opportunities if abs(opp.edge_pct) >= min_edge]
+
+        if not filtered and not has_games:
+            if getattr(args, "json", False):
+                payload = {
+                    "date": args.date,
+                    "stamp": SHADOW_MODE_DISCLAIMER,
+                    "disclaimer": SHADOW_MODE_DISCLAIMER,
+                    "min_edge": min_edge,
+                    "total_detected": 0,
+                    "count": 0,
+                    "candidates": [],
+                    "records": [],
+                }
+                print(json.dumps(payload, indent=2))
+                return 0
+            print(f"No mispriced opportunities found for {args.date}.\n{SHADOW_MODE_DISCLAIMER}")
+            return 0
+
+        gate = GovernanceGate()
+        verdicts: dict[str, Any] = {}
+        for opp in filtered:
+            opp_key = f"{opp.game_id}:{opp.market_type}:{opp.side}"
+            card = reasoning_cards.get(opp_key)
+            ctx = contexts.get(opp.game_id)
+            try:
+                verdict = gate.evaluate_candidate(opp, reasoning_card=card, context=ctx)
+            except Exception:
+                verdict = GovernanceVerdict(
+                    candidate_id=opp_key,
+                    action=GovernanceAction.APPROVE,
+                    disclaimer=SHADOW_MODE_DISCLAIMER,
+                )
+            verdicts[opp_key] = verdict
+
+        if getattr(args, "json", False):
+            from cfb_analytics.reporting.export import export_mispriced_json
+
+            payload_str = export_mispriced_json(
+                filtered,
+                verdicts,
+                slate_date=args.date,
+                min_edge=min_edge,
+            )
+            print(payload_str)
+            return 0
+
+        from cfb_analytics.reporting.terminal import render_mispriced_terminal
+
+        text = render_mispriced_terminal(
+            args.date,
+            filtered,
+            verdicts=verdicts,
+            min_edge=min_edge,
+        )
+        print(text)
+        return 0
+
+
+def _cmd_settle(args: argparse.Namespace) -> int:
+    """Settle pre-game market consensus against actual game scores."""
+    from cfb_analytics.backtest.settle import settle_slate
+
+    paths.ensure_dirs()
+    if not paths.database_path().exists():
+        print("No database yet. Run: cfb-analytics init-db", file=sys.stderr)
+        return 1
+
+    with db.open_db() as conn:
+        scored_games = conn.execute(
+            "SELECT COUNT(*) AS n FROM games WHERE football_date = ? AND completed = 1",
+            (args.date,),
+        ).fetchone()["n"]
+
+        if scored_games == 0:
+            year = args.date[:4]
+            print(
+                f"No completed games found for {args.date}.\n"
+                f"Run: cfb-analytics backfill-cfbd --start-year {year} --end-year {year}",
+                file=sys.stderr,
+            )
+            return 1
+
+        settlement = settle_slate(conn, args.date, min_books=args.min_books)
+        from cfb_analytics.features.over_confidence import settle_over_board
+
+        overs = settle_over_board(conn, args.date)
+
+    if getattr(args, "json", False):
+        payload = settlement.as_dict()
+        payload["over_board"] = {
+            "evaluated": overs.evaluated,
+            "cash": overs.cash,
+            "miss": overs.miss,
+            "push": overs.push,
+            "skipped": overs.skipped,
+            "inferred_cash": overs.inferred_cash,
+            "inferred_n": overs.inferred_n,
+            "posted_cash": overs.posted_cash,
+            "posted_n": overs.posted_n,
+            "by_tier": overs.by_tier,
+            "by_family": overs.by_family,
+            "source": overs.source,
+        }
+        print(json.dumps(payload, indent=2))
+    else:
+        print(settlement.as_text())
+        print()
+        print(overs.as_text())
     return 0
 
 
@@ -1018,6 +1414,9 @@ def build_parser() -> argparse.ArgumentParser:
     cfbd = sub.add_parser("backfill-cfbd", help="backfill historical FBS teams, venues, and games")
     cfbd.add_argument("--start-year", type=int, required=True, help="first season year, inclusive")
     cfbd.add_argument("--end-year", type=int, required=True, help="last season year, inclusive")
+    cfbd.add_argument(
+        "--refresh", action="store_true", help="force live refresh of games, bypassing cache"
+    )
     cfbd.set_defaults(func=_cmd_backfill_cfbd)
 
     roster = sub.add_parser(
@@ -1120,7 +1519,74 @@ def build_parser() -> argparse.ArgumentParser:
         default=0.0,
         help="only show sides at or above this fair probability",
     )
+    board.add_argument(
+        "--with-reasoning",
+        action="store_true",
+        default=False,
+        help="append multi-factor reasoning cards for each board entry",
+    )
+    board.add_argument(
+        "--json",
+        action="store_true",
+        default=False,
+        help="emit output as structured JSON",
+    )
     board.set_defaults(func=_cmd_board)
+
+    over_board = sub.add_parser(
+        "over-board",
+        help="OVER confidence list for team/game rushing and receiving on the ranked slate",
+    )
+    over_board.add_argument("--date", required=True, help="slate date, YYYY-MM-DD")
+    over_board.add_argument(
+        "--min-prob",
+        type=float,
+        default=0.50,
+        help="only show OVER sides at or above this model probability (default: 0.50)",
+    )
+    over_board.add_argument(
+        "--json", action="store_true", default=False, help="emit output as structured JSON"
+    )
+    over_board.set_defaults(func=_cmd_over_board)
+
+    mispriced = sub.add_parser(
+        "mispriced",
+        help="mispriced line scanner: spreads, totals, and team props vs model projections",
+    )
+    mispriced.add_argument("--date", required=True, help="slate date, YYYY-MM-DD")
+    mispriced.add_argument(
+        "--min-edge",
+        type=float,
+        default=0.02,
+        help="minimum edge threshold to include a candidate (default: 0.02)",
+    )
+    mispriced.add_argument(
+        "--json", action="store_true", default=False, help="emit output as structured JSON"
+    )
+    mispriced.set_defaults(func=_cmd_mispriced)
+
+    rankings = sub.add_parser(
+        "backfill-rankings", help="ingest CFBD weekly human polls (AP, Coaches, CFP)"
+    )
+    rankings.add_argument("--year", type=int, required=True, help="season year")
+    rankings.add_argument("--week", type=int, default=None, help="poll week (default: all weeks)")
+    rankings.add_argument("--season-type", default="regular", help="regular | postseason")
+    rankings.set_defaults(func=_cmd_backfill_rankings)
+
+    settle = sub.add_parser(
+        "settle", help="settle pre-game market consensus against actual game scores"
+    )
+    settle.add_argument("--date", required=True, help="slate date, YYYY-MM-DD")
+    settle.add_argument(
+        "--min-books",
+        type=int,
+        default=1,
+        help="minimum books required on a consensus row (default: 1)",
+    )
+    settle.add_argument(
+        "--json", action="store_true", default=False, help="emit output as structured JSON"
+    )
+    settle.set_defaults(func=_cmd_settle)
 
     from cfb_analytics.models.futures import NILTier, QBContinuity, QBTier
 

@@ -41,13 +41,15 @@ def backfill_years(
     *,
     start_year: int,
     end_year: int,
+    refresh_games: bool = False,
 ) -> CFBDBackfillSummary:
     if start_year > end_year:
         raise SchemaError("start_year must be less than or equal to end_year")
+
     years = list(range(start_year, end_year + 1))
     venues_written = teams_written = team_seasons_written = aliases_written = games_written = 0
-
     command = f"backfill-cfbd --start-year {start_year} --end-year {end_year}"
+
     with store.RunRecorder(conn, command) as run:
         venue_rows = _fetch(run, "venues", client.fetch_venues)
         known_venue_ids: set[str] = set()
@@ -65,9 +67,15 @@ def backfill_years(
             raw_teams = _fetch(
                 run, f"teams/fbs:{year}", partial(client.fetch_fbs_teams, year)
             )
-            raw_games = _fetch(
-                run, f"games:{year}", partial(client.fetch_games, year)
-            )
+            def _call_games():
+                if refresh_games:
+                    try:
+                        return client.fetch_games(year, refresh=True)
+                    except TypeError:
+                        return client.fetch_games(year)
+                return client.fetch_games(year)
+
+            raw_games = _fetch(run, f"games:{year}", _call_games)
 
             try:
                 parsed_teams = [parse_team(raw) for raw in raw_teams]

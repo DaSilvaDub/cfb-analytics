@@ -273,6 +273,38 @@ def upsert_team_season(conn: sqlite3.Connection, row: dict[str, Any]) -> None:
     )
 
 
+def insert_team_polls(conn: sqlite3.Connection, rows: Iterable[dict[str, Any]]) -> int:
+    """Replace one (season, week, poll, team) rank. Polls are restated weekly."""
+    now = utc_now_iso()
+    payload = [
+        {
+            "season_type": "regular",
+            "points": None,
+            "first_place_votes": None,
+            **row,
+            "ingested_utc": row.get("ingested_utc") or now,
+        }
+        for row in rows
+    ]
+    if not payload:
+        return 0
+    cursor = conn.executemany(
+        """INSERT INTO team_polls
+           (season, week, season_type, poll, rank, team_id, points, first_place_votes,
+            as_of_utc, ingested_utc)
+           VALUES (:season, :week, :season_type, :poll, :rank, :team_id, :points,
+                   :first_place_votes, :as_of_utc, :ingested_utc)
+           ON CONFLICT(season, week, season_type, poll, team_id) DO UPDATE SET
+             rank = excluded.rank,
+             points = excluded.points,
+             first_place_votes = excluded.first_place_votes,
+             as_of_utc = excluded.as_of_utc,
+             ingested_utc = excluded.ingested_utc""",
+        payload,
+    )
+    return cursor.rowcount if cursor.rowcount and cursor.rowcount > 0 else 0
+
+
 def insert_team_aliases(conn: sqlite3.Connection, rows: Iterable[dict[str, Any]]) -> int:
     payload = list(rows)
     if not payload:
@@ -425,9 +457,7 @@ def insert_team_recruiting(conn: sqlite3.Connection, rows: Iterable[dict[str, An
     return _insert_snapshots(conn, "team_recruiting", columns, rows)
 
 
-def insert_transfer_portal_players(
-    conn: sqlite3.Connection, rows: Iterable[dict[str, Any]]
-) -> int:
+def insert_transfer_portal_players(conn: sqlite3.Connection, rows: Iterable[dict[str, Any]]) -> int:
     columns = (
         "transfer_id",
         "season",
@@ -475,9 +505,7 @@ def insert_transfer_portal_players(
     return cursor.rowcount if cursor.rowcount and cursor.rowcount > 0 else 0
 
 
-def insert_team_portal_composites(
-    conn: sqlite3.Connection, rows: Iterable[dict[str, Any]]
-) -> int:
+def insert_team_portal_composites(conn: sqlite3.Connection, rows: Iterable[dict[str, Any]]) -> int:
     columns = (
         "snapshot_id",
         "season",
@@ -649,6 +677,36 @@ def insert_team_prop_odds(conn: sqlite3.Connection, rows: Iterable[TeamPropOddsR
            (snapshot_id, game_id, team_id, market_id, book, captured_utc,
             market, side, line, price_american, price_decimal, is_primary, source)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        payload,
+    )
+    return cursor.rowcount if cursor.rowcount and cursor.rowcount > 0 else 0
+
+
+def insert_team_game_boxes(conn: sqlite3.Connection, rows: Iterable[dict[str, Any]]) -> int:
+    now = utc_now_iso()
+    payload = [
+        {
+            "source": "cfbd",
+            **row,
+            "ingested_utc": row.get("ingested_utc") or now,
+        }
+        for row in rows
+    ]
+    if not payload:
+        return 0
+    cursor = conn.executemany(
+        """INSERT INTO team_game_box
+           (game_id, team_id, rushing_yards, net_passing_yards, total_yards,
+            points, source, ingested_utc)
+           VALUES (:game_id, :team_id, :rushing_yards, :net_passing_yards,
+                   :total_yards, :points, :source, :ingested_utc)
+           ON CONFLICT(game_id, team_id) DO UPDATE SET
+             rushing_yards = excluded.rushing_yards,
+             net_passing_yards = excluded.net_passing_yards,
+             total_yards = excluded.total_yards,
+             points = excluded.points,
+             source = excluded.source,
+             ingested_utc = excluded.ingested_utc""",
         payload,
     )
     return cursor.rowcount if cursor.rowcount and cursor.rowcount > 0 else 0

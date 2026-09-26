@@ -881,6 +881,73 @@ CREATE INDEX IF NOT EXISTS idx_team_portal_season
     ON team_portal_composites(season, team_id, ingested_utc);
 """
 
+MIGRATION_015 = """
+-- Weekly human polls (AP, Coaches, CFP). Distinct from CFBD SP+/SRS rankings:
+-- those are season-final computer ratings and must not stand in for the
+-- in-season Top 25 used to build a Saturday slate.
+CREATE TABLE IF NOT EXISTS team_polls (
+    season             INTEGER NOT NULL,
+    week               INTEGER NOT NULL,
+    season_type        TEXT NOT NULL,
+    poll               TEXT NOT NULL,
+    rank               INTEGER NOT NULL,
+    team_id            TEXT NOT NULL REFERENCES teams(team_id),
+    points             INTEGER,
+    first_place_votes  INTEGER,
+    as_of_utc          TEXT NOT NULL,
+    ingested_utc       TEXT NOT NULL,
+    PRIMARY KEY (season, week, season_type, poll, team_id)
+);
+CREATE INDEX IF NOT EXISTS idx_team_polls_week
+    ON team_polls(season, week, poll, rank);
+CREATE INDEX IF NOT EXISTS idx_team_polls_team
+    ON team_polls(team_id, season, week);
+"""
+
+MIGRATION_016 = """
+-- Frozen OVER-board publishes. Settlement grades this snapshot, never a
+-- live rebuild that can pick up post-kick stats.
+CREATE TABLE IF NOT EXISTS over_board_snapshots (
+    slate_date         TEXT NOT NULL,
+    rank               INTEGER NOT NULL,
+    game_id            TEXT NOT NULL REFERENCES games(game_id),
+    market             TEXT NOT NULL,
+    pick               TEXT NOT NULL,
+    team_id            TEXT,
+    side               TEXT NOT NULL,
+    line               REAL NOT NULL,
+    projected          REAL NOT NULL,
+    over_prob          REAL NOT NULL,
+    confidence         REAL NOT NULL,
+    tier               TEXT NOT NULL,
+    family             TEXT NOT NULL,
+    kickoff_utc        TEXT NOT NULL,
+    kickoff_et         TEXT NOT NULL,
+    game_label         TEXT NOT NULL,
+    flags              TEXT NOT NULL,
+    inclusion_reasons  TEXT NOT NULL,
+    published_utc      TEXT NOT NULL,
+    PRIMARY KEY (slate_date, game_id, market, pick)
+);
+CREATE INDEX IF NOT EXISTS idx_over_board_slate
+    ON over_board_snapshots(slate_date, rank);
+
+-- Team box rushing / net passing. CFBD /games/teams lags player passing;
+-- store per (game, team) so rush and rec can settle the same night.
+CREATE TABLE IF NOT EXISTS team_game_box (
+    game_id            TEXT NOT NULL REFERENCES games(game_id),
+    team_id            TEXT NOT NULL REFERENCES teams(team_id),
+    rushing_yards      REAL,
+    net_passing_yards  REAL,
+    total_yards        REAL,
+    points             INTEGER,
+    source             TEXT NOT NULL,
+    ingested_utc       TEXT NOT NULL,
+    PRIMARY KEY (game_id, team_id)
+);
+CREATE INDEX IF NOT EXISTS idx_team_game_box_game ON team_game_box(game_id);
+"""
+
 
 MIGRATIONS: tuple[tuple[int, str, str, Callable[[sqlite3.Connection], None] | None], ...] = (
     (1, "outlier_ingestion_core", MIGRATION_001, None),
@@ -897,6 +964,8 @@ MIGRATIONS: tuple[tuple[int, str, str, Callable[[sqlite3.Connection], None] | No
     (12, "team_prop_market_identity", MIGRATION_012, None),
     (13, "play_by_play_data", MIGRATION_013, None),
     (14, "recruiting_and_transfer_portal", MIGRATION_014, None),
+    (15, "team_polls", MIGRATION_015, None),
+    (16, "over_board_snapshots_and_team_boxes", MIGRATION_016, None),
 )
 
 

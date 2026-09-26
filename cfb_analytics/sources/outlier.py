@@ -50,6 +50,7 @@ TEAM_PROP_TO_MARKET = {
     "POINTS": "team_total_points",
     "OFFENSIVE_YARDS": "team_offensive_yards",
     "RECEIVING_YARDS": "team_receiving_yards",
+    "PASSING_YARDS": "team_receiving_yards",
     "RUSHING_YARDS": "team_rushing_yards",
 }
 TEAM_PROP_SIDES = frozenset({"OVER", "UNDER"})
@@ -279,10 +280,12 @@ def parse_team_prop_rows(
     never inferred to be a team prop from its proposition name alone.
     """
     unique: dict[tuple[str, str, str, float, str], TeamPropOddsRow] = {}
+    origin: dict[tuple[str, str, str, float, str], str] = {}
     for market in markets:
         if str(market.get("marketType") or "").upper() != "TEAM_PROP":
             continue
-        canonical_market = TEAM_PROP_TO_MARKET.get(str(market.get("proposition") or "").upper())
+        proposition = str(market.get("proposition") or "").upper()
+        canonical_market = TEAM_PROP_TO_MARKET.get(proposition)
         if canonical_market is None:
             continue
         if market.get("periods") or market.get("periodLabel"):
@@ -327,8 +330,22 @@ def parse_team_prop_rows(
                     is_primary=bool(outcome.get("primary")),
                     captured_utc=captured_utc,
                 )
-                unique[(canonical_team_id, canonical_market, side, line, book)] = row
-    return list(unique.values())
+                key = (canonical_team_id, canonical_market, side, line, book)
+                prior_prop = origin.get(key)
+                if prior_prop == "RECEIVING_YARDS" and proposition == "PASSING_YARDS":
+                    continue
+                unique[key] = row
+                origin[key] = proposition
+    receiving_books = {
+        (team_id, side, book)
+        for (team_id, market, side, _line, book), prop in origin.items()
+        if market == "team_receiving_yards" and prop == "RECEIVING_YARDS"
+    }
+    return [
+        row
+        for key, row in unique.items()
+        if origin[key] != "PASSING_YARDS" or (key[0], key[2], key[4]) not in receiving_books
+    ]
 
 
 def parse_event(event: dict[str, Any]) -> dict[str, Any]:
