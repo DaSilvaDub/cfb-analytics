@@ -16,9 +16,9 @@
       2024,
       2025
     ],
-    "n_full": 2204,
-    "n_overlap": 2103,
-    "n_skipped_no_market": 101,
+    "n_full": 2432,
+    "n_overlap": 2270,
+    "n_skipped_no_market": 162,
     "seasons_with_overlap": [
       2023,
       2024,
@@ -29,22 +29,22 @@
     "clv_units": "probability_points",
     "clv_bps_scale": 10000,
     "beat_market": false,
-    "median_clv": 0.0003742601536217416,
-    "median_clv_bps": 3.742601536217416,
+    "median_clv": 0.01989645438882616,
+    "median_clv_bps": 198.9645438882616,
     "median_clv_non_negative": true,
-    "calibration_gap": 0.03695652173913046,
+    "calibration_gap": 0.06398601398601406,
     "logloss": {
-      "market": 0.5286617918111667,
-      "ensemble": 0.5560198897180169,
-      "ensemble_raw": 0.554834325618671,
-      "ridge": 0.5934255513438466,
+      "market": 0.5208174414271983,
+      "ensemble": 0.5404326232765164,
+      "ensemble_raw": 0.5395208157076317,
+      "ridge": 0.5660462119329688,
       "elo": 0.5650180962903998
     },
     "brier": {
-      "market": 0.1780952461252441,
-      "ensemble": 0.18835862683554938,
-      "ensemble_raw": 0.18813635727898673,
-      "ridge": 0.19644218951777814,
+      "market": 0.17499071285519915,
+      "ensemble": 0.18243929836504635,
+      "ensemble_raw": 0.18207259961389746,
+      "ridge": 0.19078145662247892,
       "elo": 0.19151672338386821
     },
     "ensemble_calibrator": "platt/season",
@@ -52,31 +52,31 @@
       "market_weight_floor": 0.75,
       "weight_by_season": {
         "2023": 0.75,
-        "2024": 1.0,
+        "2024": 0.95,
         "2025": 1.0
       },
       "gate_interpretation": "pure_model_must_beat_market_before_lowering_floor",
       "blend_non_worse_than_market": false,
       "logloss": {
-        "blend_walk_forward": 0.5291984509808328,
-        "blend_at_floor": 0.5297451376428729,
-        "pure_model_w0": 0.5560198897180169,
-        "pure_market_w1": 0.5286617918111667
+        "blend_walk_forward": 0.5210991094802961,
+        "blend_at_floor": 0.5208983416797744,
+        "pure_model_w0": 0.5404326232765164,
+        "pure_market_w1": 0.5208174414271983
       },
       "brier": {
-        "blend_walk_forward": 0.17823132625357618,
-        "blend_at_floor": 0.1782609072862495,
-        "pure_model_w0": 0.18835862683554938,
-        "pure_market_w1": 0.1780952461252441
+        "blend_walk_forward": 0.17499763447043928,
+        "blend_at_floor": 0.17486178660354235,
+        "pure_model_w0": 0.18243929836504635,
+        "pure_market_w1": 0.17499071285519915
       },
       "_comment": "beat_market gate applies to pure calibrated ensemble, not the floor-constrained blend. High w makes blend\u2248market so a blend-based beat_market gate would be nearly tautological / gameable. Lower market_weight_floor only after pure model beats market OOS; until then live scoring should keep the floor."
     },
     "gate_passed": false,
     "failures": [
       "require_oos_logloss_beat_market: beat_market=False (need pure calibrated ensemble_logloss < market_logloss on same-game set; blend-with-floor is evidence-only and does not satisfy this gate)",
-      "calibration_gap 0.0370 > max_abs_calibration_gap 0.03"
+      "calibration_gap 0.0640 > max_abs_calibration_gap 0.03"
     ],
-    "evaluated_utc": "2026-09-26T06:38:23+00:00"
+    "evaluated_utc": "2026-09-26T08:47:15+00:00"
   },
   "_comment": "Two-key gate: BOTH a sample-size floor AND demonstrated out-of-sample skill. While status is 'shadow', no CORE tier is emitted and every artifact is stamped UNPROMOTED. Never hand-edit status to 'promoted' - it is set by `cfb-analytics backtest --promote` on passing evidence."
 }
