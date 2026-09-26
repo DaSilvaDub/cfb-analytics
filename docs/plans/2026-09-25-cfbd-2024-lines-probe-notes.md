@@ -50,3 +50,22 @@ Same CLI: `backfill-lines --year {Y} --rebuild-market --historical-cfbd-min-book
 | 2025 | ≥0.85 (CLI 1.010†) | +23150 |
 
 A2 still 0. See `docs/scorecards/moneyline_scorecard_2023_2025_with_market.md`.
+
+
+---
+
+## Same-game-set promote evidence (2026-09-26 ET)
+
+`backtest --start-year 2023 --end-year 2025 --promote` with
+`historical_cfbd_min_books=1`:
+
+| Field | Value |
+|---|---|
+| n_full / n_overlap / skipped | 2204 / 2103 / 101 |
+| seasons_with_overlap | 2023–2025 |
+| ensemble vs market logloss (same set) | 0.5548 vs 0.5287 → **beat_market=false** |
+| median CLV (model-vs-close) | +0.0004 prob-pts (+3.7 bps) → non_negative |
+| calibration_gap | 0.0659 (> 0.03) |
+| `promotion.json` status | **shadow** (fail-closed) |
+
+See `docs/scorecards/moneyline_scorecard_2023_2025_with_market.md`.
