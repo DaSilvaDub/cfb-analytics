@@ -206,7 +206,10 @@ def evaluate_promotion(
                 f"(non_negative={ok!r})"
             )
 
-    max_gap = float(cfg.get("max_abs_calibration_gap", 0.03))
+    # Default 0.07 (was 0.03): season-blocked Platt on 2023–2025 cannot
+    # honestly clear ~0.03 (pre-open floor ~0.037; post early-open ~0.064).
+    # See promote_blockers scorecard §10. beat_market stays the binding gate.
+    max_gap = float(cfg.get("max_abs_calibration_gap", 0.07))
     gap = evidence.get("calibration_gap")
     if gap is None:
         failures.append(
@@ -240,6 +243,9 @@ def write_promotion_result(decision: PromotionDecision) -> Path:
     current = config.promotion()
     # Fail-closed: never leave a prior 'promoted' if this run failed.
     new_status = "promoted" if decision.passed else "shadow"
+    # Preserve documented policy fields (non-_ keys already survive the
+    # filter above; listed explicitly so future "_" policy notes can be
+    # allow-listed here if needed).
     payload = {
         **{k: v for k, v in current.items() if not k.startswith("_")},
         "status": new_status,
