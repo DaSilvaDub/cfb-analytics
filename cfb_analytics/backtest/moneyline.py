@@ -21,8 +21,10 @@ Market close consensus becomes available once
 ``odds_snapshots`` (``source='cfbd_historical'``) and ``build_market_for_slate``
 has rebuilt ``market_consensus``. When close ML consensus exists for the
 same games the walk-forward scores, this module reports a market Brier /
-log-loss slice; when coverage is thin or absent it prints an explicit
-``market: N/A (coverage)`` rather than silently skipping. Live
+log-loss slice **and** a same-game-set compare (ensemble / ridge / Elo vs
+market on the identical overlap) plus model-vs-close median CLV for
+``--promote`` evidence; when coverage is thin or absent it prints an
+explicit ``market: N/A (coverage)`` rather than silently skipping. Live
 ``source='cfbd'`` rows are never mixed into historical baseline scoring.
 
 SP+-only remains not computable leakage-safely: ``team_ratings`` only has
@@ -57,6 +59,7 @@ from __future__ import annotations
 
 import sqlite3
 from dataclasses import dataclass
+from statistics import median
 
 from cfb_analytics.backtest.calibration import calibrate_sigma, margin_to_prob
 from cfb_analytics.backtest.elo_baseline import elo_win_probability
@@ -99,6 +102,51 @@ class SliceMetrics:
 
 
 @dataclass(frozen=True)
+class SameGameSetEvidence:
+    """Apples-to-apples market overlap metrics for promotion gates.
+
+    Every model metric here is scored on the **identical** game set: games
+    where the walk-forward produced a prediction **and** vig-free close
+    P(home) exists in ``market_consensus``. Comparing full-n ridge logloss
+    to market logloss on a covered subset is dishonest; this struct exists
+    so ``require_oos_logloss_beat_market`` cannot make that mistake.
+
+    ``beat_market`` uses the **ensemble** as the promotion candidate
+    (plan section 6.4 / ``promotion.json`` evidence), not ridge alone.
+
+    Median CLV is **model-vs-close** probability CLV (open ML is typically
+    N/A from CFBD). See ``CLV_FORMULA``.
+    """
+
+    CLV_FORMULA = (
+        "model-vs-close probability CLV on the side the model favors: "
+        "if p_model>=0.5 (favors home): clv = p_close - p_model; "
+        "else (favors away): clv = p_model - p_close "
+        "(equivalently (1-p_close)-(1-p_model)). "
+        "Units: probability points (0.01 = 1pp); bps = 10000 * points. "
+        "Positive => close assigned more probability to the model's "
+        "favored side than the model did (classic 'better number than close'). "
+        "Open-ML book CLV is not used: CFBD historical open ML is typically N/A."
+    )
+
+    n_full: int
+    n_overlap: int
+    n_skipped: int
+    seasons_covered: tuple[int, ...]
+    market_min_books: int
+    promotion_candidate: str
+    market: SliceMetrics | None
+    ensemble: SliceMetrics | None
+    ridge: SliceMetrics | None
+    elo: SliceMetrics | None
+    beat_market: bool | None
+    median_clv: float | None
+    median_clv_bps: float | None
+    median_clv_non_negative: bool | None
+    clv_formula: str = CLV_FORMULA
+
+
+@dataclass(frozen=True)
 class MoneylineBacktestReport:
     sigma_0: float
     n_games_calibrated: int
@@ -121,6 +169,7 @@ class MoneylineBacktestReport:
     market_seasons: SliceMetrics | None = None
     market_note: str | None = None
     skipped_market_unpriced: int = 0
+    same_game_set: SameGameSetEvidence | None = None
 
     def as_text(self) -> str:
         lines = [
@@ -190,14 +239,22 @@ class MoneylineBacktestReport:
         if self.market_seasons is not None:
             lines.append(_slice_text(self.market_seasons))
             lines.append(
-                f"    {_comparison_line('ridge', self.seasons, 'market', self.market_seasons)}"
+                f"    skipped (no close ML consensus): {self.skipped_market_unpriced}"
             )
             lines.append(
-                f"    skipped (no close ML consensus): {self.skipped_market_unpriced}"
+                "    NOTE: headline market n is the covered subset; see same-game-set"
+            )
+            lines.append(
+                "    section below for honest ensemble/ridge/Elo vs market logloss."
             )
         else:
             note = self.market_note or "market: N/A (coverage)"
             lines.append(f"  {note}")
+        lines += ["", "== same-game-set market compare (promotion evidence) =="]
+        if self.same_game_set is not None:
+            lines.extend(_same_game_set_text(self.same_game_set))
+        else:
+            lines.append("  same-game-set: N/A (no market overlap)")
         lines += [
             "",
             "  NOTE: SP+-only baseline is still not computable (CFBD /ratings/sp has no",
@@ -337,6 +394,194 @@ def _ensemble_predictions(
         result.append((pool_probabilities(member_probs, available), prediction.home_won))
     return result
 
+
+
+def _same_game_set_text(sgs: SameGameSetEvidence) -> list[str]:
+    lines = [
+        f"  n_full (walk-forward fit games) : {sgs.n_full}",
+        f"  n_overlap (model ∩ market close): {sgs.n_overlap}",
+        f"  skipped (no close ML consensus) : {sgs.n_skipped}",
+        f"  seasons with >=1 overlap game   : "
+        f"{', '.join(str(s) for s in sgs.seasons_covered) or '(none)'}",
+        f"  market min_books                : {sgs.market_min_books}",
+        f"  promotion candidate             : {sgs.promotion_candidate}",
+    ]
+    for label, slice_ in (
+        ("market", sgs.market),
+        ("ensemble", sgs.ensemble),
+        ("ridge", sgs.ridge),
+        ("Elo-only", sgs.elo),
+    ):
+        if slice_ is None:
+            lines.append(f"  [{label}] n=0 (unavailable on overlap)")
+            continue
+        lines.append(
+            f"  [{label}] n={slice_.n_games}  "
+            f"brier={slice_.brier:.4f}  log_loss={slice_.log_loss:.4f}"
+        )
+    if (
+        sgs.ensemble is not None
+        and sgs.market is not None
+        and sgs.beat_market is not None
+    ):
+        verb = "beats" if sgs.beat_market else "does not beat"
+        lines.append(
+            f"    ensemble {verb} market on log loss "
+            f"({sgs.ensemble.log_loss:.4f} vs {sgs.market.log_loss:.4f}) "
+            f"[same n={sgs.n_overlap}]"
+        )
+    if sgs.median_clv is not None:
+        sign_ok = "yes" if sgs.median_clv_non_negative else "no"
+        lines.append(
+            f"  median CLV (model-vs-close)     : "
+            f"{sgs.median_clv:+.4f} prob-pts "
+            f"({sgs.median_clv_bps:+.1f} bps); "
+            f"non_negative={sign_ok}"
+        )
+        lines.append(f"  CLV formula: {sgs.clv_formula}")
+    else:
+        lines.append("  median CLV: N/A (no overlap)")
+    return lines
+
+
+def model_vs_close_clv(p_model: float, p_close: float) -> float:
+    """Model-vs-close probability CLV on the side the model favors.
+
+    Treats the model's fair P as the bet price and the vig-free close P as
+    the closing price. Open-ML book CLV is not used (CFBD historical open
+    ML is typically N/A).
+
+    Formula (home-win probabilities in; return in probability points):
+
+    * If ``p_model >= 0.5`` (model favors home): ``clv = p_close - p_model``
+    * Else (model favors away): ``clv = p_model - p_close``
+      (equivalently ``(1 - p_close) - (1 - p_model)``)
+
+    Positive CLV means the closing market assigned more probability to the
+    model's favored side than the model did — classic "got a better number
+    than close." Units: probability points (0.01 = 1 percentage point);
+    multiply by 10_000 for bps of probability.
+    """
+    if p_model >= 0.5:
+        return p_close - p_model
+    return p_model - p_close
+
+
+def median_model_vs_close_clv(
+    model_and_close: list[tuple[float, float]],
+) -> float | None:
+    """Median of ``model_vs_close_clv`` over ``(p_model, p_close)`` pairs."""
+    if not model_and_close:
+        return None
+    return float(median(model_vs_close_clv(p_m, p_c) for p_m, p_c in model_and_close))
+
+
+
+def _build_same_game_set(
+    *,
+    fit_predictions: list[GamePrediction],
+    market_home: dict[str, float],
+    sigma_0: float,
+    ensemble_weights: dict[str, float] | None,
+    market_min_books: int,
+) -> SameGameSetEvidence | None:
+    """Score market / ensemble / ridge / Elo on the identical overlap set.
+
+    Returns None only when there are no fit predictions. An empty overlap
+    still returns a struct with n_overlap=0 so coverage counts are never
+    silent (n_full / n_overlap / skipped always printed by ``as_text``).
+    """
+    n_full = len(fit_predictions)
+    if n_full == 0:
+        return None
+
+    overlap_preds = [p for p in fit_predictions if p.game_id in market_home]
+    n_overlap = len(overlap_preds)
+    n_skipped = n_full - n_overlap
+    seasons_covered = tuple(sorted({p.season for p in overlap_preds}))
+
+    if n_overlap == 0:
+        return SameGameSetEvidence(
+            n_full=n_full,
+            n_overlap=0,
+            n_skipped=n_skipped,
+            seasons_covered=(),
+            market_min_books=market_min_books,
+            promotion_candidate="ensemble",
+            market=None,
+            ensemble=None,
+            ridge=None,
+            elo=None,
+            beat_market=None,
+            median_clv=None,
+            median_clv_bps=None,
+            median_clv_non_negative=None,
+        )
+
+    market_probs: list[Prediction] = [
+        (market_home[p.game_id], p.home_won) for p in overlap_preds
+    ]
+    ridge_probs: list[Prediction] = [
+        (margin_to_prob(p.predicted_margin, sigma_0), p.home_won) for p in overlap_preds
+    ]
+    elo_probs, _ = _elo_probs(overlap_preds)
+
+    # Ensemble + CLV pairs in one pass so beat_market and median CLV share
+    # the exact same (p_model, p_close, outcome) rows.
+    ensemble_probs: list[Prediction] = []
+    paired_market_for_ensemble: list[Prediction] = []
+    model_close_pairs: list[tuple[float, float]] = []
+    if ensemble_weights is not None:
+        for prediction in overlap_preds:
+            member_probs = _member_probs(prediction, sigma_0)
+            available = {
+                name: w
+                for name, w in ensemble_weights.items()
+                if name in member_probs
+            }
+            if not available or sum(available.values()) <= 0:
+                continue
+            p_ens = pool_probabilities(member_probs, available)
+            p_mkt = market_home[prediction.game_id]
+            ensemble_probs.append((p_ens, prediction.home_won))
+            paired_market_for_ensemble.append((p_mkt, prediction.home_won))
+            model_close_pairs.append((p_ens, p_mkt))
+
+    market_slice = _score_slice("market close (same-game set)", market_probs)
+    ridge_slice = _score_slice("ridge (same-game set)", ridge_probs)
+    elo_slice = (
+        _score_slice("Elo-only (same-game set)", elo_probs) if elo_probs else None
+    )
+    ensemble_slice = (
+        _score_slice("ensemble (same-game set)", ensemble_probs)
+        if ensemble_probs
+        else None
+    )
+
+    beat_market: bool | None = None
+    if ensemble_probs and paired_market_for_ensemble:
+        beat_market = log_loss(ensemble_probs) < log_loss(paired_market_for_ensemble)
+
+    med_clv = median_model_vs_close_clv(model_close_pairs)
+    med_bps = (med_clv * 10_000.0) if med_clv is not None else None
+    med_nonneg = (med_clv >= 0.0) if med_clv is not None else None
+
+    return SameGameSetEvidence(
+        n_full=n_full,
+        n_overlap=n_overlap,
+        n_skipped=n_skipped,
+        seasons_covered=seasons_covered,
+        market_min_books=market_min_books,
+        promotion_candidate="ensemble",
+        market=market_slice,
+        ensemble=ensemble_slice,
+        ridge=ridge_slice,
+        elo=elo_slice,
+        beat_market=beat_market,
+        median_clv=med_clv,
+        median_clv_bps=med_bps,
+        median_clv_non_negative=med_nonneg,
+    )
 
 
 def _load_market_home_probs(
@@ -515,7 +760,7 @@ def run_moneyline_backtest(
     market_note = None
     if market_fit_probs and coverage >= 0.5:
         market_seasons_metrics = _score_slice(
-            "market close, same seasons/games as ridge (covered subset)",
+            "market close, covered subset (see same-game-set for honest compare)",
             market_fit_probs,
         )
     else:
@@ -524,6 +769,14 @@ def run_moneyline_backtest(
             f"{len(market_fit_probs)}/{len(fit_predictions)} games had close ML "
             f"consensus with n_books>={market_min_books}"
         )
+
+    same_game_set = _build_same_game_set(
+        fit_predictions=fit_predictions,
+        market_home=market_home,
+        sigma_0=sigma_0,
+        ensemble_weights=ensemble_weights,
+        market_min_books=market_min_books,
+    )
 
     return MoneylineBacktestReport(
         sigma_0=sigma_0,
@@ -547,4 +800,5 @@ def run_moneyline_backtest(
         market_seasons=market_seasons_metrics,
         market_note=market_note,
         skipped_market_unpriced=market_fit_skipped,
+        same_game_set=same_game_set,
     )

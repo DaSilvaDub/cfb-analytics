@@ -311,11 +311,14 @@ def _cmd_backtest_live(args: argparse.Namespace) -> int:
 def _cmd_backtest(args: argparse.Namespace) -> int:
     """Walk-forward moneyline backtest of the internal ridge model.
 
-    See ``backtest/moneyline.py`` for why this reports calibration only, not
-    a promotion decision: none of the three required baselines (market,
-    SP+-only, Elo-only) have a leakage-safe historical series in this store
-    yet.
+    With ``--promote``, also evaluates ``config/promotion.json`` gates on
+    same-game-set market evidence (ensemble vs market logloss + median
+    model-vs-close CLV) and writes structured evidence. Status flips to
+    ``promoted`` only when every gate passes; otherwise fail-closed
+    ``shadow``. See ``backtest/moneyline.py`` / ``backtest/promote.py``.
     """
+    import json
+
     from cfb_analytics.backtest.moneyline import DEFAULT_SEASONS, run_moneyline_backtest
     from cfb_analytics.errors import SchemaError
 
@@ -328,9 +331,25 @@ def _cmd_backtest(args: argparse.Namespace) -> int:
     )
     paths.ensure_dirs()
     with db.open_db() as conn:
-        report = run_moneyline_backtest(conn, seasons)
+        report = run_moneyline_backtest(
+            conn,
+            seasons,
+            historical_cfbd_min_books=args.historical_cfbd_min_books,
+        )
     print(report.as_text())
-    return 0
+    if not args.promote:
+        return 0
+
+    from cfb_analytics.backtest.promote import evaluate_promotion, write_promotion_result
+
+    decision = evaluate_promotion(report, seasons=seasons)
+    print()
+    print(decision.as_text())
+    print()
+    print(json.dumps(decision.evidence, indent=2, sort_keys=True))
+    out = write_promotion_result(decision)
+    print(f"\nwrote {out} status={decision.status}")
+    return 0 if decision.passed else 1
 
 
 def _cmd_fit_ratings(args: argparse.Namespace) -> int:
@@ -1604,6 +1623,25 @@ def build_parser() -> argparse.ArgumentParser:
     )
     backtest_cmd.add_argument(
         "--end-year", type=int, default=None, help="last season, inclusive (default: 2025)"
+    )
+    backtest_cmd.add_argument(
+        "--historical-cfbd-min-books",
+        type=int,
+        default=None,
+        help=(
+            "baseline-only min books for market consensus scoring "
+            "(default: settings.market.historical_cfbd_min_books or "
+            "min_books_for_consensus). Never used for live CORE."
+        ),
+    )
+    backtest_cmd.add_argument(
+        "--promote",
+        action="store_true",
+        help=(
+            "evaluate config/promotion.json gates on same-game-set evidence "
+            "and write evidence JSON; flip status to promoted only if all "
+            "gates pass (otherwise fail-closed shadow)"
+        ),
     )
     backtest_cmd.set_defaults(func=_cmd_backtest)
 
