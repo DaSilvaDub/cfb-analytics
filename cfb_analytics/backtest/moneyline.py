@@ -53,6 +53,11 @@ search minimizing log loss on the non-stress fit predictions
 (``backtest/ensemble_fit.py``), then applied to both the fit and stress
 slices -- the same fit-then-apply shape ``sigma_0`` and the shrinkage/lambda
 constants already use elsewhere in this module and ``models/``.
+
+Ensemble probabilities then pass through a walk-forward probability
+calibrator (``backtest/prob_calibrate.py``: default Platt on logit(p),
+season-blocked). ``--promote`` scores gap + beat_market on the calibrated
+ensemble; raw ensemble metrics and median CLV stay on the uncalibrated blend.
 """
 
 from __future__ import annotations
@@ -73,6 +78,12 @@ from cfb_analytics.backtest.metrics import (
     favorite_side,
     log_loss,
     reliability_curve,
+)
+from cfb_analytics.backtest.prob_calibrate import (
+    Fold,
+    Method,
+    TimedProb,
+    walk_forward_calibrate,
 )
 from cfb_analytics.models.elo import DEFAULT_K as DEFAULT_ELO_K
 from cfb_analytics.models.elo import HFA_ELO_POINTS
@@ -114,8 +125,10 @@ class SameGameSetEvidence:
     ``beat_market`` uses the **ensemble** as the promotion candidate
     (plan section 6.4 / ``promotion.json`` evidence), not ridge alone.
 
-    Median CLV is **model-vs-close** probability CLV (open ML is typically
-    N/A from CFBD). See ``CLV_FORMULA``.
+    Median CLV is **model-vs-close** probability CLV on the *raw* ensemble
+    (open ML is typically N/A from CFBD). See ``CLV_FORMULA``. Walk-forward
+    probability calibration is applied to ``ensemble`` for gap + beat_market
+    only; ``ensemble_raw`` and CLV keep the uncalibrated blend.
     """
 
     CLV_FORMULA = (
@@ -137,12 +150,14 @@ class SameGameSetEvidence:
     promotion_candidate: str
     market: SliceMetrics | None
     ensemble: SliceMetrics | None
+    ensemble_raw: SliceMetrics | None
     ridge: SliceMetrics | None
     elo: SliceMetrics | None
     beat_market: bool | None
     median_clv: float | None
     median_clv_bps: float | None
     median_clv_non_negative: bool | None
+    calibration_method: str | None = None
     clv_formula: str = CLV_FORMULA
 
 
@@ -166,6 +181,8 @@ class MoneylineBacktestReport:
     ensemble_weights: dict[str, float] | None
     ensemble_seasons: SliceMetrics | None
     ensemble_stress: SliceMetrics | None
+    ensemble_seasons_raw: SliceMetrics | None = None
+    ensemble_calibration_method: str | None = None
     market_seasons: SliceMetrics | None = None
     market_note: str | None = None
     skipped_market_unpriced: int = 0
@@ -225,6 +242,10 @@ class MoneylineBacktestReport:
                 f"{name}={weight:.2f}" for name, weight in self.ensemble_weights.items()
             )
             lines.append(f"  fitted weights: {weight_text}")
+        if self.ensemble_calibration_method is not None:
+            lines.append(
+                f"  walk-forward calibrator          : {self.ensemble_calibration_method}"
+            )
         if self.ensemble_seasons is not None:
             lines.append(_slice_text(self.ensemble_seasons))
             comparison = _comparison_line(
@@ -233,6 +254,8 @@ class MoneylineBacktestReport:
             lines.append(f"    {comparison}")
         else:
             lines.append("  (no games had any ensemble member's prediction available)")
+        if self.ensemble_seasons_raw is not None:
+            lines.append(_slice_text(self.ensemble_seasons_raw))
         if self.ensemble_stress is not None:
             lines += ["", _slice_text(self.ensemble_stress)]
         lines += ["", "== market close baseline (plan section 8, baseline #1) =="]
@@ -395,6 +418,50 @@ def _ensemble_predictions(
     return result
 
 
+def _ensemble_timed_probs(
+    predictions: list[GamePrediction], sigma_0: float, weights: dict[str, float]
+) -> list[TimedProb]:
+    """Raw ensemble P(home) with (season, week) for walk-forward calibration."""
+    rows: list[TimedProb] = []
+    for prediction in predictions:
+        member_probs = _member_probs(prediction, sigma_0)
+        available = {name: w for name, w in weights.items() if name in member_probs}
+        if not available or sum(available.values()) <= 0:
+            continue
+        rows.append(
+            TimedProb(
+                season=prediction.season,
+                week=prediction.week,
+                p=pool_probabilities(member_probs, available),
+                won=prediction.home_won,
+                key=prediction.game_id,
+            )
+        )
+    return rows
+
+
+def _calibrate_timed(
+    rows: list[TimedProb],
+    *,
+    method: Method = "platt",
+    min_fit_n: int = 200,
+    fold: Fold = "season",
+) -> tuple[list[Prediction], list[Prediction], dict[str, float]]:
+    """Walk-forward calibrate; return (calibrated, raw) Prediction lists + p_cal by key."""
+    if not rows:
+        return [], [], {}
+    wf = walk_forward_calibrate(rows, method=method, min_fit_n=min_fit_n, fold=fold)
+    calibrated: list[Prediction] = []
+    raw: list[Prediction] = []
+    by_key: dict[str, float] = {}
+    for row, (raw_p, cal_p, _cal) in zip(rows, wf, strict=True):
+        calibrated.append((cal_p, row.won))
+        raw.append((raw_p, row.won))
+        if row.key:
+            by_key[row.key] = cal_p
+    return calibrated, raw, by_key
+
+
 
 def _same_game_set_text(sgs: SameGameSetEvidence) -> list[str]:
     lines = [
@@ -406,9 +473,12 @@ def _same_game_set_text(sgs: SameGameSetEvidence) -> list[str]:
         f"  market min_books                : {sgs.market_min_books}",
         f"  promotion candidate             : {sgs.promotion_candidate}",
     ]
+    if sgs.calibration_method is not None:
+        lines.append(f"  ensemble calibrator              : {sgs.calibration_method}")
     for label, slice_ in (
         ("market", sgs.market),
-        ("ensemble", sgs.ensemble),
+        ("ensemble (calibrated)", sgs.ensemble),
+        ("ensemble (raw)", sgs.ensemble_raw),
         ("ridge", sgs.ridge),
         ("Elo-only", sgs.elo),
     ):
@@ -484,8 +554,16 @@ def _build_same_game_set(
     sigma_0: float,
     ensemble_weights: dict[str, float] | None,
     market_min_books: int,
+    ensemble_calibrated_by_game: dict[str, float] | None = None,
+    calibration_method: str | None = None,
 ) -> SameGameSetEvidence | None:
     """Score market / ensemble / ridge / Elo on the identical overlap set.
+
+    ``ensemble`` metrics / beat_market / median CLV use the *calibrated*
+    ensemble when ``ensemble_calibrated_by_game`` is provided; raw ensemble
+    is still scored into ``ensemble_raw`` for the report. Promotion gap and
+    beat_market therefore see the walk-forward calibrator, never a fit on
+    the evaluation slice.
 
     Returns None only when there are no fit predictions. An empty overlap
     still returns a struct with n_overlap=0 so coverage counts are never
@@ -510,12 +588,14 @@ def _build_same_game_set(
             promotion_candidate="ensemble",
             market=None,
             ensemble=None,
+            ensemble_raw=None,
             ridge=None,
             elo=None,
             beat_market=None,
             median_clv=None,
             median_clv_bps=None,
             median_clv_non_negative=None,
+            calibration_method=calibration_method,
         )
 
     market_probs: list[Prediction] = [
@@ -527,10 +607,12 @@ def _build_same_game_set(
     elo_probs, _ = _elo_probs(overlap_preds)
 
     # Ensemble + CLV pairs in one pass so beat_market and median CLV share
-    # the exact same (p_model, p_close, outcome) rows.
-    ensemble_probs: list[Prediction] = []
+    # the exact same (p_model, p_close, outcome) rows. Prefer calibrated P.
+    ensemble_cal_probs: list[Prediction] = []
+    ensemble_raw_probs: list[Prediction] = []
     paired_market_for_ensemble: list[Prediction] = []
     model_close_pairs: list[tuple[float, float]] = []
+    cal_map = ensemble_calibrated_by_game or {}
     if ensemble_weights is not None:
         for prediction in overlap_preds:
             member_probs = _member_probs(prediction, sigma_0)
@@ -541,11 +623,16 @@ def _build_same_game_set(
             }
             if not available or sum(available.values()) <= 0:
                 continue
-            p_ens = pool_probabilities(member_probs, available)
+            p_raw = pool_probabilities(member_probs, available)
+            p_ens = cal_map.get(prediction.game_id, p_raw)
             p_mkt = market_home[prediction.game_id]
-            ensemble_probs.append((p_ens, prediction.home_won))
+            ensemble_cal_probs.append((p_ens, prediction.home_won))
+            ensemble_raw_probs.append((p_raw, prediction.home_won))
             paired_market_for_ensemble.append((p_mkt, prediction.home_won))
-            model_close_pairs.append((p_ens, p_mkt))
+            # CLV stays on raw ensemble: calibrator is for gap + beat_market
+            # only (promotion.json). Softening probs toward 0.5 systematically
+            # flips model-vs-close CLV sign without reflecting a real edge change.
+            model_close_pairs.append((p_raw, p_mkt))
 
     market_slice = _score_slice("market close (same-game set)", market_probs)
     ridge_slice = _score_slice("ridge (same-game set)", ridge_probs)
@@ -553,14 +640,19 @@ def _build_same_game_set(
         _score_slice("Elo-only (same-game set)", elo_probs) if elo_probs else None
     )
     ensemble_slice = (
-        _score_slice("ensemble (same-game set)", ensemble_probs)
-        if ensemble_probs
+        _score_slice("ensemble calibrated (same-game set)", ensemble_cal_probs)
+        if ensemble_cal_probs
+        else None
+    )
+    ensemble_raw_slice = (
+        _score_slice("ensemble raw (same-game set)", ensemble_raw_probs)
+        if ensemble_raw_probs
         else None
     )
 
     beat_market: bool | None = None
-    if ensemble_probs and paired_market_for_ensemble:
-        beat_market = log_loss(ensemble_probs) < log_loss(paired_market_for_ensemble)
+    if ensemble_cal_probs and paired_market_for_ensemble:
+        beat_market = log_loss(ensemble_cal_probs) < log_loss(paired_market_for_ensemble)
 
     med_clv = median_model_vs_close_clv(model_close_pairs)
     med_bps = (med_clv * 10_000.0) if med_clv is not None else None
@@ -575,12 +667,14 @@ def _build_same_game_set(
         promotion_candidate="ensemble",
         market=market_slice,
         ensemble=ensemble_slice,
+        ensemble_raw=ensemble_raw_slice,
         ridge=ridge_slice,
         elo=elo_slice,
         beat_market=beat_market,
         median_clv=med_clv,
         median_clv_bps=med_bps,
         median_clv_non_negative=med_nonneg,
+        calibration_method=calibration_method,
     )
 
 
@@ -651,6 +745,9 @@ def run_moneyline_backtest(
     logit_min_n: int = 30,
     ensemble_grid_step: float = 0.05,
     historical_cfbd_min_books: int | None = None,
+    ensemble_calibrator: Method = "platt",
+    ensemble_calibrator_min_fit_n: int = 200,
+    ensemble_calibrator_fold: Fold = "season",
 ) -> MoneylineBacktestReport:
     run = run_walk_forward(
         conn, list(seasons), ridge_lambda=ridge_lambda, min_games=min_games,
@@ -722,19 +819,46 @@ def run_moneyline_backtest(
         else None
     )
     ensemble_seasons_metrics = None
+    ensemble_seasons_raw_metrics = None
     ensemble_stress_metrics = None
+    ensemble_cal_by_game: dict[str, float] = {}
+    cal_method_label: str | None = None
     if ensemble_weights is not None:
-        ensemble_fit_probs = _ensemble_predictions(fit_predictions, sigma_0, ensemble_weights)
-        if ensemble_fit_probs:
+        timed = _ensemble_timed_probs(fit_predictions, sigma_0, ensemble_weights)
+        if timed:
+            cal_preds, raw_preds, ensemble_cal_by_game = _calibrate_timed(
+                timed,
+                method=ensemble_calibrator,
+                min_fit_n=ensemble_calibrator_min_fit_n,
+                fold=ensemble_calibrator_fold,
+            )
+            cal_method_label = f"{ensemble_calibrator}/{ensemble_calibrator_fold}"
             ensemble_seasons_metrics = _score_slice(
-                "ensemble, same seasons/games as ridge", ensemble_fit_probs
+                f"ensemble calibrated ({cal_method_label}), same seasons/games as ridge",
+                cal_preds,
+            )
+            ensemble_seasons_raw_metrics = _score_slice(
+                "ensemble raw (pre-calibrator), same seasons/games as ridge",
+                raw_preds,
             )
         ensemble_stress_probs = _ensemble_predictions(
             stress_predictions, sigma_0, ensemble_weights
         )
         if ensemble_stress_probs:
+            # Stress slice: fit calibrator on all non-stress games, apply once.
+            if timed and ensemble_calibrator != "identity":
+                from cfb_analytics.backtest.prob_calibrate import fit_calibrator
+                stress_cal = fit_calibrator(
+                    [r.p for r in timed],
+                    [r.won for r in timed],
+                    method=ensemble_calibrator,
+                )
+                ensemble_stress_probs = [
+                    (stress_cal.apply(p), won) for p, won in ensemble_stress_probs
+                ]
             ensemble_stress_metrics = _score_slice(
-                "ensemble, 2020 stress slice", ensemble_stress_probs
+                f"ensemble calibrated ({cal_method_label}), 2020 stress slice",
+                ensemble_stress_probs,
             )
 
     from cfb_analytics import config as _config
@@ -776,6 +900,8 @@ def run_moneyline_backtest(
         sigma_0=sigma_0,
         ensemble_weights=ensemble_weights,
         market_min_books=market_min_books,
+        ensemble_calibrated_by_game=ensemble_cal_by_game or None,
+        calibration_method=cal_method_label,
     )
 
     return MoneylineBacktestReport(
@@ -796,7 +922,9 @@ def run_moneyline_backtest(
         skipped_logit_unrated=logit_fit_skipped + logit_stress_skipped,
         ensemble_weights=ensemble_weights,
         ensemble_seasons=ensemble_seasons_metrics,
+        ensemble_seasons_raw=ensemble_seasons_raw_metrics,
         ensemble_stress=ensemble_stress_metrics,
+        ensemble_calibration_method=cal_method_label,
         market_seasons=market_seasons_metrics,
         market_note=market_note,
         skipped_market_unpriced=market_fit_skipped,

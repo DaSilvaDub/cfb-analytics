@@ -116,6 +116,11 @@ def build_promotion_evidence(
         if sgs.ensemble is not None:
             evidence["logloss"]["ensemble"] = sgs.ensemble.log_loss
             evidence["brier"]["ensemble"] = sgs.ensemble.brier
+        if sgs.ensemble_raw is not None:
+            evidence["logloss"]["ensemble_raw"] = sgs.ensemble_raw.log_loss
+            evidence["brier"]["ensemble_raw"] = sgs.ensemble_raw.brier
+        if sgs.calibration_method is not None:
+            evidence["ensemble_calibrator"] = sgs.calibration_method
         if sgs.ridge is not None:
             evidence["logloss"]["ridge"] = sgs.ridge.log_loss
             evidence["brier"]["ridge"] = sgs.ridge.brier

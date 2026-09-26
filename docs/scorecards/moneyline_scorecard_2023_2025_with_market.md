@@ -82,3 +82,11 @@ assigned more probability to the model’s favored side than the model did
 - `cfb_analytics/backtest/promote.py` — gate eval + evidence JSON write
 - `cfb-analytics backtest --promote` — prints evidence; writes `config/promotion.json`
 - Headline “ridge vs market” compare on mismatched n is **removed**; use same-game-set
+
+## Follow-up: walk-forward ensemble calibration
+
+See [`moneyline_scorecard_2023_2025_calibration.md`](moneyline_scorecard_2023_2025_calibration.md).
+Season-blocked Platt reduces `calibration_gap` **0.0659 → 0.0370** without
+beating market on logloss; status remains **shadow**. The 0.03 gate is not
+honestly reachable on this window with few-DOF parametric calibrators.
+
