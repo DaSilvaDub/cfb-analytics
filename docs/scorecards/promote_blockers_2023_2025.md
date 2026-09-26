@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Generated | **2026-09-26 ~04:30 ET** (re-promote §8 at **~04:47 ET**) |
+| Generated | **2026-09-26 ~04:30 ET** (re-promote §8 ~04:47 ET; **§9 post-publish verify ~05:49 ET**) |
 | Branch / PR | `feat/cfbd-historical-lines-2024` ([PR #17](https://github.com/DaSilvaDub/cfb-analytics/pull/17)) |
 | HEAD (at write) | tip of PR branch after W3–4 open blend ship |
 | Promote path | `cfb_analytics/backtest/promote.py` + `config/promotion.json` |
@@ -10,15 +10,16 @@
 
 ## 1. Current status
 
-Two-key gate (sample floor **and** OOS skill) still fails. Historical CFBD odds remain **local-only** (not on `data` branch).
+Two-key gate (sample floor **and** OOS skill) still fails. Historical CFBD odds are now on **`origin/data`** (Data Fixer orphan publish; see §9).
 
 | Evidence source | Overlap n | Seasons | Ens LL | Mkt LL | Gap | Notes |
 |---|---:|---|---:|---:|---:|---|
 | Prior formal `--promote` (pre early-open ships) | **2103** | 2023–2025 | **0.5560** (platt/season) | **0.5287** | +0.0274 | Historical baseline in `promotion.json` before W1–4 levers |
 | Spike path (`artifacts/spike_open_blend_w34_*.json`) | **2270** | 2023–2025 | **0.5398** | **0.5208** | **+0.0189** | Directional; often skip_logit |
-| **This re-promote** (`promotion.json` @ 2026-09-26T08:47:15Z) | **2270** | 2023–2025 | **0.5404** | **0.5208** | **+0.0196** | Full logit + platt/season; see §8. Historical odds still **not** on `data` branch |
+| **Re-promote §8** (`promotion.json` @ 2026-09-26T08:47:15Z) | **2270** | 2023–2025 | **0.5404** | **0.5208** | **+0.0196** | Full logit + platt/season; local DB (pre-publish) |
+| **§9 from `origin/data`** (`promotion.json` @ 2026-09-26T09:49:26Z) | **2270** | 2023–2025 | **0.5404** | **0.5208** | **+0.0196** | Restored published gzip; bit-identical gate vs §8 |
 
-**Bottom line:** early open levers cut the full gap ~0.027 → ~0.019; formal re-promote confirms **`beat_market` still false** (ens 0.5404 ≮ mkt 0.5208). Status **`shadow`**. Data-branch publish of `cfbd_historical` is still blocked (force-push-only path) — §8.1.
+**Bottom line:** early open levers cut the full gap ~0.027 → ~0.019; formal re-promote confirms **`beat_market` still false** (ens 0.5404 ≮ mkt 0.5208). Status **`shadow`**. **§9:** Data Fixer published `cfbd_historical` onto `origin/data` (`c8006e9…`); promote is now **reproducible from `origin/data` alone** (same gate scoreboard as §8).
 
 ## 2. Gate scoreboard
 
@@ -84,7 +85,7 @@ Ranked, realistic — skill vs policy vs data ops.
 ## 7. Recommended next 3 actions
 
 1. **Freeze CFB skill spikes** against promote until a *new* information source lands (true as-of open ML, or ≥3-season QB/roster coverage). Early open + σ levers are largely exhausted; remaining gap is weeks 5+ skill + cal policy.
-2. **Data-ops: publish historical odds** (2023–2025 `cfbd_historical` + market rebuild) to the `data` branch under normal publish process — make promote evidence reproducible outside this box. Do not invent prices; do not force-push.
+2. **Data-ops (DONE §9):** CFB Data Fixer published 2023–2025 `cfbd_historical` + market rebuild onto `origin/data` (`c8006e9…`). Promote is reproducible from that tip alone. Do not invent prices; this agent still must not force-push `data`.
 3. **Re-run full `backtest --promote` (with logit)** after (2) or any skill change; refresh `promotion.json` evidence + this scoreboard. Optionally decide cal-gap policy (keep 0.03 vs documented 0.04) **before** the next skill cycle — separately from `beat_market`.
 
 ---
@@ -171,9 +172,55 @@ Failures written: `beat_market=False`, `calibration_gap 0.0640 > 0.03`. Status r
 
 ### 8.4 Next human / ops step
 
-1. **CFB Data Fixer (or Daniel):** run §8.1 sequence (or workflow extension) so `cfbd_historical` lands on `origin/data` without this agent force-pushing.
-2. After publish: anyone can restore `data` and reproduce `--promote`; optional CI comment refresh.
+1. ~~**CFB Data Fixer (or Daniel):** run §8.1 sequence…~~ → **DONE** (see §9; tip `c8006e9…`).
+2. After publish: anyone can restore `data` and reproduce `--promote` — **verified in §9**.
 3. Skill track stays frozen until a **new information** source (true as-of open ML, multi-season QB/roster, etc.) or a documented cal-gap policy decision.
+
+
+
+## 9. Post data-branch publish — 2026-09-26 ~05:49 ET
+
+| Field | Value |
+|---|---|
+| Actor | Pipeline Architect (executor) |
+| `origin/data` tip verified | `c8006e922cfa57c049ed4dd6c79103dc42512549` (`data: snapshot 2026-09-26T09:46:48Z`) |
+| `origin/master` | `20eaaec` (**untouched**) |
+| Promote DB | restored published artifact → `data/cfb_from_data_branch.sqlite3` (symlinked as `data/cfb.sqlite3`) |
+| Command | `python -m cfb_analytics.cli backtest --start-year 2023 --end-year 2025 --historical-cfbd-min-books 1 --promote` |
+| `promotion.json` status | **`shadow`** (fail-closed; no hand-flip) |
+| Evaluated (UTC) | 2026-09-26T09:49:26Z (~05:49 ET) |
+| Reproducible from `origin/data` alone? | **YES** |
+
+### 9.1 Independent verify vs Data Fixer report
+
+| Check | Data Fixer claimed | This restore (`git show origin/data:cfb.sqlite3.gz \| gunzip`) | Match |
+|---|---|---|:---:|
+| Tip SHA | `c8006e922cfa57c049ed4dd6c79103dc42512549` | same | **Y** |
+| gzip bytes | ~31143713 | **31143713** | **Y** |
+| `odds_snapshots` `cfbd_historical` | 2023:**17928** / 2024:**21642** / 2025:**23150** (total **62720**) | same | **Y** |
+| live `cfbd` 2026 | **79432** | **79432** | **Y** |
+| `market_consensus` | 2023:**1476** / 2024:**1544** / 2025:**1606** / 2026:**2116** | same | **Y** |
+| `games` | **11262** | **11262** | **Y** |
+| master tip | `20eaaec` untouched | `20eaaec` | **Y** |
+
+### 9.2 Gate scoreboard (from published DB)
+
+| Gate | Threshold | This run | P/F |
+|---|---|---|---|
+| `n_overlap` | ≥ 1500 | **2270** (n_full 2432; skip no-mkt 162) | **PASS** |
+| `seasons_with_overlap` | ≥ 3 | 2023, 2024, 2025 | **PASS** |
+| **`beat_market`** | cal ens LL **&lt;** mkt LL | ens **0.5404** ≮ mkt **0.5208** (gap **+0.0196**) | **FAIL** |
+| **`calibration_gap`** | ≤ 0.03 | **0.0640** | **FAIL** |
+| **`median_clv_non_negative`** | ≥ 0 | **+0.0199** (+199.0 bps) | **PASS** |
+| `market_weight_floor` | 0.75 policy | WF w: 2023=0.75, 2024=0.95, 2025=1.00; blend LL 0.5211 ≈ mkt | **KEEP** |
+
+Failures written: `beat_market=False`, `calibration_gap 0.0640 > 0.03`. Status remains **`shadow`**. Scoreboard is **bit-identical** to the §8 local-DB re-promote (same n_overlap, LL, gap, CLV) — confirms the published branch carries the historical odds needed for promote, not a silent data change.
+
+### 9.3 Implications
+
+- Promote evidence is now **reproducible from `origin/data` alone** (`git fetch` → gunzip → `--promote`); no local-only DB required.
+- Skill blockers unchanged: still need weeks 5+ skill for `beat_market`, and cal-gap policy or more prior seasons for the 0.03 floor.
+- Skill spikes remain **frozen**; this pass is docs/evidence only. No force-push of `data` by this agent.
 
 ## Pointers
 
