@@ -73,11 +73,18 @@ def build_market_for_slate(
     slate_date: str,
     *,
     markets: tuple[str, ...] = ("ML", "SPREAD", "TOTAL"),
+    min_books_for_consensus: int | None = None,
 ) -> MarketBuildSummary:
     settings = config.settings()["market"]
     outlier = config.sources()["outlier"]
     sharp_books = tuple(outlier.get("sharp_books", ()))
-    min_books = int(settings.get("min_books_for_consensus", 3))
+    # Optional override is for CFBD-historical baseline rebuilds only
+    # (``historical_cfbd_min_books``). Live path leaves this None and uses
+    # settings.market.min_books_for_consensus unchanged.
+    if min_books_for_consensus is None:
+        min_books = int(settings.get("min_books_for_consensus", 3))
+    else:
+        min_books = int(min_books_for_consensus)
 
     summary = MarketBuildSummary(slate_date=slate_date)
     games = _games_for_slate(conn, slate_date)

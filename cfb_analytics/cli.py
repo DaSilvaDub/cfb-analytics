@@ -210,6 +210,86 @@ def _cmd_backfill_pbp(args: argparse.Namespace) -> int:
     return 0
 
 
+
+def _cmd_backfill_lines(args: argparse.Namespace) -> int:
+    """Historical CFBD /lines dual-stamp backfill (source=cfbd_historical).
+
+    Live ``source=cfbd`` ingest is unchanged. Requires CFBD_API_KEY; exits
+    cleanly with a message when the key is absent (no invented prices).
+    """
+    from cfb_analytics.ingest.cfbd_lines_historical import (
+        backfill_historical_lines,
+        ingest_historical_lines,
+        probe_lines_coverage,
+        rebuild_market_for_season,
+    )
+    from cfb_analytics.sources.cfbd import CFBDClient
+
+    if not config.has_cfbd_key():
+        print(
+            f"CFBD_API_KEY is not set. Historical lines probe/backfill needs the key "
+            f"({config.CFBD_HOW}). Code and fixture tests do not invent prices."
+        )
+        return 2
+
+    paths.ensure_dirs()
+    client = CFBDClient()
+
+    if args.probe_only:
+        coverage = probe_lines_coverage(client, args.year, season_type=args.season_type)
+        print(json.dumps(coverage, indent=2, sort_keys=True))
+        return 0
+
+    with db.open_db() as conn:
+        if args.week is not None:
+            summary = ingest_historical_lines(
+                conn, client, args.year, week=args.week, season_type=args.season_type
+            )
+        else:
+            summary = backfill_historical_lines(
+                conn, client, args.year, season_type=args.season_type
+            )
+        print(summary.as_text())
+
+        if args.rebuild_market:
+            min_books = args.historical_cfbd_min_books
+            market = rebuild_market_for_season(
+                conn, args.year, min_books_for_consensus=min_books
+            )
+            print(
+                f"\nmarket rebuild {market['year']}: "
+                f"slates={market['slates']} games={market['games']} "
+                f"consensus_rows={market['consensus_rows']} "
+                f"unpriced={market['unpriced_groups']} "
+                f"min_books={market['min_books_for_consensus']}"
+            )
+
+            # Join-rate report (acceptance A4): ML close game_ids / FBS games.
+            fbs = conn.execute(
+                """SELECT COUNT(*) n FROM games g
+                   JOIN teams ht ON ht.team_id = g.home_team_id
+                   JOIN teams at ON at.team_id = g.away_team_id
+                   WHERE g.season = ?
+                     AND LOWER(COALESCE(ht.classification, 'fbs')) = 'fbs'
+                     AND LOWER(COALESCE(at.classification, 'fbs')) = 'fbs'""",
+                (args.year,),
+            ).fetchone()["n"]
+            ml = conn.execute(
+                """SELECT COUNT(DISTINCT o.game_id) n
+                   FROM odds_snapshots o
+                   JOIN games g ON g.game_id = o.game_id
+                   WHERE g.season = ? AND o.source = 'cfbd_historical'
+                     AND o.market = 'ML' AND o.price_american IS NOT NULL""",
+                (args.year,),
+            ).fetchone()["n"]
+            rate = (ml / fbs) if fbs else 0.0
+            print(
+                f"join rate (ML close / FBS games): {ml}/{fbs} = {rate:.3f} "
+                f"(A4 target >= 0.85)"
+            )
+    return 0
+
+
 def _cmd_backtest_live(args: argparse.Namespace) -> int:
     """Walk-forward live micro-markets backtest."""
     from cfb_analytics.backtest.live_backtest import DEFAULT_LIVE_SEASONS, run_live_backtest
@@ -231,11 +311,14 @@ def _cmd_backtest_live(args: argparse.Namespace) -> int:
 def _cmd_backtest(args: argparse.Namespace) -> int:
     """Walk-forward moneyline backtest of the internal ridge model.
 
-    See ``backtest/moneyline.py`` for why this reports calibration only, not
-    a promotion decision: none of the three required baselines (market,
-    SP+-only, Elo-only) have a leakage-safe historical series in this store
-    yet.
+    With ``--promote``, also evaluates ``config/promotion.json`` gates on
+    same-game-set market evidence (ensemble vs market logloss + median
+    model-vs-close CLV) and writes structured evidence. Status flips to
+    ``promoted`` only when every gate passes; otherwise fail-closed
+    ``shadow``. See ``backtest/moneyline.py`` / ``backtest/promote.py``.
     """
+    import json
+
     from cfb_analytics.backtest.moneyline import DEFAULT_SEASONS, run_moneyline_backtest
     from cfb_analytics.errors import SchemaError
 
@@ -248,9 +331,25 @@ def _cmd_backtest(args: argparse.Namespace) -> int:
     )
     paths.ensure_dirs()
     with db.open_db() as conn:
-        report = run_moneyline_backtest(conn, seasons)
+        report = run_moneyline_backtest(
+            conn,
+            seasons,
+            historical_cfbd_min_books=args.historical_cfbd_min_books,
+        )
     print(report.as_text())
-    return 0
+    if not args.promote:
+        return 0
+
+    from cfb_analytics.backtest.promote import evaluate_promotion, write_promotion_result
+
+    decision = evaluate_promotion(report, seasons=seasons)
+    print()
+    print(decision.as_text())
+    print()
+    print(json.dumps(decision.evidence, indent=2, sort_keys=True))
+    out = write_promotion_result(decision)
+    print(f"\nwrote {out} status={decision.status}")
+    return 0 if decision.passed else 1
 
 
 def _cmd_fit_ratings(args: argparse.Namespace) -> int:
@@ -1464,6 +1563,40 @@ def build_parser() -> argparse.ArgumentParser:
     pbp.add_argument("--end-year", type=int, required=True, help="last season year, inclusive")
     pbp.set_defaults(func=_cmd_backfill_pbp)
 
+
+    lines_cmd = sub.add_parser(
+        "backfill-lines",
+        help="historical CFBD /lines dual-stamp backfill (source=cfbd_historical)",
+    )
+    lines_cmd.add_argument("--year", type=int, required=True, help="season year (e.g. 2024)")
+    lines_cmd.add_argument(
+        "--week", type=int, default=None, help="single week; default loops weeks 1-15"
+    )
+    lines_cmd.add_argument(
+        "--season-type", default="regular", help="CFBD seasonType (default: regular)"
+    )
+    lines_cmd.add_argument(
+        "--probe-only",
+        action="store_true",
+        help="read-only coverage tally; no DB writes",
+    )
+    lines_cmd.add_argument(
+        "--rebuild-market",
+        action="store_true",
+        help="after odds land, rebuild market_consensus for every Eastern slate in --year",
+    )
+    lines_cmd.add_argument(
+        "--historical-cfbd-min-books",
+        type=int,
+        default=None,
+        help=(
+            "baseline-only min_books override when rebuilding market "
+            "(never used for live CORE; default: settings.market.min_books_for_consensus)"
+        ),
+    )
+    lines_cmd.set_defaults(func=_cmd_backfill_lines)
+
+
     fit_ratings = sub.add_parser(
         "fit-ratings", help="fit and persist internal ridge team-strength ratings"
     )
@@ -1490,6 +1623,25 @@ def build_parser() -> argparse.ArgumentParser:
     )
     backtest_cmd.add_argument(
         "--end-year", type=int, default=None, help="last season, inclusive (default: 2025)"
+    )
+    backtest_cmd.add_argument(
+        "--historical-cfbd-min-books",
+        type=int,
+        default=None,
+        help=(
+            "baseline-only min books for market consensus scoring "
+            "(default: settings.market.historical_cfbd_min_books or "
+            "min_books_for_consensus). Never used for live CORE."
+        ),
+    )
+    backtest_cmd.add_argument(
+        "--promote",
+        action="store_true",
+        help=(
+            "evaluate config/promotion.json gates on same-game-set evidence "
+            "and write evidence JSON; flip status to promoted only if all "
+            "gates pass (otherwise fail-closed shadow)"
+        ),
     )
     backtest_cmd.set_defaults(func=_cmd_backtest)
 
