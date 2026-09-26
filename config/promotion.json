@@ -48,12 +48,35 @@
       "elo": 0.19151672338386821
     },
     "ensemble_calibrator": "platt/season",
+    "market_blend": {
+      "market_weight_floor": 0.75,
+      "weight_by_season": {
+        "2023": 0.75,
+        "2024": 1.0,
+        "2025": 1.0
+      },
+      "gate_interpretation": "pure_model_must_beat_market_before_lowering_floor",
+      "blend_non_worse_than_market": false,
+      "logloss": {
+        "blend_walk_forward": 0.5291984509808328,
+        "blend_at_floor": 0.5297451376428729,
+        "pure_model_w0": 0.5560198897180169,
+        "pure_market_w1": 0.5286617918111667
+      },
+      "brier": {
+        "blend_walk_forward": 0.17823132625357618,
+        "blend_at_floor": 0.1782609072862495,
+        "pure_model_w0": 0.18835862683554938,
+        "pure_market_w1": 0.1780952461252441
+      },
+      "_comment": "beat_market gate applies to pure calibrated ensemble, not the floor-constrained blend. High w makes blend\u2248market so a blend-based beat_market gate would be nearly tautological / gameable. Lower market_weight_floor only after pure model beats market OOS; until then live scoring should keep the floor."
+    },
     "gate_passed": false,
     "failures": [
-      "require_oos_logloss_beat_market: beat_market=False (need ensemble_logloss < market_logloss on same-game set)",
+      "require_oos_logloss_beat_market: beat_market=False (need pure calibrated ensemble_logloss < market_logloss on same-game set; blend-with-floor is evidence-only and does not satisfy this gate)",
       "calibration_gap 0.0370 > max_abs_calibration_gap 0.03"
     ],
-    "evaluated_utc": "2026-09-26T06:25:08+00:00"
+    "evaluated_utc": "2026-09-26T06:38:23+00:00"
   },
   "_comment": "Two-key gate: BOTH a sample-size floor AND demonstrated out-of-sample skill. While status is 'shadow', no CORE tier is emitted and every artifact is stamped UNPROMOTED. Never hand-edit status to 'promoted' - it is set by `cfb-analytics backtest --promote` on passing evidence."
 }

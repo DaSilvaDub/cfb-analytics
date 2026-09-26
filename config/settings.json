@@ -15,7 +15,7 @@
   },
   "blend": {
     "market_weight_floor": 0.75,
-    "_comment": "Model side is capped at 1 - floor = 0.25 until a segment shows out-of-sample Brier improvement."
+    "_comment": "Model side is capped at 1 - floor = 0.25 until pure calibrated ensemble beats market OOS (promotion beat_market). Applied in backtest/promote market-blend evidence via models/market_blend.py; live CORE emission should call config.market_weight_floor() / blend_with_market when emitting blended probs. Do not redefine beat_market onto the blend."
   },
   "parlay": {
     "min_legs": 3,

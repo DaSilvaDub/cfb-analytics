@@ -85,6 +85,15 @@ from cfb_analytics.backtest.prob_calibrate import (
     TimedProb,
     walk_forward_calibrate,
 )
+from cfb_analytics.backtest.market_blend_fit import (
+    BlendRow,
+    score_fixed_weight,
+    walk_forward_market_blend,
+)
+from cfb_analytics.models.market_blend import (
+    DEFAULT_MARKET_WEIGHT_FLOOR,
+    market_weight_floor_from_settings,
+)
 from cfb_analytics.models.elo import DEFAULT_K as DEFAULT_ELO_K
 from cfb_analytics.models.elo import HFA_ELO_POINTS
 from cfb_analytics.models.ensemble import pool_probabilities
@@ -159,6 +168,18 @@ class SameGameSetEvidence:
     median_clv_non_negative: bool | None
     calibration_method: str | None = None
     clv_formula: str = CLV_FORMULA
+    # Market blend (settings.blend.market_weight_floor) — evidence only.
+    # beat_market stays on pure calibrated ensemble (skill to lower the floor).
+    market_weight_floor: float | None = None
+    blend_weight_by_season: dict[int, float] | None = None
+    blend_fitted: SliceMetrics | None = None  # walk-forward w in [floor, 1]
+    blend_at_floor: SliceMetrics | None = None  # fixed w=floor
+    blend_pure_model: SliceMetrics | None = None  # w=0 bracket (ignores floor)
+    blend_pure_market: SliceMetrics | None = None  # w=1 bracket
+    blend_non_worse_than_market: bool | None = None
+    blend_gate_interpretation: str = (
+        "pure_model_must_beat_market_before_lowering_floor"
+    )
 
 
 @dataclass(frozen=True)
@@ -511,6 +532,44 @@ def _same_game_set_text(sgs: SameGameSetEvidence) -> list[str]:
         lines.append(f"  CLV formula: {sgs.clv_formula}")
     else:
         lines.append("  median CLV: N/A (no overlap)")
+
+    lines.append("")
+    lines.append("  -- market blend (settings.blend.market_weight_floor) --")
+    if sgs.market_weight_floor is not None:
+        lines.append(f"  market_weight_floor            : {sgs.market_weight_floor:.2f}")
+    if sgs.blend_weight_by_season:
+        wtxt = ", ".join(
+            f"{season}={w:.2f}" for season, w in sorted(sgs.blend_weight_by_season.items())
+        )
+        lines.append(f"  walk-forward w by season       : {wtxt}")
+    for label, slice_ in (
+        ("blend walk-forward (w>=floor)", sgs.blend_fitted),
+        ("blend fixed w=floor", sgs.blend_at_floor),
+        ("pure model w=0 (bracket)", sgs.blend_pure_model),
+        ("pure market w=1 (bracket)", sgs.blend_pure_market),
+    ):
+        if slice_ is None:
+            continue
+        lines.append(
+            f"  [{label}] n={slice_.n_games}  "
+            f"brier={slice_.brier:.4f}  log_loss={slice_.log_loss:.4f}"
+        )
+    if sgs.blend_non_worse_than_market is not None and sgs.market is not None:
+        verb = "non-worse than" if sgs.blend_non_worse_than_market else "WORSE than"
+        bf = sgs.blend_fitted
+        if bf is not None:
+            lines.append(
+                f"    blend walk-forward {verb} market on log loss "
+                f"({bf.log_loss:.4f} vs {sgs.market.log_loss:.4f})"
+            )
+    lines.append(
+        f"  blend gate interpretation       : {sgs.blend_gate_interpretation}"
+    )
+    lines.append(
+        "  NOTE: beat_market gate stays on pure calibrated ensemble "
+        "(skill to justify lowering floor). High w makes blend≈market; "
+        "redefining beat_market on the blend would game the gate."
+    )
     return lines
 
 
@@ -556,6 +615,7 @@ def _build_same_game_set(
     market_min_books: int,
     ensemble_calibrated_by_game: dict[str, float] | None = None,
     calibration_method: str | None = None,
+    market_weight_floor: float = DEFAULT_MARKET_WEIGHT_FLOOR,
 ) -> SameGameSetEvidence | None:
     """Score market / ensemble / ridge / Elo on the identical overlap set.
 
@@ -596,6 +656,7 @@ def _build_same_game_set(
             median_clv_bps=None,
             median_clv_non_negative=None,
             calibration_method=calibration_method,
+            market_weight_floor=float(market_weight_floor),
         )
 
     market_probs: list[Prediction] = [
@@ -658,6 +719,61 @@ def _build_same_game_set(
     med_bps = (med_clv * 10_000.0) if med_clv is not None else None
     med_nonneg = (med_clv >= 0.0) if med_clv is not None else None
 
+    # Market blend evidence: walk-forward w in [floor, 1] on calibrated ensemble.
+    # Pure-model (w=0) and pure-market (w=1) brackets ignore the floor clamp so
+    # the report shows the full range; fitted / at-floor respect the floor.
+    blend_fitted_slice = None
+    blend_at_floor_slice = None
+    blend_pure_model_slice = None
+    blend_pure_market_slice = None
+    blend_w_by_season: dict[int, float] | None = None
+    blend_non_worse: bool | None = None
+    floor = float(market_weight_floor)
+    if ensemble_cal_probs and paired_market_for_ensemble:
+        blend_rows: list[BlendRow] = []
+        # Rebuild in overlap order matching ensemble_cal_probs construction.
+        if ensemble_weights is not None:
+            for prediction in overlap_preds:
+                member_probs = _member_probs(prediction, sigma_0)
+                available = {
+                    name: w
+                    for name, w in ensemble_weights.items()
+                    if name in member_probs
+                }
+                if not available or sum(available.values()) <= 0:
+                    continue
+                p_raw = pool_probabilities(member_probs, available)
+                p_ens = cal_map.get(prediction.game_id, p_raw)
+                blend_rows.append(
+                    BlendRow(
+                        season=prediction.season,
+                        p_market=market_home[prediction.game_id],
+                        p_model=p_ens,
+                        won=prediction.home_won,
+                        key=prediction.game_id,
+                    )
+                )
+        if blend_rows:
+            wf = walk_forward_market_blend(blend_rows, floor=floor)
+            blend_w_by_season = dict(wf.weight_by_season)
+            blend_fitted_slice = _score_slice(
+                f"market blend walk-forward (floor={floor:.2f})", wf.blended
+            )
+            blend_at_floor_slice = _score_slice(
+                f"market blend fixed w={floor:.2f}",
+                score_fixed_weight(blend_rows, floor, floor=floor),
+            )
+            # Brackets: pass floor=0 so w=0 is truly pure model.
+            blend_pure_model_slice = _score_slice(
+                "pure model w=0 (bracket)",
+                score_fixed_weight(blend_rows, 0.0, floor=0.0),
+            )
+            blend_pure_market_slice = _score_slice(
+                "pure market w=1 (bracket)",
+                score_fixed_weight(blend_rows, 1.0, floor=floor),
+            )
+            blend_non_worse = blend_fitted_slice.log_loss <= market_slice.log_loss
+
     return SameGameSetEvidence(
         n_full=n_full,
         n_overlap=n_overlap,
@@ -675,6 +791,13 @@ def _build_same_game_set(
         median_clv_bps=med_bps,
         median_clv_non_negative=med_nonneg,
         calibration_method=calibration_method,
+        market_weight_floor=floor,
+        blend_weight_by_season=blend_w_by_season,
+        blend_fitted=blend_fitted_slice,
+        blend_at_floor=blend_at_floor_slice,
+        blend_pure_model=blend_pure_model_slice,
+        blend_pure_market=blend_pure_market_slice,
+        blend_non_worse_than_market=blend_non_worse,
     )
 
 
@@ -894,6 +1017,9 @@ def run_moneyline_backtest(
             f"consensus with n_books>={market_min_books}"
         )
 
+    blend_settings = _config.settings()
+    market_weight_floor = market_weight_floor_from_settings(blend_settings)
+
     same_game_set = _build_same_game_set(
         fit_predictions=fit_predictions,
         market_home=market_home,
@@ -902,6 +1028,7 @@ def run_moneyline_backtest(
         market_min_books=market_min_books,
         ensemble_calibrated_by_game=ensemble_cal_by_game or None,
         calibration_method=cal_method_label,
+        market_weight_floor=market_weight_floor,
     )
 
     return MoneylineBacktestReport(

@@ -127,6 +127,37 @@ def build_promotion_evidence(
         if sgs.elo is not None:
             evidence["logloss"]["elo"] = sgs.elo.log_loss
             evidence["brier"]["elo"] = sgs.elo.brier
+        # Market blend evidence (floor discipline). beat_market stays on pure model.
+        evidence["market_blend"] = {
+            "market_weight_floor": sgs.market_weight_floor,
+            "weight_by_season": (
+                {str(k): v for k, v in sorted(sgs.blend_weight_by_season.items())}
+                if sgs.blend_weight_by_season
+                else None
+            ),
+            "gate_interpretation": sgs.blend_gate_interpretation,
+            "blend_non_worse_than_market": sgs.blend_non_worse_than_market,
+            "logloss": {},
+            "brier": {},
+        }
+        mb = evidence["market_blend"]
+        for key, slice_ in (
+            ("blend_walk_forward", sgs.blend_fitted),
+            ("blend_at_floor", sgs.blend_at_floor),
+            ("pure_model_w0", sgs.blend_pure_model),
+            ("pure_market_w1", sgs.blend_pure_market),
+        ):
+            if slice_ is None:
+                continue
+            mb["logloss"][key] = slice_.log_loss
+            mb["brier"][key] = slice_.brier
+        mb["_comment"] = (
+            "beat_market gate applies to pure calibrated ensemble, not the "
+            "floor-constrained blend. High w makes blend≈market so a "
+            "blend-based beat_market gate would be nearly tautological / "
+            "gameable. Lower market_weight_floor only after pure model beats "
+            "market OOS; until then live scoring should keep the floor."
+        )
     return evidence
 
 
@@ -161,7 +192,9 @@ def evaluate_promotion(
         if beat is not True:
             failures.append(
                 f"require_oos_logloss_beat_market: beat_market={beat!r} "
-                f"(need ensemble_logloss < market_logloss on same-game set)"
+                f"(need pure calibrated ensemble_logloss < market_logloss "
+                f"on same-game set; blend-with-floor is evidence-only and "
+                f"does not satisfy this gate)"
             )
 
     if cfg.get("require_median_clv_non_negative", True):
