@@ -36,3 +36,17 @@
 - Acceptance **A4 passed**. Thin feed-wide ML rate (~52%) is mostly non-store / FCS games; among FBS store games with closable MLs we hit 97.5%.
 - `historical_cfbd_min-books=1` used for baseline-only rebuild (documented; not for live CORE).
 - Local DB only — publishing historical odds onto the `data` branch is a separate ops decision (gzip size / daily ingest scope).
+
+---
+
+## Expansion — 2023 + 2025 (2026-09-26 ET)
+
+Same CLI: `backfill-lines --year {Y} --rebuild-market --historical-cfbd-min-books 1`
+
+| Season | Join rate (ML close / FBS) | Odds rows (cumulative source) |
+|---|---:|---|
+| 2023 | 0.937 | +17928 |
+| 2024 | 0.975 | (prior) |
+| 2025 | ≥0.85 (CLI 1.010†) | +23150 |
+
+A2 still 0. See `docs/scorecards/moneyline_scorecard_2023_2025_with_market.md`.
