@@ -2,11 +2,12 @@
 
 | Field | Value |
 |---|---|
-| Generated | **2026-09-26 ~00:05 EDT** |
+| Generated | **2026-09-26 ~00:13 EDT** |
 | Code | `feat/cfbd-historical-lines-2024` (PR #17) |
 | DB | local `data/cfb.sqlite3` after historical backfill for **2023, 2024, 2025** |
-| Command | `cli backtest --start-year 2023 --end-year 2025` |
-| Promotion | `config/promotion.json` **status=`shadow`** (unchanged) |
+| Command | `cli backtest --start-year 2023 --end-year 2025 --promote` |
+| Market floor | `historical_cfbd_min_books=1` (baseline-only; CFBD provider counts are thin) |
+| Promotion | `config/promotion.json` **status=`shadow`** (gates fail-closed) |
 
 ## Historical backfill join rates (A4)
 
@@ -19,9 +20,7 @@
 
 † Denominator is the CLI’s FBS filter; a few priced games sit outside that count. Treat as ≥0.85 pass, not literal over-coverage.
 
-Three seasons with leakage-safe closes now exist locally → `min_seasons_backtested: 3` **sample-size** dimension is meetable for market evidence. Gate still not flipped.
-
-## Results (2023–2025 excl. 2020)
+## Full walk-forward (headline n; not the promote compare)
 
 | Model | n | Brier | Log loss |
 |---|---:|---:|---:|
@@ -30,26 +29,56 @@ Three seasons with leakage-safe closes now exist locally → `min_seasons_backte
 | Internal Elo | 2126 | 0.1856 | 0.5469 |
 | P_logit | 2204 | 0.2045 | 0.5971 |
 | **Ensemble** | **2204** | **0.1801** | **0.5320** |
-| **Market close** | **1307** | **0.1846** | **0.5461** |
+| Market close (covered subset) | 2103 | 0.1781 | 0.5287 |
 
-- Ensemble beats ridge (0.5320 vs 0.5680).
-- Report line: ridge does not beat market (0.5680 vs 0.5461) — **caveat:** market n=1307 is the covered subset; 897 ridge games lacked close ML consensus. Honest gate compare must score ensemble/ridge on the **same** 1307 games (follow-up wiring if not already identical in `--promote`).
-- Skipped (no close ML consensus): 897.
-- SP+-only still N/A.
+Skipped (no close ML consensus at `min_books>=1`): **101**. Always printed; never silent.
+
+## Same-game-set promote evidence (honest overlap)
+
+Promotion candidate = **ensemble**. Metrics below share the **identical** game set
+(model prediction ∩ vig-free close P(home)).
+
+| Model | n | Brier | Log loss |
+|---|---:|---:|---:|
+| **Market close** | **2103** | **0.1781** | **0.5287** |
+| **Ensemble** | **2103** | **0.1881** | **0.5548** |
+| Ridge | 2103 | 0.1964 | 0.5934 |
+| Elo-only | 2067 | 0.1915 | 0.5650 |
+
+| Gate field | Value |
+|---|---|
+| n_full / n_overlap / skipped | 2204 / **2103** / 101 |
+| seasons_with_overlap | 2023, 2024, 2025 |
+| `beat_market` (ensemble_ll < market_ll) | **false** (0.5548 vs 0.5287) |
+| median CLV (model-vs-close) | **+0.0004** prob-pts (**+3.7 bps**); `median_clv_non_negative=true` |
+| calibration_gap (ensemble reliability, n≥100) | **0.0659** (> 0.03) |
+
+### CLV formula (model-vs-close)
+
+Open ML is typically N/A from CFBD, so promote evidence uses **model-vs-close**
+probability CLV on the side the model favors:
+
+- if `p_model >= 0.5` (favors home): `clv = p_close - p_model`
+- else (favors away): `clv = p_model - p_close`
+
+Units: probability points (0.01 = 1pp); bps = 10000 × points. Positive ⇒ close
+assigned more probability to the model’s favored side than the model did
+(classic “better number than close”).
 
 ## Gate implication (still shadow)
 
-| Promotion need | Status after this expand |
+| Promotion need | Status |
 |---|---|
-| ≥3 seasons backtested with market | **Locally yes** (2023–25) |
-| OOS logloss beat market (same game set) | **Not decided** — ensemble headline logloss looks better than market but n differs; confirm apples-to-apples before any claim |
-| Median CLV ≥ 0 | **Not computed** in this scorecard |
-| Calibration gap ≤ 0.03 | Not re-run formally here |
-| `status` flip | **No** — stays `shadow` |
+| ≥1500 settled overlap games | **pass** (2103) |
+| ≥3 seasons with overlap | **pass** (2023–25) |
+| OOS logloss beat market (same set) | **fail** |
+| Median CLV ≥ 0 | **pass** (+3.7 bps) |
+| Calibration gap ≤ 0.03 | **fail** (0.0659) |
+| `status` flip | **No** — stays `shadow` (fail-closed) |
 
-## Next
+## Implementation notes
 
-1. Apples-to-apples market-overlap metrics in `backtest/moneyline.py` / `--promote` evidence JSON.
-2. Median CLV (model/open vs close) on the covered set.
-3. Ops: publish historical `cfbd_historical` odds onto `data` branch (gzip size) so CI/others share the store — separate from this model PR.
-4. Optional: backfill 2021–2022 for robustness (skip 2020 as primary market year).
+- `cfb_analytics/backtest/moneyline.py` — same-game-set section + CLV helpers
+- `cfb_analytics/backtest/promote.py` — gate eval + evidence JSON write
+- `cfb-analytics backtest --promote` — prints evidence; writes `config/promotion.json`
+- Headline “ridge vs market” compare on mismatched n is **removed**; use same-game-set
