@@ -94,6 +94,12 @@ from cfb_analytics.models.market_blend import (
     DEFAULT_MARKET_WEIGHT_FLOOR,
     market_weight_floor_from_settings,
 )
+from cfb_analytics.features.open_market_prior import (
+    OPEN_MARKET_PRIOR_MAX_WEEK,
+    OPEN_MARKET_PRIOR_WEIGHT,
+    load_open_home_spreads,
+    open_spread_to_home_prob,
+)
 from cfb_analytics.models.elo import DEFAULT_K as DEFAULT_ELO_K
 from cfb_analytics.models.elo import HFA_ELO_POINTS
 from cfb_analytics.models.ensemble import pool_probabilities
@@ -119,6 +125,17 @@ DEFAULT_SEASONS = tuple(range(2014, 2026))
 # 5+. See docs/scorecards/moneyline_scorecard_2023_2025_early_season.md.
 EARLY_SEASON_MAX_WEEK = 4
 EARLY_SEASON_RIDGE_SIGMA_SCALE = 1.5
+
+# Opening-line market prior for weeks 1–2 (spike 2026-09-26). Uses CFBD
+# spreadOpen @ kickoff-7d only — never close. When an open HOME spread exists,
+# the ensemble raw prob is replaced (weight=1.0) / blended toward the
+# open-implied Phi(-spread/sigma) for weeks ≤ OPEN_MARKET_PRIOR_MAX_WEEK.
+# Week-1 games skipped by the ridge min_games blackout are unlocked as
+# open-only synthetic predictions so promote overlap covers week 1 without
+# bare Elo/ridge priors (those lost to market by ~0.13 LL). See
+# docs/scorecards/moneyline_scorecard_2023_2025_market_prior_early.md.
+# Note: open≈close, so W1–2 rows partially borrow market info vs the close
+# baseline; beat_market still fails full-season and promotion stays shadow.
 
 
 @dataclass(frozen=True)
@@ -458,34 +475,161 @@ def _member_probs(prediction: GamePrediction, sigma_0: float) -> dict[str, float
     return probs
 
 
+def _blend_open_prior(p_model: float, p_open: float, weight: float) -> float:
+    """Log-odds blend of model toward open-implied market prior."""
+    w = max(0.0, min(1.0, float(weight)))
+    if w <= 0.0:
+        return p_model
+    if w >= 1.0:
+        return p_open
+    return pool_probabilities(
+        {"model": p_model, "open_mkt": p_open},
+        {"model": 1.0 - w, "open_mkt": w},
+    )
+
+
+def _ensemble_raw_prob(
+    prediction: GamePrediction,
+    sigma_0: float,
+    weights: dict[str, float],
+    open_spreads: dict[str, float] | None = None,
+    *,
+    open_prior_max_week: int = OPEN_MARKET_PRIOR_MAX_WEEK,
+    open_prior_weight: float = OPEN_MARKET_PRIOR_WEIGHT,
+) -> float | None:
+    """Ensemble P(home), with optional weeks-1–2 open-spread prior."""
+    member_probs = _member_probs(prediction, sigma_0)
+    available = {name: w for name, w in weights.items() if name in member_probs}
+    if not available or sum(available.values()) <= 0:
+        return None
+    p = pool_probabilities(member_probs, available)
+    if (
+        open_spreads
+        and open_prior_weight > 0
+        and prediction.week <= open_prior_max_week
+    ):
+        spread = open_spreads.get(prediction.game_id)
+        if spread is not None:
+            p_open = open_spread_to_home_prob(spread, sigma_0)
+            p = _blend_open_prior(p, p_open, open_prior_weight)
+    return p
+
+
+def _week1_open_prior_predictions(
+    conn: sqlite3.Connection,
+    seasons: list[int] | tuple[int, ...],
+    *,
+    sigma_0: float,
+    existing_ids: set[str],
+) -> list[GamePrediction]:
+    """Synthesize week-1 predictions from open spread when ridge blacked out.
+
+    ``predicted_margin = -open_spread`` and ``internal_elo_win_prob`` =
+    open-implied P(home) so the ensemble (and open-prior replace) both land
+    on the opening line. Logit left absent (insufficient history).
+    """
+    if not seasons:
+        return []
+    placeholders = ",".join("?" * len(seasons))
+    rows = conn.execute(
+        f"""
+        SELECT game_id, season, week, home_team_id, away_team_id,
+               neutral_site, home_points, away_points
+        FROM games
+        WHERE season IN ({placeholders})
+          AND season_type = 'regular'
+          AND week = 1
+          AND completed = 1
+          AND home_points IS NOT NULL AND away_points IS NOT NULL
+        """,
+        tuple(seasons),
+    ).fetchall()
+    candidates = []
+    for row in rows:
+        gid = str(row["game_id"] if isinstance(row, sqlite3.Row) else row[0])
+        if gid in existing_ids:
+            continue
+        candidates.append(row)
+    if not candidates:
+        return []
+    ids = [
+        str(r["game_id"] if isinstance(r, sqlite3.Row) else r[0]) for r in candidates
+    ]
+    spreads = load_open_home_spreads(conn, ids)
+    out: list[GamePrediction] = []
+    for row in candidates:
+        if isinstance(row, sqlite3.Row):
+            gid = str(row["game_id"])
+            season = int(row["season"])
+            week = int(row["week"])
+            home_id = str(row["home_team_id"])
+            away_id = str(row["away_team_id"])
+            neutral = bool(row["neutral_site"])
+            actual = float(row["home_points"]) - float(row["away_points"])
+        else:
+            gid = str(row[0])
+            season = int(row[1])
+            week = int(row[2])
+            home_id = str(row[3])
+            away_id = str(row[4])
+            neutral = bool(row[5])
+            actual = float(row[6]) - float(row[7])
+        spread = spreads.get(gid)
+        if spread is None:
+            continue
+        margin = -float(spread)
+        p_open = open_spread_to_home_prob(spread, sigma_0)
+        out.append(
+            GamePrediction(
+                game_id=gid,
+                season=season,
+                week=week,
+                home_team_id=home_id,
+                away_team_id=away_id,
+                neutral_site=neutral,
+                predicted_margin=margin,
+                actual_margin=actual,
+                elo_home_rating=None,
+                elo_away_rating=None,
+                internal_elo_win_prob=p_open,
+                logit_win_prob=None,
+            )
+        )
+    return out
+
+
 def _ensemble_predictions(
-    predictions: list[GamePrediction], sigma_0: float, weights: dict[str, float]
+    predictions: list[GamePrediction],
+    sigma_0: float,
+    weights: dict[str, float],
+    open_spreads: dict[str, float] | None = None,
 ) -> list[Prediction]:
     result: list[Prediction] = []
     for prediction in predictions:
-        member_probs = _member_probs(prediction, sigma_0)
-        available = {name: w for name, w in weights.items() if name in member_probs}
-        if not available or sum(available.values()) <= 0:
+        p = _ensemble_raw_prob(prediction, sigma_0, weights, open_spreads)
+        if p is None:
             continue
-        result.append((pool_probabilities(member_probs, available), prediction.home_won))
+        result.append((p, prediction.home_won))
     return result
 
 
 def _ensemble_timed_probs(
-    predictions: list[GamePrediction], sigma_0: float, weights: dict[str, float]
+    predictions: list[GamePrediction],
+    sigma_0: float,
+    weights: dict[str, float],
+    open_spreads: dict[str, float] | None = None,
 ) -> list[TimedProb]:
     """Raw ensemble P(home) with (season, week) for walk-forward calibration."""
     rows: list[TimedProb] = []
     for prediction in predictions:
-        member_probs = _member_probs(prediction, sigma_0)
-        available = {name: w for name, w in weights.items() if name in member_probs}
-        if not available or sum(available.values()) <= 0:
+        p = _ensemble_raw_prob(prediction, sigma_0, weights, open_spreads)
+        if p is None:
             continue
         rows.append(
             TimedProb(
                 season=prediction.season,
                 week=prediction.week,
-                p=pool_probabilities(member_probs, available),
+                p=p,
                 won=prediction.home_won,
                 key=prediction.game_id,
             )
@@ -648,6 +792,7 @@ def _build_same_game_set(
     ensemble_calibrated_by_game: dict[str, float] | None = None,
     calibration_method: str | None = None,
     market_weight_floor: float = DEFAULT_MARKET_WEIGHT_FLOOR,
+    open_spreads: dict[str, float] | None = None,
 ) -> SameGameSetEvidence | None:
     """Score market / ensemble / ridge / Elo on the identical overlap set.
 
@@ -708,15 +853,11 @@ def _build_same_game_set(
     cal_map = ensemble_calibrated_by_game or {}
     if ensemble_weights is not None:
         for prediction in overlap_preds:
-            member_probs = _member_probs(prediction, sigma_0)
-            available = {
-                name: w
-                for name, w in ensemble_weights.items()
-                if name in member_probs
-            }
-            if not available or sum(available.values()) <= 0:
+            p_raw = _ensemble_raw_prob(
+                prediction, sigma_0, ensemble_weights, open_spreads
+            )
+            if p_raw is None:
                 continue
-            p_raw = pool_probabilities(member_probs, available)
             p_ens = cal_map.get(prediction.game_id, p_raw)
             p_mkt = market_home[prediction.game_id]
             ensemble_cal_probs.append((p_ens, prediction.home_won))
@@ -766,15 +907,11 @@ def _build_same_game_set(
         # Rebuild in overlap order matching ensemble_cal_probs construction.
         if ensemble_weights is not None:
             for prediction in overlap_preds:
-                member_probs = _member_probs(prediction, sigma_0)
-                available = {
-                    name: w
-                    for name, w in ensemble_weights.items()
-                    if name in member_probs
-                }
-                if not available or sum(available.values()) <= 0:
+                p_raw = _ensemble_raw_prob(
+                    prediction, sigma_0, ensemble_weights, open_spreads
+                )
+                if p_raw is None:
                     continue
-                p_raw = pool_probabilities(member_probs, available)
                 p_ens = cal_map.get(prediction.game_id, p_raw)
                 blend_rows.append(
                     BlendRow(
@@ -903,6 +1040,8 @@ def run_moneyline_backtest(
     ensemble_calibrator: Method = "platt",
     ensemble_calibrator_min_fit_n: int = 200,
     ensemble_calibrator_fold: Fold = "season",
+    use_open_market_prior: bool = True,
+    unlock_week1_open_prior: bool = True,
 ) -> MoneylineBacktestReport:
     run = run_walk_forward(
         conn, list(seasons), ridge_lambda=ridge_lambda, min_games=min_games,
@@ -914,6 +1053,20 @@ def run_moneyline_backtest(
     stress_predictions = [p for p in run.predictions if p.season in STRESS_SEASONS]
 
     sigma_0 = calibrate_sigma([p.actual_margin - p.predicted_margin for p in fit_predictions])
+
+    # Week-1 open-prior unlock (ridge blackout at min_games). Appended after
+    # sigma fit so residuals stay ridge-only; open-only rows do not re-fit sigma.
+    if use_open_market_prior and unlock_week1_open_prior:
+        existing = {p.game_id for p in run.predictions}
+        unlocked = _week1_open_prior_predictions(
+            conn, seasons, sigma_0=sigma_0, existing_ids=existing,
+        )
+        fit_predictions = fit_predictions + [
+            p for p in unlocked if p.season not in STRESS_SEASONS
+        ]
+        stress_predictions = stress_predictions + [
+            p for p in unlocked if p.season in STRESS_SEASONS
+        ]
 
     def to_probs(preds: list[GamePrediction]) -> list[Prediction]:
         return [(_ridge_prob(p, sigma_0), p.home_won) for p in preds]
@@ -963,6 +1116,13 @@ def run_moneyline_backtest(
         else None
     )
 
+    open_spreads: dict[str, float] | None = None
+    if use_open_market_prior:
+        open_ids = [p.game_id for p in fit_predictions] + [
+            p.game_id for p in stress_predictions
+        ]
+        open_spreads = load_open_home_spreads(conn, open_ids)
+
     ensemble_fit_member_probs = [_member_probs(p, sigma_0) for p in fit_predictions]
     ensemble_fit_outcomes = [p.home_won for p in fit_predictions]
     ensemble_weights = (
@@ -979,7 +1139,9 @@ def run_moneyline_backtest(
     ensemble_cal_by_game: dict[str, float] = {}
     cal_method_label: str | None = None
     if ensemble_weights is not None:
-        timed = _ensemble_timed_probs(fit_predictions, sigma_0, ensemble_weights)
+        timed = _ensemble_timed_probs(
+            fit_predictions, sigma_0, ensemble_weights, open_spreads
+        )
         if timed:
             cal_preds, raw_preds, ensemble_cal_by_game = _calibrate_timed(
                 timed,
@@ -997,7 +1159,7 @@ def run_moneyline_backtest(
                 raw_preds,
             )
         ensemble_stress_probs = _ensemble_predictions(
-            stress_predictions, sigma_0, ensemble_weights
+            stress_predictions, sigma_0, ensemble_weights, open_spreads
         )
         if ensemble_stress_probs:
             # Stress slice: fit calibrator on all non-stress games, apply once.
@@ -1061,6 +1223,7 @@ def run_moneyline_backtest(
         ensemble_calibrated_by_game=ensemble_cal_by_game or None,
         calibration_method=cal_method_label,
         market_weight_floor=market_weight_floor,
+        open_spreads=open_spreads,
     )
 
     return MoneylineBacktestReport(
