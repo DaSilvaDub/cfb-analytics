@@ -67,7 +67,7 @@ def export_reasoning_json(
 ) -> str:
     """Serialize ReasoningCard instances and optional verdicts to structured JSON."""
     is_single = isinstance(cards, ReasoningCard)
-    card_list: Sequence[ReasoningCard] = [cards] if is_single else cards
+    card_list: Sequence[ReasoningCard] = [cards] if isinstance(cards, ReasoningCard) else cards
 
     records: list[dict[str, Any]] = []
     for idx, card in enumerate(card_list):
@@ -138,7 +138,9 @@ def export_mispriced_json(
 ) -> str:
     """Serialize MispricedOpportunity instances and optional verdicts to structured JSON."""
     is_single = isinstance(opportunities, MispricedOpportunity)
-    opp_list: Sequence[MispricedOpportunity] = [opportunities] if is_single else opportunities
+    opp_list: Sequence[MispricedOpportunity] = (
+        [opportunities] if isinstance(opportunities, MispricedOpportunity) else opportunities
+    )
 
     records: list[dict[str, Any]] = []
     for idx, opp in enumerate(opp_list):
@@ -203,7 +205,9 @@ def export_parlay_json(
 ) -> str:
     """Serialize ParlayTicket instances to structured JSON."""
     is_single = isinstance(tickets, ParlayTicket)
-    ticket_list: Sequence[ParlayTicket] = [tickets] if is_single else tickets
+    ticket_list: Sequence[ParlayTicket] = (
+        [tickets] if isinstance(tickets, ParlayTicket) else tickets
+    )
 
     serialized_tickets = [t.to_dict() for t in ticket_list]
 
@@ -260,7 +264,9 @@ def export_board_json(
             "flags": json.loads(r["flags"] or "[]")
             if ("flags" in r.keys() and isinstance(r["flags"], str))  # noqa: SIM118
             else [],
-            "reasoning_card": card.to_dict() if hasattr(card, "to_dict") else None,
+            "reasoning_card": card.to_dict()
+            if card is not None and hasattr(card, "to_dict")
+            else None,
             "governance_verdict": verdict.to_dict() if verdict else None,
             "disclaimer": SHADOW_MODE_DISCLAIMER,
         }

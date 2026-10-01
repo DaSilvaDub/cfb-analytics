@@ -746,7 +746,7 @@ def _cmd_mispriced(args: argparse.Namespace) -> int:
         legacy_candidates = (
             build_mispriced_board(conn, args.date, min_edge=0.0) if has_games else []
         )
-        raw_candidates = [
+        raw_candidates: list[dict[str, Any]] = [
             {
                 "game_id": c.game_id,
                 "market_type": c.market,
@@ -792,7 +792,9 @@ def _cmd_mispriced(args: argparse.Namespace) -> int:
 
         scanner = MispricedScanner()
         try:
-            opportunities = scanner.scan_slate(args.date, min_edge=args.min_edge)
+            # Legacy (date, min_edge) call shape: the real scan_slate takes
+            # candidates and raises TypeError here, falling through below.
+            opportunities = scanner.scan_slate(args.date, min_edge=args.min_edge)  # type: ignore[call-arg]
         except TypeError:
             try:
                 opportunities = scanner.scan_slate(raw_candidates, reasoning_cards=reasoning_cards)
@@ -823,10 +825,10 @@ def _cmd_mispriced(args: argparse.Namespace) -> int:
         verdicts: dict[str, Any] = {}
         for opp in filtered:
             opp_key = f"{opp.game_id}:{opp.market_type}:{opp.side}"
-            card = reasoning_cards.get(opp_key)
+            opp_card = reasoning_cards.get(opp_key)
             ctx = contexts.get(opp.game_id)
             try:
-                verdict = gate.evaluate_candidate(opp, reasoning_card=card, context=ctx)
+                verdict = gate.evaluate_candidate(opp, reasoning_card=opp_card, context=ctx)
             except Exception:
                 verdict = GovernanceVerdict(
                     candidate_id=opp_key,

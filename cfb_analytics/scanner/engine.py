@@ -489,7 +489,7 @@ class MispricedScanner:
                 opportunities.append(opp)
             elif market_type == "TEAM_PROP":
                 try:
-                    opp = self.scan_team_prop(
+                    prop_opp = self.scan_team_prop(
                         game_id=game_id,
                         market=c["market"],
                         side=c["side"],
@@ -516,8 +516,8 @@ class MispricedScanner:
                         flags=tuple(c.get("flags", ())),
                         data_quality_score=c.get("data_quality_score", 100.0),
                     )
-                    if opp is not None:
-                        opportunities.append(opp)
+                    if prop_opp is not None:
+                        opportunities.append(prop_opp)
                 except PlayerPropProhibitedError:
                     # Player props are strictly discarded or rejected
                     continue
