@@ -61,7 +61,7 @@ def _games_for_slate(conn: sqlite3.Connection, slate_date: str) -> list[dict[str
 
 def _odds_for_game(conn: sqlite3.Connection, game_id: str) -> list[dict[str, Any]]:
     rows = conn.execute(
-        """SELECT game_id, market, side, line, book, price_american, captured_utc
+        """SELECT game_id, market, side, line, book, price_american, captured_utc, source
            FROM odds_snapshots WHERE game_id = ? ORDER BY captured_utc""",
         (game_id,),
     ).fetchall()
@@ -95,22 +95,30 @@ def build_market_for_slate(
             continue
 
         latest_capture = max(r["captured_utc"] for r in admissible)
+        latest_by_source_market: dict[tuple[str, str], str] = {}
+        for row in admissible:
+            key = (row["source"], row["market"])
+            latest_by_source_market[key] = max(
+                latest_by_source_market.get(key, row["captured_utc"]), row["captured_utc"]
+            )
 
         grouped: dict[tuple[str, str, float | None], list[Mapping[str, Any]]] = defaultdict(list)
         for row in admissible:
             if row["market"] not in markets:
                 continue
+            if row["captured_utc"] != latest_by_source_market[row["source"], row["market"]]:
+                continue
             grouped[market.group_key(row)].append(row)
 
         for (game_id, market_code, line), group in grouped.items():
             summary.groups += 1
-            current = [r for r in group if r["captured_utc"] == latest_capture] or group
+            current = group
 
             consensus = market.build_consensus(
                 game_id,
                 market_code,
                 current,
-                as_of_utc=latest_capture,
+                as_of_utc=max(r["captured_utc"] for r in current),
                 sharp_books=sharp_books,
                 min_books_for_consensus=min_books,
             )

@@ -529,20 +529,10 @@ def _cmd_board(args: argparse.Namespace) -> int:
         print("No database yet. Run: cfb-analytics init-db")
         return 1
     with db.open_db() as conn:
-        rows = conn.execute(
-            """SELECT g.game_id, g.kickoff_utc,
-                      ht.alias AS home, at.alias AS away,
-                      c.side, c.consensus_price, c.best_price, c.best_book,
-                      c.prob_shin, c.prob_multiplicative, c.prob_power,
-                      c.prob_spread, c.hold, c.n_books, c.anchor, c.flags
-               FROM market_consensus c
-               JOIN games g ON g.game_id = c.game_id
-               JOIN teams ht ON ht.team_id = g.home_team_id
-               JOIN teams at ON at.team_id = g.away_team_id
-               WHERE g.football_date = ? AND c.market = 'ML'
-               ORDER BY c.prob_shin DESC""",
-            (args.date,),
-        ).fetchall()
+        from cfb_analytics.features.current_market import load_current_market_rows
+
+        rows = [r for r in load_current_market_rows(conn, args.date) if r["market"] == "ML"]
+        rows.sort(key=lambda r: r["prob_shin"] or r["prob_multiplicative"] or 0, reverse=True)
 
         if not rows:
             if getattr(args, "json", False):
@@ -750,7 +740,9 @@ def _cmd_mispriced(args: argparse.Namespace) -> int:
                 "posted_price_american": c.best_price or -110,
                 "consensus_fair_prob": c.consensus_fair_prob,
                 "model_prob": c.model_prob,
-                "projected_margin": c.model_projected if c.market == "SPREAD" else None,
+                # Legacy projections use betting-spread signs; the scanner
+                # expects this side's winning margin (positive = win).
+                "projected_margin": -c.model_projected if c.market == "SPREAD" else None,
                 "projected_total": c.model_projected if c.market == "TOTAL" else None,
                 "projected_value": c.model_projected,
                 "method_spread": c.method_spread,

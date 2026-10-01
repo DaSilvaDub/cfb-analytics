@@ -27,7 +27,12 @@ class RankingsSummary:
 
 
 def _team_name_index(conn: sqlite3.Connection) -> dict[str, str]:
-    rows = conn.execute("SELECT team_id, school, alias, market FROM teams").fetchall()
+    # Legacy Outlier rows share names with CFBD teams but are not canonical
+    # identities. They must not make the CFBD source's own names ambiguous.
+    rows = conn.execute(
+        """SELECT team_id, school, alias, market FROM teams
+           WHERE cfbd_id IS NOT NULL AND team_id = 'cfbd:' || cfbd_id"""
+    ).fetchall()
     resolved: dict[str, str] = {}
     ambiguous: set[str] = set()
     for row in rows:
@@ -43,7 +48,11 @@ def _team_name_index(conn: sqlite3.Connection) -> dict[str, str]:
                 resolved[key] = team_id
     for key in ambiguous:
         resolved.pop(key, None)
-    aliases = conn.execute("SELECT team_id, alias FROM team_aliases").fetchall()
+    aliases = conn.execute(
+        """SELECT a.team_id, a.alias FROM team_aliases a
+           JOIN teams t ON t.team_id = a.team_id
+           WHERE t.cfbd_id IS NOT NULL AND t.team_id = 'cfbd:' || t.cfbd_id"""
+    ).fetchall()
     for row in aliases:
         key = _name_key(row["alias"])
         if not key or key in ambiguous:
