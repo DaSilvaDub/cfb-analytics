@@ -69,7 +69,8 @@ class TestNegativeGateAdversarialVulnerabilities:
         """Verify Rule D tape_edge compares net efficiency margins with correct EPA polarity."""
         gate = NegativeFavoriteGate()
 
-        # Underdog Vanderbilt (+3.5) with mediocre offense (floor EPA = +0.05, def floor EPA = +0.05 -> net = 0.00)
+        # Underdog Vanderbilt (+3.5) with mediocre offense (floor EPA = +0.05, def floor EPA = +0.05
+        # -> net = 0.00)
         dog_tape = TapeProfile(
             honest_games=[{"opp": "LSU", "margin": -7}],
             offensive_floor_epa=0.05,
@@ -78,7 +79,8 @@ class TestNegativeGateAdversarialVulnerabilities:
             defensive_ceiling_epa=0.20,
         )
 
-        # Case 1: Georgia has an ELITE defense allowing -0.25 EPA/play (off floor = 0.20 -> net = 0.45)
+        # Case 1: Georgia has an ELITE defense allowing -0.25 EPA/play (off floor = 0.20 -> net =
+        # 0.45)
         elite_def_tape = TapeProfile(
             honest_games=[{"opp": "Texas", "margin": 14}],
             offensive_floor_epa=0.20,
@@ -100,7 +102,8 @@ class TestNegativeGateAdversarialVulnerabilities:
             "Mediocre offense vs elite defense must NOT clear Rule D tape exception"
         )
 
-        # Case 2: Opponent has a TERRIBLE defense allowing +0.15 EPA/play (off floor = -0.10 -> net = -0.25)
+        # Case 2: Opponent has a TERRIBLE defense allowing +0.15 EPA/play (off floor = -0.10 -> net
+        # = -0.25)
         porous_def_tape = TapeProfile(
             honest_games=[{"opp": "Akron", "margin": 3}],
             offensive_floor_epa=-0.10,
@@ -141,7 +144,9 @@ class TestNegativeGateAdversarialVulnerabilities:
         res = gate.evaluate(ctx, market="TEAM_PROP", side="OVER", line=42.5)
 
         # Verified: Home team's missing QB and trench attrition are evaluated and vetoed
-        assert res.is_vetoed is True, "Home team prop OVER must evaluate and veto on home team injuries"
+        assert res.is_vetoed is True, (
+            "Home team prop OVER must evaluate and veto on home team injuries"
+        )
         assert "unconfirmed_qb_disqualification" in res.disqualifying_reasons
         assert res.gate_status == "VETOED"
 
@@ -164,7 +169,9 @@ class TestNegativeGateAdversarialVulnerabilities:
         card = engine.evaluate_candidate(
             ctx, market="SPREAD", side="HOME", line=-6.0, edge_pct=0.08
         )
-        assert card.tier == "AVOID", f"Candidate with unconfirmed QB must receive AVOID, got {card.tier}"
+        assert card.tier == "AVOID", (
+            f"Candidate with unconfirmed QB must receive AVOID, got {card.tier}"
+        )
         assert card.confidence <= 4.5
 
     def test_grok_rule_c_parses_unspaced_timestamp(
@@ -190,7 +197,7 @@ class TestNegativeGateAdversarialVulnerabilities:
     def test_moneyline_favorite_without_fair_prob_is_vetoed_on_unconfirmed_qb(
         self, baseline_context: SituationalContext
     ) -> None:
-        """Verify ML favorites with negative American price are audited and vetoed even if fair_prob is None."""
+        """ML favorites with a negative American price are audited and vetoed without fair_prob."""
         ctx = SituationalContext(**{**baseline_context.__dict__, "qb_home_confirmed": False})
         gate = NegativeFavoriteGate()
         res = gate.evaluate(
@@ -210,7 +217,8 @@ class TestNegativeGateAdversarialVulnerabilities:
         self, baseline_context: SituationalContext
     ) -> None:
         """Verify FLAGGED status generates a descriptive counter-thesis string."""
-        # Unsettled QB attempt share (< 0.70) creates a minor warning without critical disqualification
+        # Unsettled QB attempt share (< 0.70) creates a minor warning without critical
+        # disqualification
         ctx = SituationalContext(
             **{
                 **baseline_context.__dict__,

@@ -13,31 +13,31 @@ All models strictly enforce:
 from __future__ import annotations
 
 from dataclasses import dataclass
-from enum import Enum
+from enum import StrEnum
 
 # Mandatory shadow mode disclaimer for unpromoted research output
 SHADOW_MODE_DISCLAIMER: str = "UNPROMOTED - shadow output, not decision-grade"
 
 
-class PlayTier(str, Enum):
+class PlayTier(StrEnum):
     """Candidate wagering recommendation tier based on 0-100 play score."""
 
-    ELITE = "ELITE"          # Score >= 90.0, exceptional edge and confirmation
-    STRONG = "STRONG"        # Score >= 80.0, strong fundamental and pricing edge
+    ELITE = "ELITE"  # Score >= 90.0, exceptional edge and confirmation
+    STRONG = "STRONG"  # Score >= 80.0, strong fundamental and pricing edge
     QUALIFIED = "QUALIFIED"  # Score >= 70.0, baseline threshold for actionable recommendation
-    LEAN = "LEAN"            # Score >= 60.0, marginal positive edge or thin confirmation
-    PASS = "PASS"            # Score < 60.0 or non-positive edge / failed qualification gate
-    AVOID = "AVOID"          # Disqualified or high-risk candidate
+    LEAN = "LEAN"  # Score >= 60.0, marginal positive edge or thin confirmation
+    PASS = "PASS"  # Score < 60.0 or non-positive edge / failed qualification gate
+    AVOID = "AVOID"  # Disqualified or high-risk candidate
 
 
-class QualificationStatus(str, Enum):
+class QualificationStatus(StrEnum):
     """Status emitted by minimum qualification gating criteria."""
 
-    QUALIFIED = "QUALIFIED"                  # Cleared all gates (EV > 0, edge > 0, n_books >= 3, score >= 70)
-    PASS = "PASS"                            # Non-positive edge or non-positive EV
+    QUALIFIED = "QUALIFIED"  # Cleared all gates (EV > 0, edge > 0, n_books >= 3, score >= 70)
+    PASS = "PASS"  # Non-positive edge or non-positive EV
     INSUFFICIENT_DATA = "INSUFFICIENT_DATA"  # Thin books, missing price/fair prob, low quality
-    STALE = "STALE"                          # Odds snapshot expired or stale
-    REVIEW = "REVIEW"                        # Unresolved injury, news flag, or counter-thesis
+    STALE = "STALE"  # Odds snapshot expired or stale
+    REVIEW = "REVIEW"  # Unresolved injury, news flag, or counter-thesis
 
 
 @dataclass(frozen=True)
@@ -91,25 +91,25 @@ class MispricedOpportunity:
     """Immutable data record representing an identified mispriced betting line."""
 
     game_id: str
-    market_type: str                   # 'SPREAD', 'TOTAL', 'TEAM_PROP', 'ML'
-    market: str                        # e.g., 'SPREAD', 'TOTAL', 'POINTS', 'RUSHING_YARDS', 'RECEIVING_YARDS'
-    side: str                          # 'HOME', 'AWAY', 'OVER', 'UNDER'
-    line: float                        # Posted market line
-    posted_price_american: int         # Actionable American price (e.g. -110, +105)
-    posted_price_decimal: float        # Converted decimal price (e.g. 1.909, 2.05)
-    consensus_fair_prob: float         # Vig-free consensus probability (Shin or Multiplicative)
-    consensus_fair_price_american: int # Consensus fair American price
-    model_projected_line: float        # Fundamental model projection (margin, total, yards, points)
-    model_prob: float                  # Model-estimated win / cover probability
-    edge_pct: float                    # model_prob - consensus_fair_prob
-    ev: float                          # Expected Value: model_prob * posted_price_decimal - 1.0
-    method_spread: float               # Disagreement between devig methods: |prob_shin - prob_mult|
-    n_books: int                       # Number of books contributing to consensus
-    play_score: float                  # Candidate play score (0.0 to 100.0)
-    play_tier: str                     # ELITE, STRONG, QUALIFIED, LEAN, PASS
-    qual_status: str                   # QUALIFIED, PASS, INSUFFICIENT_DATA, STALE, REVIEW
+    market_type: str  # 'SPREAD', 'TOTAL', 'TEAM_PROP', 'ML'
+    market: str  # e.g., 'SPREAD', 'TOTAL', 'POINTS', 'RUSHING_YARDS', 'RECEIVING_YARDS'
+    side: str  # 'HOME', 'AWAY', 'OVER', 'UNDER'
+    line: float  # Posted market line
+    posted_price_american: int  # Actionable American price (e.g. -110, +105)
+    posted_price_decimal: float  # Converted decimal price (e.g. 1.909, 2.05)
+    consensus_fair_prob: float  # Vig-free consensus probability (Shin or Multiplicative)
+    consensus_fair_price_american: int  # Consensus fair American price
+    model_projected_line: float  # Fundamental model projection (margin, total, yards, points)
+    model_prob: float  # Model-estimated win / cover probability
+    edge_pct: float  # model_prob - consensus_fair_prob
+    ev: float  # Expected Value: model_prob * posted_price_decimal - 1.0
+    method_spread: float  # Disagreement between devig methods: |prob_shin - prob_mult|
+    n_books: int  # Number of books contributing to consensus
+    play_score: float  # Candidate play score (0.0 to 100.0)
+    play_tier: str  # ELITE, STRONG, QUALIFIED, LEAN, PASS
+    qual_status: str  # QUALIFIED, PASS, INSUFFICIENT_DATA, STALE, REVIEW
     best_book: str | None = None
-    game_label: str = ""               # e.g. "Away at Home"
+    game_label: str = ""  # e.g. "Away at Home"
     kickoff_et: str = ""
     flags: tuple[str, ...] = ()
     rejection_reasons: tuple[str, ...] = ()
@@ -120,7 +120,8 @@ class MispricedOpportunity:
         """True if the opportunity meets all criteria for actionability."""
         return (
             self.qual_status == QualificationStatus.QUALIFIED.value
-            and self.play_tier in (PlayTier.ELITE.value, PlayTier.STRONG.value, PlayTier.QUALIFIED.value)
+            and self.play_tier
+            in (PlayTier.ELITE.value, PlayTier.STRONG.value, PlayTier.QUALIFIED.value)
             and self.edge_pct > 0.0
             and self.ev > 0.0
             and self.n_books >= 3

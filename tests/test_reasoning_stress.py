@@ -1,8 +1,10 @@
 """Empirical Adversarial Stress Test Suite for Milestone 1 Reasoning Engine.
 
 Tests stress oracles and wild boundary cases:
-1. Extreme Weather Oracles: Hurricane (120 kph), Sub-zero (-20°C), Extreme Heat (45°C), Flood Rain (50 mm).
-2. Wild Boundary Oracles: 0 completed games, all-cupcake schedule, missing coordinator data, extreme elevation (3000m).
+1. Extreme Weather Oracles: Hurricane (120 kph), Sub-zero (-20°C), Extreme Heat (45°C), Flood Rain
+   (50 mm).
+2. Wild Boundary Oracles: 0 completed games, all-cupcake schedule, missing coordinator data, extreme
+   elevation (3000m).
 3. Dataclass Immutability & Mutation Leakage Oracles.
 4. Volume Redistribution Conservation & Boundary Saturation Oracles.
 5. Negative Gate Multi-Contradiction Adversarial Stress.
@@ -10,54 +12,31 @@ Tests stress oracles and wild boundary cases:
 
 from __future__ import annotations
 
-from dataclasses import FrozenInstanceError
 import math
+from dataclasses import FrozenInstanceError
+
 import pytest
 
 from cfb_analytics.reasoning.engine import MultiFactorReasoningEngine
 from cfb_analytics.reasoning.models import (
-    SHADOW_MODE_DISCLAIMER,
-    NegativeGateResult,
-    OpponentTier,
-    PlayTier,
     PositionUnitGrades,
     ReasoningCard,
     SituationalContext,
-    TalentProfile,
-    TapeCategory,
-    TapeGame,
     TapeProfile,
-    TravelProfile,
-    TrenchHealth,
-    TrenchMatchupResult,
-    VenueProfile,
-    VolumeRedistribution,
     WeatherProfile,
 )
 from cfb_analytics.reasoning.negative_gate import NegativeFavoriteGate
-from cfb_analytics.reasoning.roster import (
-    build_talent_profile,
-    compute_blue_chip_ratio,
-    compute_true_talent_composite,
-    evaluate_trench_attrition,
-    evaluate_trench_matchup,
-)
 from cfb_analytics.reasoning.tape import (
     analyze_tape,
-    classify_opponent,
-    classify_tape_game,
     create_tape_game,
 )
 from cfb_analytics.reasoning.weather import (
     calculate_altitude_fatigue_tax,
     calculate_fg_range_boost,
-    calculate_haversine_distance_miles,
     calculate_weather_multipliers,
-    evaluate_travel_profile,
     parse_kickoff_et_hour,
     redistribute_pass_to_rush,
 )
-
 
 # ===========================================================================
 # 1. Extreme Weather Oracles
@@ -271,9 +250,7 @@ class TestWildBoundariesOracles:
             coaching_continuity_away=0.0,
         )
         engine = MultiFactorReasoningEngine()
-        card = engine.evaluate_candidate(
-            ctx, market="SPREAD", side="HOME", line=-7.0
-        )
+        card = engine.evaluate_candidate(ctx, market="SPREAD", side="HOME", line=-7.0)
         assert "Staff continuity rating 0.0/1.0" in card.program_continuity_summary
 
     def test_kickoff_hour_parser_robustness(self) -> None:

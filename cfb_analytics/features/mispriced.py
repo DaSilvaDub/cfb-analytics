@@ -13,7 +13,6 @@ and expressed as edge percentage, method spread, and confidence score.
 
 from __future__ import annotations
 
-import math
 import sqlite3
 from dataclasses import dataclass
 from typing import Any
@@ -22,11 +21,9 @@ from cfb_analytics import config
 from cfb_analytics.features.current_market import LATEST_CAPTURE_SQL
 from cfb_analytics.features.over_confidence import format_kickoff_et
 from cfb_analytics.models.team_props import (
-    TeamPropsInputs,
     project_team_production,
 )
 from cfb_analytics.scoring import load_team_props_inputs_for_slate, norm_cdf
-from cfb_analytics.utils import to_utc_iso
 
 # Standard deviations for model probability calculation
 SPREAD_SIGMA = 13.5  # CFB game margin std deviation (~13-14 points)
@@ -366,6 +363,8 @@ def _scan_team_prop_mispricing(
         if home_inputs is None or away_inputs is None:
             continue
 
+        game_id = str(row["game_id"])
+        prop_market = str(row["prop_market"])
         side = row["side"]
         consensus_line = row["line"]
 
@@ -447,8 +446,6 @@ def _load_model_margins(
     Returns {game_id: home_margin} where positive = home favored.
     """
     from cfb_analytics.models.futures import (
-        DEFAULT_HFA_POINTS,
-        DEFAULT_MARGIN_SIGMA,
         project_game_win_probability,
     )
 

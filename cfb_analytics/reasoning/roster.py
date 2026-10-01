@@ -5,7 +5,8 @@ portal net scores, and trench attrition (starting OL/DL injuries with leverage
 weights):
 - 247/On3 True Talent Composite: Recruiting Composite + (Net Portal Composite * 2.75).
 - Blue-Chip Ratio (BCR >= 0.50) and depth analysis.
-- Starting OL/DL trench attrition with snap-share leverage weights; line yards & sack rate distortions.
+- Starting OL/DL trench attrition with snap-share leverage weights; line yards & sack rate
+  distortions.
 - Trench matchup index verifying Grok Rule D (thin dogs are traps) exception gating.
 """
 
@@ -202,7 +203,8 @@ def evaluate_trench_matchup(
         f"Trench Matchup: {offense_team_id} OL (attrition {ol_health.ol_attrition:.0%}) vs "
         f"{defense_team_id} DL (attrition {dl_health.dl_attrition:.0%}). "
         f"Proj Line Yards: {proj_line_yards:.2f}, Proj Sack Rate: {proj_sack_rate:.1%}. "
-        f"Mismatch Score: {trench_mismatch_score:+.2f} ({'DECISIVE' if is_decisive else 'Balanced'})."
+        f"Mismatch Score: {trench_mismatch_score:+.2f} "
+        f"({'DECISIVE' if is_decisive else 'Balanced'})."
     )
 
     return TrenchMatchupResult(

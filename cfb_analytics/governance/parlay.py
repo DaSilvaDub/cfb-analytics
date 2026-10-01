@@ -4,7 +4,8 @@ Constructs, scores, and optimizes 3-to-10 leg moneyline parlays with:
 - Non-linear same-conference, weather volatility, QB news risk, and heavy public favorite penalties.
 - Bounded Fragility Index (Phi in [0.0, 1.0]) and Efficiency Ratio (rho = EV / Phi).
 - Marginal leg value analysis and parasitic leg pruning.
-- Deterministic multi-objective slate search (SAFEST, HIGHEST_EV, BEST_RISK_REWARD, and per-size optimal boards).
+- Deterministic multi-objective slate search (SAFEST, HIGHEST_EV, BEST_RISK_REWARD, and per-size
+  optimal boards).
 
 All algorithms strictly adhere to:
 - Pure Python standard library primitives (math, dataclasses, itertools, typing).
@@ -14,9 +15,10 @@ All algorithms strictly adhere to:
 
 from __future__ import annotations
 
-from enum import Enum
 import itertools
-from typing import Any, Sequence
+from collections.abc import Sequence
+from enum import StrEnum
+from typing import Any
 
 from cfb_analytics.governance.models import (
     SHADOW_MODE_DISCLAIMER,
@@ -31,26 +33,32 @@ from cfb_analytics.governance.models import (
 )
 
 
-class OptimizerMode(str, Enum):
+class OptimizerMode(StrEnum):
     """Target objective for multi-leg parlay recommendation."""
 
-    SAFEST = "SAFEST"                    # Maximizes joint win probability with positive EV
-    HIGHEST_EV = "HIGHEST_EV"            # Maximizes expected return subject to fragility <= 0.60
-    BEST_RISK_REWARD = "BEST_RISK_REWARD" # Maximizes efficiency ratio (EV / Fragility)
+    SAFEST = "SAFEST"  # Maximizes joint win probability with positive EV
+    HIGHEST_EV = "HIGHEST_EV"  # Maximizes expected return subject to fragility <= 0.60
+    BEST_RISK_REWARD = "BEST_RISK_REWARD"  # Maximizes efficiency ratio (EV / Fragility)
 
 
 def _to_parlay_leg(leg: Any) -> ParlayLeg:
     """Adapt any leg-like object into a canonical immutable ParlayLeg."""
     if isinstance(leg, ParlayLeg):
         return leg
-    candidate_id = getattr(leg, "candidate_id", f"{getattr(leg, 'game_id', 'g')}:ML:{getattr(leg, 'team_name', getattr(leg, 'team', 'T'))}")
+    candidate_id = getattr(
+        leg,
+        "candidate_id",
+        f"{getattr(leg, 'game_id', 'g')}:ML:{getattr(leg, 'team_name', getattr(leg, 'team', 'T'))}",
+    )
     game_id = getattr(leg, "game_id", "cfbd:0000")
     team = getattr(leg, "team_name", getattr(leg, "team", "Team"))
     opponent = getattr(leg, "opponent_name", getattr(leg, "opponent", "Opponent"))
     market_type = getattr(leg, "market_type", "ML")
     line = getattr(leg, "line", 0.0)
     odds_american = getattr(leg, "price_american", getattr(leg, "odds_american", -110))
-    fair_prob = getattr(leg, "model_prob", getattr(leg, "fair_prob", getattr(leg, "consensus_fair_prob", 0.50)))
+    fair_prob = getattr(
+        leg, "model_prob", getattr(leg, "fair_prob", getattr(leg, "consensus_fair_prob", 0.50))
+    )
     edge_pct = getattr(leg, "edge_pct", 0.05)
     conference = getattr(leg, "conference", "")
     weather_hazard = getattr(leg, "weather_hazard", False)
@@ -100,7 +108,7 @@ class ParlayOptimizer:
         compute_marginal: bool = True,
     ) -> ParlayTicket:
         """Evaluate a specific combination of legs and return a complete ParlayTicket."""
-        leg_tuple = tuple(_to_parlay_leg(l) for l in legs)
+        leg_tuple = tuple(_to_parlay_leg(leg) for leg in legs)
         k = len(leg_tuple)
 
         # 1. Payout Calculation
@@ -129,7 +137,9 @@ class ParlayOptimizer:
             for idx, leg in enumerate(leg_tuple):
                 # Sub-ticket without leg k
                 sub_legs = leg_tuple[:idx] + leg_tuple[idx + 1 :]
-                sub_ticket = self.evaluate_ticket(sub_legs, parlay_id=f"{parlay_id}:sub_{idx}", compute_marginal=False)
+                sub_ticket = self.evaluate_ticket(
+                    sub_legs, parlay_id=f"{parlay_id}:sub_{idx}", compute_marginal=False
+                )
 
                 m_ev = round(ev - sub_ticket.ev, 4)
                 d_frag = round(fragility - sub_ticket.fragility_index, 4)
@@ -156,9 +166,13 @@ class ParlayOptimizer:
                 parasitic_indices = [m.leg_index for m in marginal_analyses if m.is_parasitic]
                 if parasitic_indices:
                     # Drop the worst parasitic leg (lowest marginal EV)
-                    worst_idx = min(parasitic_indices, key=lambda i: marginal_analyses[i].marginal_ev)
+                    worst_idx = min(
+                        parasitic_indices, key=lambda i: marginal_analyses[i].marginal_ev
+                    )
                     best_sub_legs = leg_tuple[:worst_idx] + leg_tuple[worst_idx + 1 :]
-                    alternate_ticket = self.evaluate_ticket(best_sub_legs, parlay_id=f"{parlay_id}:pruned", compute_marginal=True)
+                    alternate_ticket = self.evaluate_ticket(
+                        best_sub_legs, parlay_id=f"{parlay_id}:pruned", compute_marginal=True
+                    )
 
         return ParlayTicket(
             parlay_id=parlay_id,
@@ -187,9 +201,12 @@ class ParlayOptimizer:
         Enforces strict 3 to 10 leg sizing.
         Raises ValueError if input legs < 3.
         """
-        parsed_legs = [_to_parlay_leg(l) for l in legs]
+        parsed_legs = [_to_parlay_leg(leg) for leg in legs]
         if len(parsed_legs) < self.min_legs:
-            raise ValueError(f"Parlay must contain between {self.min_legs} and {self.max_legs} legs, got {len(parsed_legs)}")
+            raise ValueError(
+                f"Parlay must contain between {self.min_legs} and {self.max_legs} legs, got "
+                f"{len(parsed_legs)}"
+            )
 
         # Deduplicate games: at most one side per game_id
         game_map: dict[str, ParlayLeg] = {}
@@ -200,13 +217,20 @@ class ParlayOptimizer:
         unique_legs = list(game_map.values())
 
         if len(unique_legs) < self.min_legs:
-            raise ValueError(f"Parlay must contain between {self.min_legs} and {self.max_legs} unique game legs, got {len(unique_legs)}")
+            raise ValueError(
+                f"Parlay must contain between {self.min_legs} and {self.max_legs} unique game "
+                f"legs, got {len(unique_legs)}"
+            )
 
         # Sort by individual quality score (fair_prob + edge_pct)
-        unique_legs.sort(key=lambda l: (l.fair_prob + l.edge_pct), reverse=True)
+        unique_legs.sort(key=lambda leg: leg.fair_prob + leg.edge_pct, reverse=True)
         pool = unique_legs[: self.max_pool_size]
 
-        target_sizes = [target_count] if target_count is not None else list(range(self.min_legs, min(len(pool), self.max_legs) + 1))
+        target_sizes = (
+            [target_count]
+            if target_count is not None
+            else list(range(self.min_legs, min(len(pool), self.max_legs) + 1))
+        )
 
         results: list[ParlayTicket] = []
         ticket_counter = 1
@@ -233,7 +257,9 @@ class ParlayOptimizer:
                 if unconfirmed_qb_count >= 2:
                     continue
 
-                ticket = self.evaluate_ticket(combo, parlay_id=f"parlay:{k}leg:{ticket_counter:03d}")
+                ticket = self.evaluate_ticket(
+                    combo, parlay_id=f"parlay:{k}leg:{ticket_counter:03d}"
+                )
                 results.append(ticket)
                 ticket_counter += 1
 
@@ -311,7 +337,9 @@ class ParlayOptimizer:
         safest = max(pool_for_safest, key=lambda t: t.joint_win_prob)
 
         # 2. Highest EV: Max EV subject to Fragility <= 0.60 and prob >= 0.10
-        controlled_fragility = [t for t in tickets if t.fragility_index <= 0.60 and t.joint_win_prob >= 0.10]
+        controlled_fragility = [
+            t for t in tickets if t.fragility_index <= 0.60 and t.joint_win_prob >= 0.10
+        ]
         if controlled_fragility:
             highest_ev = max(controlled_fragility, key=lambda t: t.ev)
         else:
@@ -323,7 +351,10 @@ class ParlayOptimizer:
         # 4. Per-Size Optimal Board
         by_size: dict[int, ParlayTicket] = {}
         for t in tickets:
-            if t.leg_count not in by_size or t.efficiency_ratio > by_size[t.leg_count].efficiency_ratio:
+            if (
+                t.leg_count not in by_size
+                or t.efficiency_ratio > by_size[t.leg_count].efficiency_ratio
+            ):
                 by_size[t.leg_count] = t
         optimal_sizes = tuple(by_size[k] for k in sorted(by_size.keys()))
 

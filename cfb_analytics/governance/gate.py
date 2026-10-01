@@ -117,14 +117,17 @@ class GovernanceGate:
                 confidence_deltas.append(-3.0)
 
             for contra in getattr(reasoning_card, "contra_indications", ()):
-                if "fatigue" in contra.lower() or "trap" in contra.lower() or "attrition" in contra.lower():
+                if (
+                    "fatigue" in contra.lower()
+                    or "trap" in contra.lower()
+                    or "attrition" in contra.lower()
+                ):
                     notes_parts.append(contra)
 
         # 3. Dynamic Negative Favorite Gate Evaluation
         if context is not None and not is_neg_vetoed:
-            is_fav = (
-                (cw.market_type == "SPREAD" and cw.line < 0)
-                or (cw.market_type == "ML" and (cw.odds_american < 0 or cw.fair_prob > 0.50))
+            is_fav = (cw.market_type == "SPREAD" and cw.line < 0) or (
+                cw.market_type == "ML" and (cw.odds_american < 0 or cw.fair_prob > 0.50)
             )
             if is_fav:
                 neg_res = self.negative_gate.evaluate(
@@ -198,7 +201,9 @@ class GovernanceGate:
             and len(counter_theses) == 0
         )
 
-        notes = " | ".join(notes_parts) if notes_parts else "Cleared governance: No contra-indications."
+        notes = (
+            " | ".join(notes_parts) if notes_parts else "Cleared governance: No contra-indications."
+        )
 
         return GovernanceVerdict(
             candidate_id=cw.candidate_id,
