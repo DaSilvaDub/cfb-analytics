@@ -791,6 +791,17 @@ def _cmd_mispriced(args: argparse.Namespace) -> int:
                 "game_label": c.game_label,
                 "kickoff_et": c.kickoff_et,
                 "flags": c.flags,
+                # Team props: the scanner validates the real prop market and
+                # applies the sit-QB filter from the team's own spread.
+                **(
+                    {
+                        "market": c.prop_market,
+                        "spread": c.team_spread,
+                        "is_favorite": c.team_spread is None or c.team_spread < 0,
+                    }
+                    if c.market == "TEAM_PROP" and c.prop_market
+                    else {}
+                ),
             }
             for c in legacy_candidates
         ]

@@ -343,3 +343,84 @@ class TestRenderMispricedBoard:
         )
         with pytest.raises(AttributeError):
             c.rank = 2  # type: ignore[misc]
+
+
+# ── team props ───────────────────────────────────────────────────────────────
+
+KICKOFF_UTC = "2026-09-05T23:30:00+00:00"
+EARLY = "2026-09-05T12:00:00+00:00"
+LATE = "2026-09-05T18:00:00+00:00"
+POSTGAME = "2026-09-06T04:00:00+00:00"
+
+
+def _insert_team_prop(conn, team_id, market, line, as_of, *, p_over=0.5, game_id="g1"):
+    for side, prob in (("OVER", p_over), ("UNDER", round(1.0 - p_over, 4))):
+        conn.execute(
+            """INSERT INTO team_prop_consensus
+               (game_id, team_id, market, line, side, as_of_utc, n_books,
+                consensus_price, best_price, best_book, hold,
+                prob_multiplicative, prob_shin, prob_power, flags)
+               VALUES (?, ?, ?, ?, ?, ?, 4, -110, -105, 'DK', 0.045, ?, ?, ?, '[]')""",
+            (game_id, team_id, market, line, side, as_of, prob, prob, prob),
+        )
+
+
+@pytest.fixture
+def team_prop_slate(conn, monkeypatch):
+    """Home and away project differently, so a home-only projection is visible."""
+    from cfb_analytics.features import mispriced
+    from cfb_analytics.models.team_props import TeamPropsProjection
+
+    home, away = _seed_teams(conn)
+    _seed_game(conn, home, away)
+    monkeypatch.setattr(
+        mispriced, "load_team_props_inputs_for_slate", lambda c, d: {home: "H", away: "A"}
+    )
+    projected = {
+        "H": TeamPropsProjection(65.0, 6.0, 420.0, 240.0, 180.0, 31.0),
+        "A": TeamPropsProjection(60.0, 5.0, 300.0, 210.0, 90.0, 17.0),
+    }
+    monkeypatch.setattr(
+        mispriced, "project_team_production", lambda market_type, inputs: projected[inputs]
+    )
+    return conn, home, away
+
+
+def _team_props(conn):
+    return [c for c in build_mispriced_board(conn, "2026-09-05", min_edge=0.0)
+            if c.market == "TEAM_PROP"]
+
+
+class TestTeamPropMispricing:
+    def test_reads_team_prop_consensus_with_the_props_own_team(self, team_prop_slate):
+        conn, home, away = team_prop_slate
+        _insert_team_prop(conn, home, "team_rushing_yards", 150.5, LATE)
+        _insert_team_prop(conn, away, "team_rushing_yards", 150.5, LATE)
+
+        by_team = {(c.team_id, c.side): c for c in _team_props(conn)}
+        assert by_team[(home, "OVER")].model_projected == 180.0
+        assert by_team[(away, "OVER")].model_projected == 90.0
+        assert by_team[(home, "OVER")].prop_market == "team_rushing_yards"
+        assert by_team[(home, "OVER")].edge_pct > 0 > by_team[(away, "OVER")].edge_pct
+
+    def test_only_the_newest_pre_kickoff_capture_is_current(self, team_prop_slate):
+        conn, home, _ = team_prop_slate
+        _insert_team_prop(conn, home, "team_rushing_yards", 210.5, EARLY)
+        _insert_team_prop(conn, home, "team_rushing_yards", 160.5, LATE)
+        _insert_team_prop(conn, home, "team_rushing_yards", 99.5, POSTGAME)
+
+        assert {c.line for c in _team_props(conn)} == {160.5}
+
+    def test_favorite_receiving_is_dropped_in_a_blowout(self, team_prop_slate):
+        conn, home, _ = team_prop_slate
+        _insert_spread_consensus(conn, "g1", -24.5)
+        _insert_team_prop(conn, home, "team_receiving_yards", 220.5, LATE)
+        _insert_team_prop(conn, home, "team_rushing_yards", 150.5, LATE)
+
+        props = _team_props(conn)
+        assert {c.prop_market for c in props} == {"team_rushing_yards"}
+        assert all(c.team_spread == -24.5 for c in props)
+
+    def test_no_team_props_means_no_candidates(self, team_prop_slate):
+        conn, _, _ = team_prop_slate
+        assert _team_props(conn) == []

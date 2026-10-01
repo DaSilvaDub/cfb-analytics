@@ -813,3 +813,28 @@ class TestSituationalContextLoader:
 
         assert game_id in contexts
         assert contexts[game_id].home_team == "UGA"
+
+
+class TestCliMispricedTeamProps:
+    def test_team_prop_candidates_reach_the_scanner_without_crashing(self, capsys, cli_db):
+        """The scanner validates the real prop market; "TEAM_PROP" alone used to raise."""
+        game_id = _seed_game_and_consensus(cli_db, "2026-09-05")
+        for side, prob in (("OVER", 0.5), ("UNDER", 0.5)):
+            cli_db.execute(
+                """INSERT INTO team_prop_consensus
+                   (game_id, team_id, market, line, side, as_of_utc, n_books,
+                    consensus_price, best_price, best_book, hold,
+                    prob_multiplicative, prob_shin, prob_power, flags)
+                   VALUES (?, 'cfbd:100', 'team_rushing_yards', 40.5, ?,
+                           '2026-09-05T12:00:00+00:00', 4, -110, -105, 'DK', 0.045,
+                           ?, ?, ?, '[]')""",
+                (game_id, side, prob, prob, prob),
+            )
+        cli_db.commit()
+
+        capsys.readouterr()  # flush init-db output
+        rc = cli.main(["mispriced", "--date", "2026-09-05", "--min-edge", "0.0", "--json"])
+        assert rc == 0
+        payload = json.loads(capsys.readouterr().out)
+        markets = {str(c.get("market_type") or c.get("market")) for c in payload["candidates"]}
+        assert "TEAM_PROP" in markets
