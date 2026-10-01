@@ -782,7 +782,9 @@ def _cmd_mispriced(args: argparse.Namespace) -> int:
                 "posted_price_american": c.best_price or -110,
                 "consensus_fair_prob": c.consensus_fair_prob,
                 "model_prob": c.model_prob,
-                "projected_margin": c.model_projected if c.market == "SPREAD" else None,
+                # Legacy projections use betting-spread signs; the scanner
+                # expects this side's winning margin (positive = win).
+                "projected_margin": -c.model_projected if c.market == "SPREAD" else None,
                 "projected_total": c.model_projected if c.market == "TOTAL" else None,
                 "projected_value": c.model_projected,
                 "method_spread": c.method_spread,
