@@ -19,6 +19,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from cfb_analytics import config
+from cfb_analytics.features.current_market import LATEST_CAPTURE_SQL
 from cfb_analytics.features.over_confidence import format_kickoff_et
 from cfb_analytics.models.team_props import (
     TeamPropsInputs,
@@ -144,7 +145,7 @@ def _scan_spread_mispricing(
     """Compare model-projected spread vs consensus spread."""
     # Query latest consensus spread data
     rows = conn.execute(
-        """SELECT g.game_id, g.kickoff_utc,
+        f"""SELECT g.game_id, g.kickoff_utc,
                   ht.alias AS home, at.alias AS away,
                   g.home_team_id, g.away_team_id,
                   c.side, c.line,
@@ -157,11 +158,7 @@ def _scan_spread_mispricing(
            JOIN teams ht ON ht.team_id = g.home_team_id
            JOIN teams at ON at.team_id = g.away_team_id
            WHERE g.football_date = ? AND c.market = 'SPREAD'
-             AND c.as_of_utc = (
-               SELECT MAX(as_of_utc) FROM market_consensus
-               WHERE game_id = c.game_id AND market = c.market
-                 AND line = c.line AND side = c.side
-             )
+             AND {LATEST_CAPTURE_SQL}
            ORDER BY g.kickoff_utc""",
         (date,),
     ).fetchall()
@@ -239,7 +236,7 @@ def _scan_total_mispricing(
 ) -> list[MispricedCandidate]:
     """Compare model-projected game total vs consensus total."""
     rows = conn.execute(
-        """SELECT g.game_id, g.kickoff_utc,
+        f"""SELECT g.game_id, g.kickoff_utc,
                   ht.alias AS home, at.alias AS away,
                   g.home_team_id, g.away_team_id,
                   c.side, c.line,
@@ -252,11 +249,7 @@ def _scan_total_mispricing(
            JOIN teams ht ON ht.team_id = g.home_team_id
            JOIN teams at ON at.team_id = g.away_team_id
            WHERE g.football_date = ? AND c.market = 'TOTAL'
-             AND c.as_of_utc = (
-               SELECT MAX(as_of_utc) FROM market_consensus
-               WHERE game_id = c.game_id AND market = c.market
-                 AND line = c.line AND side = c.side
-             )
+             AND {LATEST_CAPTURE_SQL}
            ORDER BY g.kickoff_utc""",
         (date,),
     ).fetchall()
@@ -342,7 +335,7 @@ def _scan_team_prop_mispricing(
 
     # Query team prop consensus (if any)
     rows = conn.execute(
-        """SELECT g.game_id, g.kickoff_utc,
+        f"""SELECT g.game_id, g.kickoff_utc,
                   ht.alias AS home, at.alias AS away,
                   g.home_team_id, g.away_team_id,
                   c.side, c.line, c.market AS prop_market,
@@ -356,11 +349,7 @@ def _scan_team_prop_mispricing(
            JOIN teams at ON at.team_id = g.away_team_id
            WHERE g.football_date = ?
              AND c.market NOT IN ('ML', 'SPREAD', 'TOTAL')
-             AND c.as_of_utc = (
-               SELECT MAX(as_of_utc) FROM market_consensus
-               WHERE game_id = c.game_id AND market = c.market
-                 AND line = c.line AND side = c.side
-             )
+             AND {LATEST_CAPTURE_SQL}
            ORDER BY g.kickoff_utc""",
         (date,),
     ).fetchall()

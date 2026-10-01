@@ -205,6 +205,24 @@ class OutlierClient:
         return [p for p in players if isinstance(p, dict)] if isinstance(players, list) else []
 
 
+FULL_GAME_GROUPS = frozenset({"GAMELINES", "GAME"})
+
+
+def is_full_game_market(market: dict[str, Any]) -> bool:
+    """True only for a full-game market row.
+
+    The GAMELINE feed carries first-half, second-half and quarter markets under
+    the same ``SPREAD`` / ``TOTAL`` / ``MONEYLINE`` propositions as the
+    full-game line, distinguished only by ``marketGroupId`` (``HALVES`` /
+    ``QUARTERS``), ``periodLabel`` and ``periods``. Without this check a 1Q
+    total of 13.5 is stored as the game total.
+    """
+    if market.get("periods") or market.get("periodLabel"):
+        return False
+    group = market.get("marketGroupId")
+    return group is None or str(group).upper() in FULL_GAME_GROUPS
+
+
 def parse_odds_rows(
     game_id: str,
     markets: list[dict[str, Any]],
@@ -222,6 +240,8 @@ def parse_odds_rows(
         market_code = PROPOSITION_TO_MARKET.get(str(market.get("proposition") or "").upper())
         if market_code is None:
             continue  # DOUBLE_RESULT, WINNING_MARGIN, MONEYLINE_THREE_WAY: out of scope
+        if not is_full_game_market(market):
+            continue  # 1H/2H/quarter lines share the proposition name; never full-game
         market_id = market.get("marketId")
         outcomes = market.get("outcomes")
         if not isinstance(outcomes, list):

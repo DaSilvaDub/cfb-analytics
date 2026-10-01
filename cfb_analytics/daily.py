@@ -16,12 +16,13 @@ Designed for an unattended cloud runner, which drives three rules:
 
 from __future__ import annotations
 
+import json
 import sqlite3
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Literal
 
-from cfb_analytics import config
+from cfb_analytics import config, paths
 from cfb_analytics.errors import CfbAnalyticsError
 from cfb_analytics.utils import FOOTBALL_TZ, football_date, utc_now_iso
 
@@ -531,6 +532,43 @@ def _run_candidate_scoring(
         report.outcomes.append(SourceOutcome("scoring", "failed", str(exc)[:200]))
 
 
+def _run_slate_reports(conn: sqlite3.Connection, report: DailyReport, slates: list[str]) -> None:
+    """Write the combined slate report for every slate in the window.
+
+    One file per slate under ``data/reports/<date>/`` so moneylines, spreads,
+    game totals and yardage OVERs are always published together; reading only
+    the OVER board made the game lines look like they had left the pipeline.
+    """
+    try:
+        from cfb_analytics.reporting.slate import (
+            build_slate_report,
+            render_slate_report,
+            slate_report_json,
+        )
+
+        written: list[str] = []
+        for slate in slates:
+            slate_report = build_slate_report(conn, slate)
+            out_dir = paths.report_dir(slate)
+            out_dir.mkdir(parents=True, exist_ok=True)
+            (out_dir / f"{slate}-slate.txt").write_text(
+                render_slate_report(slate_report) + "\n", encoding="utf-8"
+            )
+            (out_dir / f"{slate}-slate.json").write_text(
+                json.dumps(slate_report_json(slate_report), indent=2) + "\n", encoding="utf-8"
+            )
+            counts = slate_report.counts()
+            written.append(
+                f"{slate} ml={counts['ML']} spread={counts['SPREAD']} "
+                f"total={counts['TOTAL']} yards={counts['YARDAGE']}"
+            )
+        report.outcomes.append(
+            SourceOutcome("slate_report", "ok", "; ".join(written), rows=len(written))
+        )
+    except (CfbAnalyticsError, sqlite3.Error, OSError) as exc:
+        report.outcomes.append(SourceOutcome("slate_report", "failed", str(exc)[:200]))
+
+
 def _run_research_game_totals(
     conn: sqlite3.Connection,
     report: DailyReport,
@@ -627,6 +665,8 @@ def run_daily(
             report.market_rows += summary.consensus_rows
             report.movement_rows += summary.movement_rows
             report.games += summary.games
+
+        _run_slate_reports(conn, report, report.slates)
 
         if with_scoring:
             # Live ingestion timestamps arrive after the run starts. Include

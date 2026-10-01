@@ -99,6 +99,7 @@ class TestCliParser:
             "market",
             "board",
             "over-board",
+            "slate-report",
             "backfill-rankings",
             "daily",
             "backfill-fundamentals",
