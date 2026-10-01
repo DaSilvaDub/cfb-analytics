@@ -356,3 +356,44 @@ def test_missing_team_inputs_do_not_reuse_another_offense(conn) -> None:
             "2026-09-19",
             inputs_by_team={indiana: default_team_props_inputs(data_quality_score=100.0)},
         )
+
+
+def test_invariant10_underdog_trailing_rushing_is_vetoed(conn) -> None:
+    """Invariant 10: Underdogs facing spreads >= +14 discard rushing in trailing script."""
+    purdue = seed_canonical_team(conn, 2509, "Purdue", "PUR")
+    notre_dame = seed_canonical_team(conn, 87, "Notre Dame", "ND")
+    _seed_conference(conn, purdue, "Big Ten")
+    _seed_conference(conn, notre_dame, "FBS Independents")
+    _seed_poll(conn, notre_dame, 3)
+    seed_canonical_game(
+        conn,
+        "cfbd:nd_pur",
+        purdue,
+        notre_dame,
+        football_date="2026-09-26",
+        kickoff="2026-09-26T18:00:00+00:00",
+        week=4,
+    )
+    # Purdue +28.5 (Home +28.5, ND -28.5)
+    _insert_spread(conn, "cfbd:nd_pur", 28.5, n_books=12)
+    conn.commit()
+
+    inputs = default_team_props_inputs(
+        expected_pass_attempts=24.0,
+        expected_rushing_attempts=35.0,
+        yards_before_contact=2.5,
+        yards_after_contact=2.5,
+        data_quality_score=100.0,
+    )
+    board = build_over_confidence_board(
+        conn,
+        "2026-09-26",
+        inputs_by_team={purdue: inputs, notre_dame: inputs},
+        min_prob=0.50,
+    )
+    picks = [row.pick for row in board]
+    # Purdue rush must NOT appear on the board under Invariant 10
+    assert "PUR rush" not in picks
+    # Combined game rushing must NOT appear because spread is >= 14
+    assert all(row.market != "game_rushing_yards" for row in board)
+
