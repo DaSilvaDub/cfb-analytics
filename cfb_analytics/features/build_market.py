@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 import sqlite3
 from collections import defaultdict
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -29,6 +29,7 @@ class MarketBuildSummary:
     movement_rows: int = 0
     unpriced_groups: int = 0
     leaked_rows_dropped: int = 0
+    stale_rows_skipped: int = 0
     anchors: dict[str, int] = field(default_factory=dict)
     flag_counts: dict[str, int] = field(default_factory=dict)
 
@@ -43,6 +44,8 @@ class MarketBuildSummary:
         ]
         if self.leaked_rows_dropped:
             lines.append(f"  post-kickoff rows dropped: {self.leaked_rows_dropped}")
+        if self.stale_rows_skipped:
+            lines.append(f"  superseded rows skipped: {self.stale_rows_skipped}")
         if self.anchors:
             lines.append(f"  anchors          : {dict(sorted(self.anchors.items()))}")
         if self.flag_counts:
@@ -61,7 +64,7 @@ def _games_for_slate(conn: sqlite3.Connection, slate_date: str) -> list[dict[str
 
 def _odds_for_game(conn: sqlite3.Connection, game_id: str) -> list[dict[str, Any]]:
     rows = conn.execute(
-        """SELECT game_id, market, side, line, book, price_american, captured_utc
+        """SELECT game_id, market, side, line, book, price_american, captured_utc, source
            FROM odds_snapshots WHERE game_id = ? ORDER BY captured_utc""",
         (game_id,),
     ).fetchall()
@@ -95,22 +98,23 @@ def build_market_for_slate(
             continue
 
         latest_capture = max(r["captured_utc"] for r in admissible)
+        current_rows = _current_capture_rows(r for r in admissible if r["market"] in markets)
+        stale = sum(1 for r in admissible if r["market"] in markets) - len(current_rows)
+        summary.stale_rows_skipped += stale
 
         grouped: dict[tuple[str, str, float | None], list[Mapping[str, Any]]] = defaultdict(list)
-        for row in admissible:
-            if row["market"] not in markets:
-                continue
+        for row in current_rows:
             grouped[market.group_key(row)].append(row)
 
         for (game_id, market_code, line), group in grouped.items():
             summary.groups += 1
-            current = [r for r in group if r["captured_utc"] == latest_capture] or group
+            as_of = _priced_as_of(group)
 
             consensus = market.build_consensus(
                 game_id,
                 market_code,
-                current,
-                as_of_utc=latest_capture,
+                group,
+                as_of_utc=as_of,
                 sharp_books=sharp_books,
                 min_books_for_consensus=min_books,
             )
@@ -135,6 +139,46 @@ def build_market_for_slate(
         )
 
     return summary
+
+
+def _current_capture_rows(rows: Iterable[Mapping[str, Any]]) -> list[Mapping[str, Any]]:
+    """Rows from the newest capture of each (market, source).
+
+    A line group absent from that capture was pulled or moved; its older
+    prices must not be re-stamped as current. The previous fallback - "no row
+    in the latest capture, so use the whole history" - did exactly that and
+    left the reports full of ghost alternates. Keyed by source as well because
+    CFBD and Outlier capture on independent clocks: a fresh CFBD pull must not
+    erase the Outlier capture that carries the actual prices.
+    """
+    materialised = list(rows)
+    latest: dict[tuple[str, str], str] = {}
+    for row in materialised:
+        key = (str(row["market"]), str(row.get("source") or ""))
+        stamp = str(row["captured_utc"])
+        if stamp > latest.get(key, ""):
+            latest[key] = stamp
+    return [
+        row
+        for row in materialised
+        if str(row["captured_utc"])
+        == latest[(str(row["market"]), str(row.get("source") or ""))]
+    ]
+
+
+def _priced_as_of(group: list[Mapping[str, Any]]) -> str:
+    """The capture time of the prices the consensus is actually built from.
+
+    A juice-free CFBD row can share a line group with older priced Outlier
+    rows. Devig drops the unpriced row, so stamping the group with its newer
+    capture time would present the old Outlier prices as current.
+    """
+    priced = [
+        str(r["captured_utc"])
+        for r in group
+        if r.get("side") and market._probability(r.get("price_american")) is not None
+    ]
+    return max(priced) if priced else max(str(r["captured_utc"]) for r in group)
 
 
 def _write_consensus(

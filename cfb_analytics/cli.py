@@ -506,6 +506,29 @@ def _cmd_over_board(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_slate_report(args: argparse.Namespace) -> int:
+    """Moneylines, spreads, game totals and yardage OVERs in one current view."""
+    from cfb_analytics.reporting.slate import (
+        build_slate_report,
+        render_slate_report,
+        slate_report_json,
+    )
+
+    if not paths.database_path().exists():
+        print("No database yet. Run: cfb-analytics init-db")
+        return 1
+    with db.open_db() as conn:
+        report = build_slate_report(conn, args.date, min_over_prob=args.min_over_prob)
+    if args.json:
+        # stdout must stay a single parseable JSON document.
+        print(json.dumps(slate_report_json(report), indent=2))
+        return 0
+    print(render_slate_report(report))
+    if report.games and not any(report.counts()[f] for f in ("ML", "SPREAD", "TOTAL")):
+        print(f"\nNo current game-line consensus. Run: cfb-analytics market --date {args.date}")
+    return 0
+
+
 def _cmd_backfill_rankings(args: argparse.Namespace) -> int:
     from cfb_analytics.ingest.cfbd_rankings import ingest_rankings
     from cfb_analytics.sources.cfbd import CFBDClient
@@ -529,9 +552,11 @@ def _cmd_board(args: argparse.Namespace) -> int:
     if not paths.database_path().exists():
         print("No database yet. Run: cfb-analytics init-db")
         return 1
+    from cfb_analytics.features.current_market import LATEST_CAPTURE_SQL
+
     with db.open_db() as conn:
         rows = conn.execute(
-            """SELECT g.game_id, g.kickoff_utc,
+            f"""SELECT g.game_id, g.kickoff_utc,
                       ht.alias AS home, at.alias AS away,
                       c.side, c.consensus_price, c.best_price, c.best_book,
                       c.prob_shin, c.prob_multiplicative, c.prob_power,
@@ -541,6 +566,7 @@ def _cmd_board(args: argparse.Namespace) -> int:
                JOIN teams ht ON ht.team_id = g.home_team_id
                JOIN teams at ON at.team_id = g.away_team_id
                WHERE g.football_date = ? AND c.market = 'ML'
+                 AND {LATEST_CAPTURE_SQL}
                ORDER BY c.prob_shin DESC""",
             (args.date,),
         ).fetchall()
@@ -765,6 +791,17 @@ def _cmd_mispriced(args: argparse.Namespace) -> int:
                 "game_label": c.game_label,
                 "kickoff_et": c.kickoff_et,
                 "flags": c.flags,
+                # Team props: the scanner validates the real prop market and
+                # applies the sit-QB filter from the team's own spread.
+                **(
+                    {
+                        "market": c.prop_market,
+                        "spread": c.team_spread,
+                        "is_favorite": c.team_spread is None or c.team_spread < 0,
+                    }
+                    if c.market == "TEAM_PROP" and c.prop_market
+                    else {}
+                ),
             }
             for c in legacy_candidates
         ]
@@ -1556,6 +1593,22 @@ def build_parser() -> argparse.ArgumentParser:
         "--json", action="store_true", default=False, help="emit output as structured JSON"
     )
     over_board.set_defaults(func=_cmd_over_board)
+
+    slate_report = sub.add_parser(
+        "slate-report",
+        help="moneylines, spreads, game totals and yardage OVERs for a slate in one view",
+    )
+    slate_report.add_argument("--date", required=True, help="slate date, YYYY-MM-DD")
+    slate_report.add_argument(
+        "--min-over-prob",
+        type=float,
+        default=0.50,
+        help="OVER board floor for the yardage section (default: 0.50)",
+    )
+    slate_report.add_argument(
+        "--json", action="store_true", default=False, help="emit output as structured JSON"
+    )
+    slate_report.set_defaults(func=_cmd_slate_report)
 
     mispriced = sub.add_parser(
         "mispriced",

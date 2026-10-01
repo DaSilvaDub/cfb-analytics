@@ -14,15 +14,22 @@ and expressed as edge percentage, method spread, and confidence score.
 from __future__ import annotations
 
 import sqlite3
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any
 
 from cfb_analytics import config
+from cfb_analytics.errors import SchemaError
+from cfb_analytics.features.current_market import LATEST_CAPTURE_SQL, current_primary_market
 from cfb_analytics.features.over_confidence import format_kickoff_et
 from cfb_analytics.models.team_props import (
     project_team_production,
 )
-from cfb_analytics.scoring import load_team_props_inputs_for_slate, norm_cdf
+from cfb_analytics.scanner.props import is_sit_qb_candidate
+from cfb_analytics.scoring import (
+    extract_projected_value,
+    load_team_props_inputs_for_slate,
+    norm_cdf,
+)
 
 # Standard deviations for model probability calculation
 SPREAD_SIGMA = 13.5  # CFB game margin std deviation (~13-14 points)
@@ -60,6 +67,11 @@ class MispricedCandidate:
     anchor: str  # 'sharp', 'all_books', 'none'
     tier: str  # 'STRONG', 'MODERATE', 'MARGINAL'
     flags: tuple[str, ...]
+    # Team props only: which team and which prop market the row prices, plus
+    # that team's current spread (negative = favorite) for the sit-QB filter.
+    prop_market: str | None = None
+    team_id: str | None = None
+    team_spread: float | None = None
 
 
 def _model_prob_from_edge(projected: float, line: float, sigma: float) -> float:
@@ -105,29 +117,7 @@ def build_mispriced_board(
     # Assign ranks
     ranked: list[MispricedCandidate] = []
     for i, c in enumerate(candidates, 1):
-        ranked.append(
-            MispricedCandidate(
-                rank=i,
-                game_id=c.game_id,
-                game_label=c.game_label,
-                kickoff_et=c.kickoff_et,
-                market=c.market,
-                side=c.side,
-                line=c.line,
-                model_projected=c.model_projected,
-                model_prob=c.model_prob,
-                consensus_fair_prob=c.consensus_fair_prob,
-                edge_pct=c.edge_pct,
-                method_spread=c.method_spread,
-                best_price=c.best_price,
-                best_book=c.best_book,
-                n_books=c.n_books,
-                hold=c.hold,
-                anchor=c.anchor,
-                tier=c.tier,
-                flags=c.flags,
-            )
-        )
+        ranked.append(replace(c, rank=i))
 
     return ranked
 
@@ -141,7 +131,7 @@ def _scan_spread_mispricing(
     """Compare model-projected spread vs consensus spread."""
     # Query latest consensus spread data
     rows = conn.execute(
-        """SELECT g.game_id, g.kickoff_utc,
+        f"""SELECT g.game_id, g.kickoff_utc,
                   ht.alias AS home, at.alias AS away,
                   g.home_team_id, g.away_team_id,
                   c.side, c.line,
@@ -154,11 +144,7 @@ def _scan_spread_mispricing(
            JOIN teams ht ON ht.team_id = g.home_team_id
            JOIN teams at ON at.team_id = g.away_team_id
            WHERE g.football_date = ? AND c.market = 'SPREAD'
-             AND c.as_of_utc = (
-               SELECT MAX(as_of_utc) FROM market_consensus
-               WHERE game_id = c.game_id AND market = c.market
-                 AND line = c.line AND side = c.side
-             )
+             AND {LATEST_CAPTURE_SQL}
            ORDER BY g.kickoff_utc""",
         (date,),
     ).fetchall()
@@ -236,7 +222,7 @@ def _scan_total_mispricing(
 ) -> list[MispricedCandidate]:
     """Compare model-projected game total vs consensus total."""
     rows = conn.execute(
-        """SELECT g.game_id, g.kickoff_utc,
+        f"""SELECT g.game_id, g.kickoff_utc,
                   ht.alias AS home, at.alias AS away,
                   g.home_team_id, g.away_team_id,
                   c.side, c.line,
@@ -249,11 +235,7 @@ def _scan_total_mispricing(
            JOIN teams ht ON ht.team_id = g.home_team_id
            JOIN teams at ON at.team_id = g.away_team_id
            WHERE g.football_date = ? AND c.market = 'TOTAL'
-             AND c.as_of_utc = (
-               SELECT MAX(as_of_utc) FROM market_consensus
-               WHERE game_id = c.game_id AND market = c.market
-                 AND line = c.line AND side = c.side
-             )
+             AND {LATEST_CAPTURE_SQL}
            ORDER BY g.kickoff_utc""",
         (date,),
     ).fetchall()
@@ -324,122 +306,135 @@ def _scan_team_prop_mispricing(
     *,
     min_edge: float = 0.02,
 ) -> list[MispricedCandidate]:
-    """Compare model-projected team production vs posted team prop lines.
+    """Compare each team's projected production against its posted team-prop line.
 
-    Reuses Model 3's existing team production projections from the scoring
-    pipeline.
+    Team props live in ``team_prop_consensus`` (keyed by ``team_id``), never in
+    ``market_consensus``. Only the newest pre-kickoff capture of each
+    (game, team, market) is read, so a pulled line is never treated as current.
+    The projection is the prop's own team, not the home team.
     """
+    rows = conn.execute(
+        """SELECT g.game_id, g.kickoff_utc, g.home_team_id, g.away_team_id,
+                  ht.alias AS home, at.alias AS away, tt.alias AS team,
+                  t.team_id, t.market, t.side, t.line, t.as_of_utc,
+                  t.consensus_price, t.best_price, t.best_book,
+                  t.prob_shin, t.prob_multiplicative, t.prob_power,
+                  t.hold, t.n_books, t.flags
+           FROM team_prop_consensus t
+           JOIN games g ON g.game_id = t.game_id
+           JOIN teams ht ON ht.team_id = g.home_team_id
+           JOIN teams at ON at.team_id = g.away_team_id
+           LEFT JOIN teams tt ON tt.team_id = t.team_id
+           WHERE g.football_date = ?
+             AND t.as_of_utc < g.kickoff_utc
+             AND t.as_of_utc = (
+               SELECT MAX(m.as_of_utc) FROM team_prop_consensus m
+               WHERE m.game_id = t.game_id AND m.team_id = t.team_id
+                 AND m.market = t.market AND m.as_of_utc < g.kickoff_utc
+             )
+           ORDER BY g.kickoff_utc, t.team_id, t.market, t.line, t.side""",
+        (date,),
+    ).fetchall()
+    if not rows:
+        return []
+
     try:
         inputs_by_team = load_team_props_inputs_for_slate(conn, date)
     except Exception:
         return []
+    home_spreads = _current_home_spreads(conn, date)
 
-    if not inputs_by_team:
-        return []
-
-    # Query team prop consensus (if any)
-    rows = conn.execute(
-        """SELECT g.game_id, g.kickoff_utc,
-                  ht.alias AS home, at.alias AS away,
-                  g.home_team_id, g.away_team_id,
-                  c.side, c.line, c.market AS prop_market,
-                  c.consensus_price, c.best_price, c.best_book,
-                  c.prob_shin, c.prob_multiplicative,
-                  c.prob_spread AS method_spread, c.hold, c.n_books,
-                  c.anchor, c.flags
-           FROM market_consensus c
-           JOIN games g ON g.game_id = c.game_id
-           JOIN teams ht ON ht.team_id = g.home_team_id
-           JOIN teams at ON at.team_id = g.away_team_id
-           WHERE g.football_date = ?
-             AND c.market NOT IN ('ML', 'SPREAD', 'TOTAL')
-             AND c.as_of_utc = (
-               SELECT MAX(as_of_utc) FROM market_consensus
-               WHERE game_id = c.game_id AND market = c.market
-                 AND line = c.line AND side = c.side
-             )
-           ORDER BY g.kickoff_utc""",
-        (date,),
-    ).fetchall()
-
+    projections: dict[str, Any] = {}
     candidates: list[MispricedCandidate] = []
     for row in rows:
-        home_team_id = str(row["home_team_id"]) if row["home_team_id"] else None
-        away_team_id = str(row["away_team_id"]) if row["away_team_id"] else None
-        if not home_team_id or not away_team_id:
-            continue
-
-        home_inputs = inputs_by_team.get(home_team_id)
-        away_inputs = inputs_by_team.get(away_team_id)
-        if home_inputs is None or away_inputs is None:
-            continue
-
         game_id = str(row["game_id"])
-        prop_market = str(row["prop_market"])
-        side = row["side"]
-        consensus_line = row["line"]
+        team_id = str(row["team_id"])
+        prop_market = str(row["market"])
+        side = str(row["side"]).upper()
+        if side not in ("OVER", "UNDER"):
+            continue
 
-        # Project team production
+        inputs = inputs_by_team.get(team_id)
+        if inputs is None:
+            continue
+        if team_id not in projections:
+            try:
+                projections[team_id] = project_team_production("TEAM_PROP", inputs)
+            except Exception:
+                projections[team_id] = None
+        projection = projections[team_id]
+        if projection is None:
+            continue
         try:
-            home_proj = project_team_production("TEAM_PROP", home_inputs)
-            away_proj = project_team_production("TEAM_PROP", away_inputs)
-        except Exception:
+            projected_val = extract_projected_value(prop_market, projection)
+        except SchemaError:
             continue
 
-        # Determine projected value based on prop market and team
-        projected_val = _extract_prop_projection(
-            prop_market,
-            home_proj,
-            away_proj,
-            row["home_team_id"],
-            row["away_team_id"],
-        )
-        if projected_val is None:
-            continue
+        team_spread: float | None = None
+        home_spread = home_spreads.get(game_id)
+        if home_spread is not None:
+            is_home = team_id == str(row["home_team_id"])
+            team_spread = home_spread if is_home else -home_spread
+        if team_spread is not None and is_sit_qb_candidate(
+            prop_market, team_spread, is_favorite=team_spread < 0
+        ):
+            continue  # blowout: the favorite's starters sit, receiving props are void
 
-        sigma = TEAM_POINTS_SIGMA if "point" in prop_market.lower() else TEAM_YARDS_SIGMA
+        line = float(row["line"])
+        sigma = TEAM_POINTS_SIGMA if prop_market == "team_total_points" else TEAM_YARDS_SIGMA
+        p_over = _model_prob_from_edge(projected_val, line, sigma)
+        model_p = p_over if side == "OVER" else round(1.0 - p_over, 4)
 
-        if side == "OVER":
-            model_p = _model_prob_from_edge(projected_val, consensus_line, sigma)
-        else:
-            model_p = 1.0 - _model_prob_from_edge(projected_val, consensus_line, sigma)
-
-        fair_p = row["prob_shin"] or row["prob_multiplicative"]
+        fair_p = row["prob_shin"] if row["prob_shin"] is not None else row["prob_multiplicative"]
         if fair_p is None:
             continue
-
         edge = round(model_p - fair_p, 4)
         if abs(edge) < min_edge:
             continue
 
-        kickoff_et = format_kickoff_et(row["kickoff_utc"])
-        label = f"{row['away']} at {row['home']}"
+        probs = [row[k] for k in ("prob_shin", "prob_multiplicative", "prob_power")]
+        present = [p for p in probs if p is not None]
+        method_spread = round(max(present) - min(present), 4) if len(present) > 1 else 0.0
+        team_label = row["team"] or team_id
+        market_label = prop_market.removeprefix("team_").replace("_", " ")
 
         candidates.append(
             MispricedCandidate(
                 rank=0,
                 game_id=game_id,
-                game_label=label,
-                kickoff_et=kickoff_et,
+                game_label=f"{row['away']} at {row['home']} - {team_label} {market_label}",
+                kickoff_et=format_kickoff_et(row["kickoff_utc"]),
                 market="TEAM_PROP",
                 side=side,
-                line=consensus_line,
+                line=line,
                 model_projected=round(projected_val, 1),
                 model_prob=model_p,
                 consensus_fair_prob=fair_p,
                 edge_pct=edge,
-                method_spread=row["method_spread"] or 0.0,
+                method_spread=method_spread,
                 best_price=row["best_price"],
                 best_book=row["best_book"],
                 n_books=row["n_books"],
                 hold=row["hold"],
-                anchor=row["anchor"] or "none",
+                anchor="none",
                 tier=_assign_edge_tier(abs(edge)),
                 flags=(),
+                prop_market=prop_market,
+                team_id=team_id,
+                team_spread=team_spread,
             )
         )
 
     return candidates
+
+
+def _current_home_spreads(conn: sqlite3.Connection, date: str) -> dict[str, float]:
+    """Home line of each game's current primary spread (negative = home favored)."""
+    spreads: dict[str, float] = {}
+    for row in current_primary_market(conn, date, ("SPREAD",)):
+        if str(row["side"]).upper() == "HOME" and row["line"] is not None:
+            spreads[str(row["game_id"])] = float(row["line"])
+    return spreads
 
 
 # ---------------------------------------------------------------------------
@@ -564,33 +559,6 @@ def _load_latest_ridge(conn: sqlite3.Connection) -> dict[str, float]:
            )"""
     ).fetchall()
     return {r["team_id"]: r["power_rating"] for r in rows}
-
-
-def _extract_prop_projection(
-    prop_market: str,
-    home_proj: Any,
-    away_proj: Any,
-    home_team_id: str,
-    away_team_id: str,
-) -> float | None:
-    """Extract the relevant projected value for a team prop market."""
-    market_lower = prop_market.lower().replace("-", "_").replace(" ", "_")
-
-    # Determine if this is a home or away team prop
-    # Team prop markets often embed the team name; use the prop_market to infer
-    proj = home_proj  # Default to home team
-
-    if hasattr(proj, "projected_team_total_points"):
-        if "point" in market_lower or "total" in market_lower:
-            return proj.projected_team_total_points
-        if "rush" in market_lower:
-            return proj.projected_rushing_yards
-        if "receiv" in market_lower or "pass" in market_lower:
-            return proj.projected_receiving_yards
-        if "yard" in market_lower or "offensive" in market_lower:
-            return proj.projected_offensive_yards
-
-    return None
 
 
 # ---------------------------------------------------------------------------
