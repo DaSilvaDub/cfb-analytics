@@ -108,7 +108,7 @@ def build_market_for_slate(
 
         for (game_id, market_code, line), group in grouped.items():
             summary.groups += 1
-            as_of = max(str(r["captured_utc"]) for r in group)
+            as_of = _priced_as_of(group)
 
             consensus = market.build_consensus(
                 game_id,
@@ -164,6 +164,21 @@ def _current_capture_rows(rows: Iterable[Mapping[str, Any]]) -> list[Mapping[str
         if str(row["captured_utc"])
         == latest[(str(row["market"]), str(row.get("source") or ""))]
     ]
+
+
+def _priced_as_of(group: list[Mapping[str, Any]]) -> str:
+    """The capture time of the prices the consensus is actually built from.
+
+    A juice-free CFBD row can share a line group with older priced Outlier
+    rows. Devig drops the unpriced row, so stamping the group with its newer
+    capture time would present the old Outlier prices as current.
+    """
+    priced = [
+        str(r["captured_utc"])
+        for r in group
+        if r.get("side") and market._probability(r.get("price_american")) is not None
+    ]
+    return max(priced) if priced else max(str(r["captured_utc"]) for r in group)
 
 
 def _write_consensus(

@@ -519,9 +519,10 @@ def _cmd_slate_report(args: argparse.Namespace) -> int:
     with db.open_db() as conn:
         report = build_slate_report(conn, args.date, min_over_prob=args.min_over_prob)
     if args.json:
+        # stdout must stay a single parseable JSON document.
         print(json.dumps(slate_report_json(report), indent=2))
-    else:
-        print(render_slate_report(report))
+        return 0
+    print(render_slate_report(report))
     if report.games and not any(report.counts()[f] for f in ("ML", "SPREAD", "TOTAL")):
         print(f"\nNo current game-line consensus. Run: cfb-analytics market --date {args.date}")
     return 0

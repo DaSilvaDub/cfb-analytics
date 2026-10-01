@@ -115,6 +115,19 @@ class TestSupersededLineGroups:
         assert 55.5 in lines, "a later CFBD pull must not erase the priced Outlier capture"
 
 
+    def test_unpriced_cfbd_row_does_not_restamp_old_prices(self, seeded):
+        cfbd = OddsRow(game_id="g1", market_id=None, book="CONSENSUS", market="TOTAL",
+                       side="OVER", line=55.5, price_american=None, price_decimal=None,
+                       is_primary=True, captured_utc=LATE, source="cfbd")
+        store.insert_odds(seeded, [
+            odds("A", "OVER", -110, EARLY), odds("A", "UNDER", -110, EARLY), cfbd,
+        ])
+        build_market_for_slate(seeded, SLATE)
+        stamps = {r["as_of_utc"] for r in seeded.execute(
+            "SELECT as_of_utc FROM market_consensus WHERE market='TOTAL'")}
+        assert stamps == {EARLY}
+
+
 class TestCurrentConsensus:
     def test_only_newest_capture_per_game_market(self, seeded):
         _consensus(seeded, "TOTAL", 58.5, "OVER", EARLY)
@@ -178,3 +191,26 @@ class TestSlateReport:
         json.dumps(payload)
         assert payload["moneylines"][0]["prices"] == {"HOME": -150, "AWAY": 130}
         assert payload["stamp"]
+
+
+class TestSlateReportCli:
+    def test_json_mode_prints_only_json(self, capsys):
+        from cfb_analytics import cli, db
+
+        with db.open_db() as store_conn:  # the isolated CFB_DATA_DIR store
+            store.upsert_team(store_conn, {"team_id": "h", "school": "Home U",
+                                           "alias": "HOME", "market": "H"})
+            store.upsert_team(store_conn, {"team_id": "a", "school": "Away U",
+                                           "alias": "AWAY", "market": "A"})
+            store.upsert_game(store_conn, {
+                "game_id": "g1", "season": 2026, "kickoff_utc": KICKOFF,
+                "football_date": SLATE, "day_of_week": 5,
+                "home_team_id": "h", "away_team_id": "a",
+                "venue_name": None, "network": None, "status": "pregame",
+            })
+            store_conn.commit()
+        # A game with no consensus is exactly when the text hint would fire.
+        assert cli.main(["slate-report", "--date", SLATE, "--json"]) == 0
+        payload = json.loads(capsys.readouterr().out)
+        assert payload["games"] == 1
+        assert payload["counts"]["ML"] == 0
