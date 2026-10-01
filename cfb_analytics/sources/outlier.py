@@ -219,6 +219,10 @@ def parse_odds_rows(
     rows: list[OddsRow] = []
 
     for market in markets:
+        if market.get("periods") or market.get("periodLabel"):
+            continue
+        if str(market.get("marketGroupId") or "GAME").upper() != "GAME":
+            continue
         market_code = PROPOSITION_TO_MARKET.get(str(market.get("proposition") or "").upper())
         if market_code is None:
             continue  # DOUBLE_RESULT, WINNING_MARGIN, MONEYLINE_THREE_WAY: out of scope

@@ -86,8 +86,9 @@ _LINE_CAPS = {
 
 
 SIT_QB_SPREAD = -20.0
-BLOWOUT_GAME_YARDS = 28.0  # combined rush/rec overs die when one side is emptied
+BLOWOUT_GAME_YARDS = 14.0  # combined rush overs die when spread >= 14
 DOG_REC_BLOWOUT = 28.0
+DOG_RUSH_TRAILING_SPREAD = 14.0  # Invariant 10: underdogs trailing by 14+ discard rushing volume
 PROB_CAP = 0.84
 HIGH_TIER = 0.70
 MEDIUM_TIER = 0.60
@@ -200,8 +201,8 @@ def apply_sample_haircut(inputs: TeamPropsInputs) -> TeamPropsInputs:
     return replace(
         inputs,
         yards_per_completion=round(inputs.yards_per_completion * 0.94, 2),
-        yards_before_contact=round(inputs.yards_before_contact * 0.94, 2),
-        yards_after_contact=round(inputs.yards_after_contact * 0.94, 2),
+        yards_before_contact=round(inputs.yards_before_contact * 0.85, 2),
+        yards_after_contact=round(inputs.yards_after_contact * 0.85, 2),
     )
 
 
@@ -320,17 +321,31 @@ def _rush_yards_allowed_proxy(
     return max(80.0, min(250.0, 155.0 * (rate / 0.42)))
 
 
-def _sit_qb_receiving(market: str, team_spread: float | None, home_spread: float | None) -> bool:
-    """Drop blowout receiving and huge-spread combined yardage overs.
+def _sit_qb_receiving(
+    market: str,
+    team_spread: float | None,
+    home_spread: float | None,
+    *,
+    opp_allowed: float | None = None,
+) -> bool:
+    """Drop blowout receiving, trailing dog rushing, and huge-spread combined yardage overs.
 
-    2026-09-19 settlement: favorite team rush cashed; dog rec and blowout
-    *game* rush/rec missed when the trailer was emptied (UTEP 57 rush, Kent 63 rec).
+    2026-09-19 and 2026-09-26 settlement audits:
+    - Favorite team rush cashes when dominating trench.
+    - Underdog rush (Invariant 10) fails when spread >= +14 (e.g. SDSU 48 vs 155.5 line,
+      Purdue 40 vs 52.5 line, Tulsa 65 vs 110 line) unless opponent rush defense is porous (allowed >= 190.0).
+    - Combined game rushing fails when spread >= 14 (OU/UGA 194 vs 310.5 line, SDSU/TOL 172 vs 295.5 line).
+    - Dog receiving and blowout game yards die when trailer is emptied.
     """
     if market == "team_receiving_yards":
         if team_spread is not None and team_spread <= SIT_QB_SPREAD:
             return True
         if team_spread is not None and team_spread >= DOG_REC_BLOWOUT:
             return True
+    if market == "team_rushing_yards":
+        if team_spread is not None and team_spread >= DOG_RUSH_TRAILING_SPREAD:
+            if opp_allowed is None or opp_allowed < 190.0:
+                return True
     if market == "game_receiving_yards":
         return home_spread is not None and abs(home_spread) >= abs(SIT_QB_SPREAD)
     if market == "game_rushing_yards":
@@ -458,7 +473,7 @@ def build_over_confidence_board(
             ),
         )
         for market, pick, team_id, projected, identity, opp_allowed, team_spread in candidates:
-            if _sit_qb_receiving(market, team_spread, home_spread):
+            if _sit_qb_receiving(market, team_spread, home_spread, opp_allowed=opp_allowed):
                 continue
             line_cutoff = cutoff if as_of >= cutoff else as_of
             posted, n_books = _posted_line(

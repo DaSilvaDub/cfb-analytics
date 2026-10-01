@@ -13,7 +13,6 @@ from cfb_analytics.features.mispriced import (
 )
 from cfb_analytics.ingest import store
 
-
 # ── helpers ──────────────────────────────────────────────────────────────────
 
 
@@ -182,6 +181,53 @@ class TestBuildMispricedBoard:
     def test_empty_db_returns_empty(self, conn):
         result = build_mispriced_board(conn, "2026-09-05")
         assert result == []
+
+    @pytest.mark.parametrize("neutral, expected", [(0, -5.5), (1, -8.0)])
+    def test_elo_margin_is_converted_to_points(self, conn, neutral, expected):
+        from cfb_analytics.features.mispriced import _load_model_margins
+
+        home, away = _seed_teams(conn)
+        _seed_game(conn, home, away)
+        conn.execute("UPDATE games SET neutral_site = ?", (neutral,))
+        for team, rating in ((home, 1500.0), (away, 1700.0)):
+            conn.execute(
+                """INSERT INTO internal_elo_ratings
+                   (season, as_of_utc, team_id, model, rating, team_games,
+                    n_games_in_fit, generated_utc)
+                   VALUES (2026, '2026-09-04T00:00:00+00:00', ?,
+                           'internal_elo', ?, 4, 40, '2026-09-04T00:00:00+00:00')""",
+                (team, rating),
+            )
+        assert _load_model_margins(conn, "2026-09-05")["g1"] == expected
+
+    def test_cli_passes_side_winning_margin_to_scanner(self, conn, monkeypatch, capsys):
+        from contextlib import nullcontext
+        from pathlib import Path
+
+        from cfb_analytics import cli
+        from cfb_analytics.scanner.engine import MispricedScanner
+
+        home, away = _seed_teams(conn)
+        _seed_game(conn, home, away)
+        _insert_spread_consensus(conn, "g1", -7.0)
+        _insert_ridge_ratings(conn, home, away, 10.0, 0.0, 5.0, 0.0)
+        conn.commit()
+        db_path = Path(conn.execute("PRAGMA database_list").fetchone()[2])
+        monkeypatch.setattr(cli.paths, "database_path", lambda: db_path)
+        monkeypatch.setattr(cli.db, "open_db", lambda: nullcontext(conn))
+        seen = []
+
+        def capture(self, candidates, **kwargs):
+            if isinstance(candidates, str):
+                raise TypeError("scan_slate requires candidate rows")
+            seen.extend(c for c in candidates if c["market_type"] == "SPREAD")
+            return []
+
+        monkeypatch.setattr(MispricedScanner, "scan_slate", capture)
+        assert cli.main(["mispriced", "--date", "2026-09-05", "--min-edge", "0"]) == 0
+        assert {c["side"]: c["projected_margin"] for c in seen} == {
+            "HOME": 7.5, "AWAY": -7.5,
+        }
 
     def test_no_consensus_returns_empty(self, conn):
         home, away = _seed_teams(conn)

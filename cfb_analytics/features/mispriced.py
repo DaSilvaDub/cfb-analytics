@@ -13,7 +13,7 @@ and expressed as edge percentage, method spread, and confidence score.
 
 from __future__ import annotations
 
-import math
+import json
 import sqlite3
 from dataclasses import dataclass
 from typing import Any
@@ -143,28 +143,13 @@ def _scan_spread_mispricing(
 ) -> list[MispricedCandidate]:
     """Compare model-projected spread vs consensus spread."""
     # Query latest consensus spread data
-    rows = conn.execute(
-        """SELECT g.game_id, g.kickoff_utc,
-                  ht.alias AS home, at.alias AS away,
-                  g.home_team_id, g.away_team_id,
-                  c.side, c.line,
-                  c.consensus_price, c.best_price, c.best_book,
-                  c.prob_shin, c.prob_multiplicative, c.prob_power,
-                  c.prob_spread AS method_spread, c.hold, c.n_books,
-                  c.anchor, c.flags
-           FROM market_consensus c
-           JOIN games g ON g.game_id = c.game_id
-           JOIN teams ht ON ht.team_id = g.home_team_id
-           JOIN teams at ON at.team_id = g.away_team_id
-           WHERE g.football_date = ? AND c.market = 'SPREAD'
-             AND c.as_of_utc = (
-               SELECT MAX(as_of_utc) FROM market_consensus
-               WHERE game_id = c.game_id AND market = c.market
-                 AND line = c.line AND side = c.side
-             )
-           ORDER BY g.kickoff_utc""",
-        (date,),
-    ).fetchall()
+    from cfb_analytics.features.current_market import load_current_market_rows
+
+    rows = [
+        {**row, "method_spread": row["prob_spread"]}
+        for row in load_current_market_rows(conn, date)
+        if row["market"] == "SPREAD"
+    ]
 
     if not rows:
         return []
@@ -202,7 +187,7 @@ def _scan_spread_mispricing(
 
         kickoff_et = format_kickoff_et(row["kickoff_utc"])
         label = f"{row['away']} at {row['home']}"
-        flags_list: list[str] = []
+        flags_list: list[str] = json.loads(row["flags"] or "[]")
 
         candidates.append(
             MispricedCandidate(
@@ -238,28 +223,13 @@ def _scan_total_mispricing(
     min_edge: float = 0.02,
 ) -> list[MispricedCandidate]:
     """Compare model-projected game total vs consensus total."""
-    rows = conn.execute(
-        """SELECT g.game_id, g.kickoff_utc,
-                  ht.alias AS home, at.alias AS away,
-                  g.home_team_id, g.away_team_id,
-                  c.side, c.line,
-                  c.consensus_price, c.best_price, c.best_book,
-                  c.prob_shin, c.prob_multiplicative, c.prob_power,
-                  c.prob_spread AS method_spread, c.hold, c.n_books,
-                  c.anchor, c.flags
-           FROM market_consensus c
-           JOIN games g ON g.game_id = c.game_id
-           JOIN teams ht ON ht.team_id = g.home_team_id
-           JOIN teams at ON at.team_id = g.away_team_id
-           WHERE g.football_date = ? AND c.market = 'TOTAL'
-             AND c.as_of_utc = (
-               SELECT MAX(as_of_utc) FROM market_consensus
-               WHERE game_id = c.game_id AND market = c.market
-                 AND line = c.line AND side = c.side
-             )
-           ORDER BY g.kickoff_utc""",
-        (date,),
-    ).fetchall()
+    from cfb_analytics.features.current_market import load_current_market_rows
+
+    rows = [
+        {**row, "method_spread": row["prob_spread"]}
+        for row in load_current_market_rows(conn, date)
+        if row["market"] == "TOTAL"
+    ]
 
     if not rows:
         return []
@@ -458,17 +428,22 @@ def _load_model_margins(
     Returns {game_id: home_margin} where positive = home favored.
     """
     from cfb_analytics.models.futures import (
-        DEFAULT_HFA_POINTS,
-        DEFAULT_MARGIN_SIGMA,
+        POINTS_TO_ELO_SCALE,
         project_game_win_probability,
     )
 
     # Try Elo ratings first
     elo_ratings = _load_latest_elo(conn)
-    if not elo_ratings:
-        elo_ratings = _load_latest_ridge(conn)
+    if elo_ratings:
+        # The futures projection consumes scoring-point ratings, whereas
+        # internal Elo is stored in Elo units. Use its existing scale.
+        point_ratings = {
+            team_id: rating / POINTS_TO_ELO_SCALE for team_id, rating in elo_ratings.items()
+        }
+    else:
+        point_ratings = _load_latest_ridge(conn)
 
-    if not elo_ratings:
+    if not point_ratings:
         return {}
 
     games = conn.execute(
@@ -480,15 +455,15 @@ def _load_model_margins(
 
     margins: dict[str, float] = {}
     for g in games:
-        home_r = elo_ratings.get(g["home_team_id"])
-        away_r = elo_ratings.get(g["away_team_id"])
+        home_r = point_ratings.get(g["home_team_id"])
+        away_r = point_ratings.get(g["away_team_id"])
         if home_r is None or away_r is None:
             continue
 
         is_neutral = bool(g["neutral_site"]) if g["neutral_site"] is not None else False
         # project_game_win_probability returns (spread, prob)
         # spread is from team perspective, negative = favorite
-        spread, prob = project_game_win_probability(
+        spread, _ = project_game_win_probability(
             home_r,
             away_r,
             is_home=True,
