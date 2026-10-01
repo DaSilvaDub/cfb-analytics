@@ -16,27 +16,22 @@ from __future__ import annotations
 
 import math
 from dataclasses import FrozenInstanceError
+
 import pytest
 
 from cfb_analytics.errors import DevigError, SchemaError
 from cfb_analytics.reasoning.models import ReasoningCard
 from cfb_analytics.scanner import (
-    BLOWOUT_GAME_YARDS,
-    DOG_REC_BLOWOUT,
     PROB_CAP,
     SHADOW_MODE_DISCLAIMER,
-    SIT_QB_SPREAD,
-    SPREAD_SIGMA_BASE,
     TOTAL_SIGMA_BASE,
     MispricedOpportunity,
     MispricedScanner,
+    PlayerPropProhibitedError,
     PlayScore,
     PlayTier,
-    PlayerPropProhibitedError,
     QualificationStatus,
     assign_play_tier,
-    calculate_play_score,
-    calculate_prop_edge,
     calculate_spread_edge,
     calculate_total_edge,
     calibrated_prop_prob,
@@ -57,7 +52,6 @@ from cfb_analytics.scanner import (
     totals_cover_probability,
     validate_team_prop,
 )
-
 
 # ---------------------------------------------------------------------------
 # 1. Model Immutability, Enums, and Contract Invariants
@@ -847,7 +841,8 @@ def test_spread_line_movement_scoring() -> None:
     # Moderate favorable move: +7.0 -> +7.5 (diff = +0.5 -> confirming move > 0 -> 10.0 pts)
     assert score_line_movement("AWAY", open_line=7.0, current_line=7.5) == 10.0
 
-    # 4. Underdog line moving adversely: hurdle gets harder (e.g. getting fewer points: +7.0 -> +5.0)
+    # 4. Underdog line moving adversely: hurdle gets harder (e.g. getting fewer points: +7.0 ->
+    # +5.0)
     # diff = +5.0 - (+7.0) = -2.0 -> adverse move < -1.5 -> 1.0 pt
     assert score_line_movement("AWAY", open_line=7.0, current_line=5.0) == 1.0
     # Moderate adverse move: +7.0 -> +6.0 (diff = -1.0 -> adverse move >= -1.5 -> 2.0 pts)

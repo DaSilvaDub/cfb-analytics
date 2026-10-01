@@ -2,9 +2,11 @@
 
 Projects and evaluates team points, rushing yards, receiving yards, and offensive yards
 against posted sportsbook lines:
-- Strictly TEAM_PROP only: rejects player props with PlayerPropProhibitedError (subclass of SchemaError and ValueError).
+- Strictly TEAM_PROP only: rejects player props with PlayerPropProhibitedError (subclass of
+  SchemaError and ValueError).
 - Calibrated probability with hard cap at 84% (PROB_CAP = 0.84).
-- Blowout sit-QB filter: favorite receiving props dropped at spread <= -20.0 (SIT_QB_SPREAD = -20.0).
+- Blowout sit-QB filter: favorite receiving props dropped at spread <= -20.0 (SIT_QB_SPREAD =
+  -20.0).
 - Underdog receiving props dropped at spread >= +28.0 (DOG_REC_BLOWOUT = 28.0).
 """
 
@@ -100,11 +102,9 @@ def is_sit_qb_candidate(
     if canonical != "team_receiving_yards":
         return False
 
-    if is_favorite and spread <= SIT_QB_SPREAD:
-        return True
-    if not is_favorite and spread >= DOG_REC_BLOWOUT:
-        return True
-    return False
+    if is_favorite:
+        return spread <= SIT_QB_SPREAD
+    return spread >= DOG_REC_BLOWOUT
 
 
 def calibrated_prop_prob(
@@ -198,7 +198,9 @@ def evaluate_team_prop_candidate(
         raise ValueError(f"side must be 'OVER' or 'UNDER', got {side!r}")
 
     # Blowout sit-QB filter
-    if spread is not None and is_sit_qb_candidate(canonical_market, spread, is_favorite=is_favorite):
+    if spread is not None and is_sit_qb_candidate(
+        canonical_market, spread, is_favorite=is_favorite
+    ):
         if drop_sit_qb:
             return None
         flags = tuple(list(flags) + ["sit_qb_blowout_risk"])

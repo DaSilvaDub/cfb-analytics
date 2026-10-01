@@ -37,11 +37,15 @@ def cover_probability(
     market_spread: float,
     sigma: float = SPREAD_SIGMA_BASE,
 ) -> float:
-    """Calculate cover probability via normal CDF erf: Z = (projected_margin - market_spread) / 16.5.
+    """Calculate cover probability via normal CDF erf.
+
+    Z = (projected_margin - market_spread) / 16.5.
 
     Args:
-        projected_margin: Team's projected margin of victory (positive = win by X, negative = lose by X).
-        market_spread: Market hurdle the team must cover (e.g. +7.5 if team is a 7.5-point favorite).
+        projected_margin: Team's projected margin of victory (positive = win by X, negative = lose
+            by X).
+        market_spread: Market hurdle the team must cover (e.g. +7.5 if team is a 7.5-point
+            favorite).
         sigma: Standard deviation of game point margin distribution (default 16.5).
 
     Returns:
@@ -68,8 +72,10 @@ def convert_spread_line_to_hurdle(line: float) -> float:
     """Convert a standard betting spread line to the cover hurdle.
 
     In standard sports betting notation:
-    - Favorite is laying points (e.g. -7.5): to cover, team must win by > 7.5 points. Hurdle is +7.5.
-    - Underdog is getting points (e.g. +7.5): to cover, team must not lose by >= 7.5 points. Hurdle is -7.5.
+    - Favorite is laying points (e.g. -7.5): to cover, team must win by > 7.5 points. Hurdle is
+      +7.5.
+    - Underdog is getting points (e.g. +7.5): to cover, team must not lose by >= 7.5 points. Hurdle
+      is -7.5.
     Hurdle = -line.
     """
     return -line

@@ -18,14 +18,14 @@ All models strictly enforce:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 # Mandatory shadow mode disclaimer for unpromoted research output
 SHADOW_MODE_DISCLAIMER: str = "UNPROMOTED - shadow output, not decision-grade"
 
 
-class OpponentTier(str, Enum):
+class OpponentTier(StrEnum):
     """Hierarchical classification of opponent quality."""
 
     POWER_CONFERENCE = "POWER_CONFERENCE"  # SEC, Big Ten, Big 12, ACC, Notre Dame
@@ -35,7 +35,7 @@ class OpponentTier(str, Enum):
     UNKNOWN = "UNKNOWN"  # Unresolved or non-divisional
 
 
-class TapeCategory(str, Enum):
+class TapeCategory(StrEnum):
     """Categorization of individual completed game tape."""
 
     HONEST_POWER = "HONEST_POWER"  # Game against Power conference opponent (Always Honest)
@@ -45,7 +45,7 @@ class TapeCategory(str, Enum):
     UNCLASSIFIED = "UNCLASSIFIED"
 
 
-class PlayTier(str, Enum):
+class PlayTier(StrEnum):
     """Candidate wagering recommendation tier."""
 
     ELITE = "ELITE"  # Score 90.0 - 100.0, unanimous multi-factor confirmation

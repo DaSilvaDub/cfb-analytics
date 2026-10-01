@@ -3,7 +3,8 @@
 Authored by Challenger M3-1.
 Empirically stress-tests:
 1. Parlay Sizing & Boundary Constraints (1, 2, 3, 10, 11+ legs).
-2. Correlation & Volatility Stress (Conference overlap, Unconfirmed QBs, Extreme odds, Fragility bounds).
+2. Correlation & Volatility Stress (Conference overlap, Unconfirmed QBs, Extreme odds, Fragility
+   bounds).
 3. Rule Conflict Arbitration (Affirmative vs Veto, Downward overrides).
 4. Thin Dog Boundary Tests (+1.49, +1.50, +6.00, +6.01, and 3 independent rescue exceptions).
 """
@@ -14,19 +15,14 @@ import pytest
 
 from cfb_analytics.governance.gate import GovernanceGate
 from cfb_analytics.governance.models import (
-    SHADOW_MODE_DISCLAIMER,
     GovernanceAction,
-    GovernanceVerdict,
     ParlayLeg,
     compute_correlation_penalty,
-    compute_efficiency_ratio,
     compute_fragility_index,
-    compute_parlay_payout,
 )
 from cfb_analytics.governance.parlay import ParlayOptimizer
 from cfb_analytics.governance.rules import (
     CandidateWager,
-    GrokRuleEngine,
     ThinDogTrapRule,
 )
 from cfb_analytics.reasoning.models import (
@@ -38,15 +34,17 @@ from cfb_analytics.reasoning.models import (
 )
 from cfb_analytics.scanner.models import MispricedOpportunity, PlayTier, QualificationStatus
 
-
 # =============================================================================
 # Fixtures
 # =============================================================================
 
+
 @pytest.fixture
 def neutral_tape() -> TapeProfile:
     return TapeProfile(
-        honest_games=[{"opp": "Tennessee", "margin": 7, "points_scored": 28, "offensive_epa": 0.10}],
+        honest_games=[
+            {"opp": "Tennessee", "margin": 7, "points_scored": 28, "offensive_epa": 0.10}
+        ],
         offensive_floor_epa=0.10,
         offensive_ceiling_epa=0.25,
         defensive_floor_epa=-0.05,
@@ -71,7 +69,9 @@ def neutral_weather() -> WeatherProfile:
 
 
 @pytest.fixture
-def neutral_context(neutral_tape: TapeProfile, neutral_weather: WeatherProfile) -> SituationalContext:
+def neutral_context(
+    neutral_tape: TapeProfile, neutral_weather: WeatherProfile
+) -> SituationalContext:
     return SituationalContext(
         game_id="cfbd:9001",
         home_team="Georgia",
@@ -124,6 +124,7 @@ def _make_leg(
 # =============================================================================
 # 1. Parlay Sizing & Boundary Constraints
 # =============================================================================
+
 
 class TestParlaySizingAndBoundaries:
     """Stress-test Parlay sizing bounds: 1, 2, 3, 10, 11+ legs."""
@@ -201,8 +202,22 @@ class TestParlaySizingAndBoundaries:
     def test_exactly_10_legs_largest_valid_parlay(self) -> None:
         """Test exact boundary: 10 legs is largest valid parlay."""
         optimizer = ParlayOptimizer()
-        confs = ["SEC", "Big Ten", "ACC", "Big 12", "Pac-12", "MWC", "MAC", "Sun Belt", "C-USA", "AAC"]
-        legs = [_make_leg(i, conf=confs[i % len(confs)], odds=-180, fair_prob=0.75, edge_pct=0.08) for i in range(10)]
+        confs = [
+            "SEC",
+            "Big Ten",
+            "ACC",
+            "Big 12",
+            "Pac-12",
+            "MWC",
+            "MAC",
+            "Sun Belt",
+            "C-USA",
+            "AAC",
+        ]
+        legs = [
+            _make_leg(i, conf=confs[i % len(confs)], odds=-180, fair_prob=0.75, edge_pct=0.08)
+            for i in range(10)
+        ]
 
         tickets = optimizer.optimize_parlays(legs, target_count=10)
         assert len(tickets) == 1
@@ -217,6 +232,7 @@ class TestParlaySizingAndBoundaries:
 # =============================================================================
 # 2. Correlation & Volatility Stress
 # =============================================================================
+
 
 class TestCorrelationAndVolatilityStress:
     """Stress-test conference overlap, unconfirmed QBs, extreme chalk odds, and fragility bounds."""
@@ -235,7 +251,7 @@ class TestCorrelationAndVolatilityStress:
         # Any 4-leg combo containing all 4 SEC legs must be pruned
         tickets_4 = optimizer.optimize_parlays(legs, target_count=4)
         for t in tickets_4:
-            sec_count = sum(1 for l in t.legs if l.conference.lower() == "sec")
+            sec_count = sum(1 for leg in t.legs if leg.conference.lower() == "sec")
             assert sec_count < 4, f"Found ticket with {sec_count} SEC legs; must be pruned!"
 
     def test_conference_overlap_penalty_calculation(self) -> None:
@@ -266,8 +282,10 @@ class TestCorrelationAndVolatilityStress:
         ]
         tickets = optimizer.optimize_parlays(legs, target_count=3)
         for t in tickets:
-            qb_risk_count = sum(1 for l in t.legs if l.qb_news_risk)
-            assert qb_risk_count <= 1, f"Found parlay with {qb_risk_count} unconfirmed QBs; must be <= 1!"
+            qb_risk_count = sum(1 for leg in t.legs if leg.qb_news_risk)
+            assert qb_risk_count <= 1, (
+                f"Found parlay with {qb_risk_count} unconfirmed QBs; must be <= 1!"
+            )
 
     def test_unconfirmed_qb_volatility_penalty_scaling(self) -> None:
         """compute_correlation_penalty adds 0.04 per volatile QB leg."""
@@ -294,8 +312,13 @@ class TestCorrelationAndVolatilityStress:
         - odds = -2000 -> penalty = 0.045 (plateaus!)
         - odds = -5000 -> penalty = 0.045 (plateaus!)
         """
+
         def get_single_chalk_penalty(odds: int) -> float:
-            legs = [_make_leg(1, odds=odds, is_heavy_fav=True), _make_leg(2, conf="ACC"), _make_leg(3, conf="Big 12")]
+            legs = [
+                _make_leg(1, odds=odds, is_heavy_fav=True),
+                _make_leg(2, conf="ACC"),
+                _make_leg(3, conf="Big 12"),
+            ]
             # confs distinct, no weather, no qb risk, 3 legs (no tail decay)
             return compute_correlation_penalty(legs)
 
@@ -341,10 +364,11 @@ class TestCorrelationAndVolatilityStress:
         assert f_extreme == 1.0  # Maxed out at 1.0
 
         # 4. Combinatorial test of 50 random stress configurations
-        import itertools
         for k in (3, 5, 8, 10):
             for prob in (0.45, 0.55, 0.75, 0.90):
-                test_legs = [_make_leg(i, fair_prob=prob, odds=-250, conf=f"Conf_{i%2}") for i in range(k)]
+                test_legs = [
+                    _make_leg(i, fair_prob=prob, odds=-250, conf=f"Conf_{i % 2}") for i in range(k)
+                ]
                 phi = compute_fragility_index(test_legs)
                 assert 0.0 <= phi <= 1.0, f"Fragility {phi} out of bounds for k={k}, prob={prob}"
 
@@ -353,19 +377,30 @@ class TestCorrelationAndVolatilityStress:
 # 3. Rule Conflict Arbitration
 # =============================================================================
 
+
 class TestRuleConflictArbitration:
     """Challenge priority precedence: VETO > DOWNGRADE > PASS > APPROVE."""
 
     def test_veto_wins_over_rule_a_affirmative(self, neutral_context: SituationalContext) -> None:
-        """When candidate triggers affirmative Rule A (OVER) but is vetoed by Negative Gate, VETO must win."""
+        """A candidate approved by Rule A (OVER) but vetoed by the Negative Gate must be VETO."""
         gate = GovernanceGate()
 
         # Context configured so Rule A would approve OVER:
         # Home Power team coming off a loss vs outmatched opponent
-        tape_home = TapeProfile(honest_games=[{"margin": -10, "points_scored": 14, "offensive_epa": -0.05}])
-        tape_away = TapeProfile(honest_games=[{"margin": -40, "points_scored": 3, "offensive_epa": -0.30}])
+        tape_home = TapeProfile(
+            honest_games=[{"margin": -10, "points_scored": 14, "offensive_epa": -0.05}]
+        )
+        tape_away = TapeProfile(
+            honest_games=[{"margin": -40, "points_scored": 3, "offensive_epa": -0.30}]
+        )
         ctx = SituationalContext(
-            **{**neutral_context.__dict__, "home_team": "Florida", "away_team": "Charlotte", "tape_home": tape_home, "tape_away": tape_away}
+            **{
+                **neutral_context.__dict__,
+                "home_team": "Florida",
+                "away_team": "Charlotte",
+                "tape_home": tape_home,
+                "tape_away": tape_away,
+            }
         )
 
         cand_over = MispricedOpportunity(
@@ -427,7 +462,13 @@ class TestRuleConflictArbitration:
         tape_home = TapeProfile(honest_games=[{"margin": -7, "points_scored": 17}])
         tape_away = TapeProfile(honest_games=[{"margin": -35, "points_scored": 0}])
         ctx = SituationalContext(
-            **{**neutral_context.__dict__, "home_team": "Georgia", "away_team": "Charlotte", "tape_home": tape_home, "tape_away": tape_away}
+            **{
+                **neutral_context.__dict__,
+                "home_team": "Georgia",
+                "away_team": "Charlotte",
+                "tape_home": tape_home,
+                "tape_away": tape_away,
+            }
         )
 
         cand_massive_fav = MispricedOpportunity(
@@ -464,10 +505,13 @@ class TestRuleConflictArbitration:
 # 4. Thin Dog Boundary Tests
 # =============================================================================
 
+
 class TestThinDogBoundaryAndExceptions:
     """Strict boundary and exception tests for Rule D: Thin Dogs (+1.5 to +6.0)."""
 
-    def _eval_thin_dog(self, line: float, ctx: SituationalContext) -> tuple[bool, GovernanceAction, str]:
+    def _eval_thin_dog(
+        self, line: float, ctx: SituationalContext
+    ) -> tuple[bool, GovernanceAction, str]:
         rule = ThinDogTrapRule()
         cand = CandidateWager(
             candidate_id="c_dog",
@@ -506,7 +550,9 @@ class TestThinDogBoundaryAndExceptions:
         assert triggered is False
         assert action == GovernanceAction.APPROVE
 
-    def test_exception_1_opposing_qb_injury_rescues_thin_dog(self, neutral_context: SituationalContext) -> None:
+    def test_exception_1_opposing_qb_injury_rescues_thin_dog(
+        self, neutral_context: SituationalContext
+    ) -> None:
         """Exception A: Opponent QB unconfirmed/injured rescues +3.5 thin dog."""
         # Dog is AWAY, opponent is HOME
         ctx = SituationalContext(**{**neutral_context.__dict__, "qb_home_confirmed": False})
@@ -515,22 +561,36 @@ class TestThinDogBoundaryAndExceptions:
         assert action == GovernanceAction.APPROVE
         assert "qb" in notes.lower()
 
-    def test_exception_2_tape_differential_rescues_thin_dog(self, neutral_context: SituationalContext) -> None:
-        """Exception B: > 20 point tape margin differential (net EPA diff >= +0.20) rescues thin dog."""
-        tape_dog = TapeProfile(offensive_floor_epa=0.25, defensive_floor_epa=-0.10)  # Net EPA = +0.35
-        tape_opp = TapeProfile(offensive_floor_epa=0.05, defensive_floor_epa=-0.05)  # Net EPA = +0.10 (diff = +0.25 >= 0.20)
-        ctx = SituationalContext(**{**neutral_context.__dict__, "tape_away": tape_dog, "tape_home": tape_opp})
+    def test_exception_2_tape_differential_rescues_thin_dog(
+        self, neutral_context: SituationalContext
+    ) -> None:
+        """Exception B: a > 20 point tape differential (net EPA diff >= +0.20) rescues a dog."""
+        tape_dog = TapeProfile(
+            offensive_floor_epa=0.25, defensive_floor_epa=-0.10
+        )  # Net EPA = +0.35
+        tape_opp = TapeProfile(
+            offensive_floor_epa=0.05, defensive_floor_epa=-0.05
+        )  # Net EPA = +0.10 (diff = +0.25 >= 0.20)
+        ctx = SituationalContext(
+            **{**neutral_context.__dict__, "tape_away": tape_dog, "tape_home": tape_opp}
+        )
 
         triggered, action, notes = self._eval_thin_dog(3.5, ctx)
         assert triggered is True
         assert action == GovernanceAction.APPROVE
         assert "tape" in notes.lower()
 
-    def test_exception_3_trench_mismatch_rescues_thin_dog(self, neutral_context: SituationalContext) -> None:
+    def test_exception_3_trench_mismatch_rescues_thin_dog(
+        self, neutral_context: SituationalContext
+    ) -> None:
         """Exception C: Major trench mismatch (attrition diff >= 0.30) rescues thin dog."""
         # Opponent (HOME) has 0.45 attrition, Dog (AWAY) has 0.05 attrition -> diff = 0.40 >= 0.30
         ctx = SituationalContext(
-            **{**neutral_context.__dict__, "trench_attrition_home": 0.45, "trench_attrition_away": 0.05}
+            **{
+                **neutral_context.__dict__,
+                "trench_attrition_home": 0.45,
+                "trench_attrition_away": 0.05,
+            }
         )
         triggered, action, notes = self._eval_thin_dog(3.5, ctx)
         assert triggered is True
@@ -540,7 +600,7 @@ class TestThinDogBoundaryAndExceptions:
     def test_exception_3_position_grades_trench_score_rescues_thin_dog(
         self, neutral_context: SituationalContext
     ) -> None:
-        """Exception C alternate: PositionUnitGrades trench_mismatch_score >= 15.0 rescues thin dog."""
+        """Exception C alternate: trench_mismatch_score >= 15.0 rescues a thin dog."""
         pos_grades = PositionUnitGrades(trench_mismatch_score=18.5)
         ctx = SituationalContext(**{**neutral_context.__dict__, "position_grades_away": pos_grades})
         triggered, action, notes = self._eval_thin_dog(3.5, ctx)

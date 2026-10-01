@@ -79,7 +79,9 @@ def render_reasoning_card(
         if is_vetoed:
             tier = "VETOED"
 
-    lines.append(f"MARKET: {market} | RECOMMENDED PLAY: {rec_play} (Confidence: {conf_str} - {tier})")
+    lines.append(
+        f"MARKET: {market} | RECOMMENDED PLAY: {rec_play} (Confidence: {conf_str} - {tier})"
+    )
     lines.append("")
 
     # 3. Seven Numbered Sections per docs/grok_rules.md §5
@@ -170,7 +172,10 @@ def render_mispriced_card(
     lines.append(f"Matchup:         {opp.game_label or opp.game_id} (Game ID: {opp.game_id})")
     lines.append(f"Kickoff:         {opp.kickoff_et or 'TBD'}")
     lines.append(f"Market Type:     {opp.market_type} ({opp.market})")
-    lines.append(f"Play Tier:       {opp.play_tier} (Score: {opp.play_score:.1f}/100) | Status: {opp.qual_status}")
+    lines.append(
+        f"Play Tier:       {opp.play_tier} (Score: {opp.play_score:.1f}/100) | Status: "
+        f"{opp.qual_status}"
+    )
     lines.append(DIVIDER_LIGHT)
 
     lines.append("PRICING & EDGE QUANTIFICATION:")
@@ -179,7 +184,11 @@ def render_mispriced_card(
         f"  Posted Price:          {opp.posted_price_american:+d} "
         f"({opp.posted_price_decimal:.3f}){best_book_str}"
     )
-    proj_fmt = f"{opp.model_projected_line:+g}" if opp.market_type == "SPREAD" else f"{opp.model_projected_line:.1f}"
+    proj_fmt = (
+        f"{opp.model_projected_line:+g}"
+        if opp.market_type == "SPREAD"
+        else f"{opp.model_projected_line:.1f}"
+    )
     lines.append(f"  Model Projected Line:  {proj_fmt}")
     lines.append(f"  Model Win/Cover Prob:  {opp.model_prob * 100:.1f}%")
     lines.append(
@@ -197,18 +206,32 @@ def render_mispriced_card(
 
     lines.append("FLAGS & AUDIT:")
     lines.append(f"  Market Flags:          {', '.join(opp.flags) if opp.flags else 'None'}")
-    lines.append(f"  Rejection Reasons:     {', '.join(opp.rejection_reasons) if opp.rejection_reasons else 'None'}")
+    lines.append(
+        "  Rejection Reasons:     "
+        f"{', '.join(opp.rejection_reasons) if opp.rejection_reasons else 'None'}"
+    )
 
     if verdict is not None:
         lines.append(DIVIDER_LIGHT)
         lines.append("GOVERNANCE AUDIT:")
-        action_val = verdict.action.value if hasattr(verdict.action, "value") else str(verdict.action)
+        action_val = (
+            verdict.action.value if hasattr(verdict.action, "value") else str(verdict.action)
+        )
         lines.append(f"  Action:                {action_val}")
-        lines.append(f"  Triggered Rules:       {', '.join(verdict.triggered_rules) if verdict.triggered_rules else 'None'}")
-        lines.append(f"  Adjusted Confidence:   {verdict.adjusted_confidence:.1f}/10 (Original: {verdict.original_confidence:.1f}/10)")
+        lines.append(
+            "  Triggered Rules:       "
+            f"{', '.join(verdict.triggered_rules) if verdict.triggered_rules else 'None'}"
+        )
+        lines.append(
+            f"  Adjusted Confidence:   {verdict.adjusted_confidence:.1f}/10 (Original: "
+            f"{verdict.original_confidence:.1f}/10)"
+        )
         lines.append(f"  Parlay Eligible:       {'YES' if verdict.parlay_eligible else 'NO'}")
         lines.append(f"  Target Override:       {verdict.target_market_override or 'None'}")
-        lines.append(f"  Counter-Theses:        {'; '.join(verdict.counter_theses) if verdict.counter_theses else 'None'}")
+        lines.append(
+            "  Counter-Theses:        "
+            f"{'; '.join(verdict.counter_theses) if verdict.counter_theses else 'None'}"
+        )
         lines.append(f"  Notes:                 {verdict.notes or 'None'}")
 
     lines.append(DIVIDER_HEAVY)
@@ -221,21 +244,34 @@ def render_parlay_card(ticket: ParlayTicket) -> str:
     """Render structured summary of a 3-10 leg parlay ticket."""
     lines: list[str] = []
     lines.append(DIVIDER_HEAVY)
-    lines.append(f"PARLAY TICKET: {ticket.parlay_id} ({ticket.leg_count} LEGS / {ticket.leg_count}-Leg Optimized Multi-Matchup)")
+    lines.append(
+        f"PARLAY TICKET: {ticket.parlay_id} ({ticket.leg_count} LEGS / {ticket.leg_count}-Leg "
+        "Optimized Multi-Matchup)"
+    )
     lines.append(DIVIDER_HEAVY)
 
     # 1. Summary Metrics
     fragility_tier = (
-        "LOW RISK" if ticket.fragility_index < 0.25
-        else "MODERATE RISK" if ticket.fragility_index < 0.45
+        "LOW RISK"
+        if ticket.fragility_index < 0.25
+        else "MODERATE RISK"
+        if ticket.fragility_index < 0.45
         else "HIGH RISK"
     )
     lines.append("PORTFOLIO SUMMARY:")
-    lines.append(f"  Total Payout:          {ticket.total_odds_american:+d} ({ticket.total_payout_multiplier:.2f}x stake)")
-    lines.append(f"  Joint Win Prob:        {ticket.joint_win_prob * 100:.2f}% (Raw Unadjusted: {ticket.raw_win_prob * 100:.2f}%)")
+    lines.append(
+        f"  Total Payout:          {ticket.total_odds_american:+d} "
+        f"({ticket.total_payout_multiplier:.2f}x stake)"
+    )
+    lines.append(
+        f"  Joint Win Prob:        {ticket.joint_win_prob * 100:.2f}% (Raw Unadjusted: "
+        f"{ticket.raw_win_prob * 100:.2f}%)"
+    )
     lines.append(f"  Correlation Penalty:   {ticket.correlation_penalty * 100:.2f}% risk discount")
     lines.append(f"  Expected Value (EV):   {ticket.ev * 100:+.2f}%")
-    lines.append(f"  Fragility Index:       {ticket.fragility_index:.3f} / 1.000 [{fragility_tier}]")
+    lines.append(
+        f"  Fragility Index:       {ticket.fragility_index:.3f} / 1.000 [{fragility_tier}]"
+    )
     lines.append(f"  Efficiency Ratio:      {ticket.efficiency_ratio:.2f} (EV per unit fragility)")
     lines.append(f"  Actionable:            {'YES' if ticket.is_actionable else 'NO'}")
     lines.append(DIVIDER_LIGHT)
@@ -279,7 +315,10 @@ def render_parlay_card(ticket: ParlayTicket) -> str:
     # 4. Vulnerability & Weakest Link
     lines.append("VULNERABILITY & PRUNING AUDIT:")
     if ticket.weakest_leg:
-        lines.append(f"  Weakest Link:          {ticket.weakest_leg.team} ({ticket.weakest_leg.fair_prob * 100:.1f}% fair win prob)")
+        lines.append(
+            f"  Weakest Link:          {ticket.weakest_leg.team} "
+            f"({ticket.weakest_leg.fair_prob * 100:.1f}% fair win prob)"
+        )
     parasitic_msg = (
         "WARNING: Contains parasitic leg degrading portfolio EV!"
         if ticket.has_parasitic_leg
@@ -291,7 +330,8 @@ def render_parlay_card(ticket: ParlayTicket) -> str:
         alt = ticket.alternate_pruned_ticket
         lines.append(
             f"  Pruned Alternative:    {alt.parlay_id} ({alt.leg_count} legs, "
-            f"Odds: {alt.total_odds_american:+d}, EV: {alt.ev * 100:+.2f}%, Fragility: {alt.fragility_index:.3f})"
+            f"Odds: {alt.total_odds_american:+d}, EV: {alt.ev * 100:+.2f}%, Fragility: "
+            f"{alt.fragility_index:.3f})"
         )
 
     lines.append(DIVIDER_HEAVY)
@@ -325,7 +365,7 @@ def render_board_terminal(
             continue
         team = row["home"] if row["side"] == "HOME" else row["away"]
         opp = row["away"] if row["side"] == "HOME" else row["home"]
-        flags_raw = row["flags"] if "flags" in row.keys() else "[]"
+        flags_raw = row["flags"] if "flags" in row.keys() else "[]"  # noqa: SIM118 - sqlite3.Row `in` checks values, not columns
         flags = ",".join(json.loads(flags_raw or "[]")) if isinstance(flags_raw, str) else ""
         lines.append(
             f"{team or '?':<7} {opp or '?':<7} {row['consensus_price']:>7} "
@@ -382,7 +422,11 @@ def render_mispriced_terminal(
     for idx, opp in enumerate(candidates, 1):
         key = f"{opp.game_id}:{opp.market_type}:{opp.side}"
         verdict = verdicts_map.get(key)
-        action_str = verdict.action.value if verdict and hasattr(verdict.action, "value") else (str(verdict.action) if verdict else "APPROVE")
+        action_str = (
+            verdict.action.value
+            if verdict and hasattr(verdict.action, "value")
+            else (str(verdict.action) if verdict else "APPROVE")
+        )
         if verdict and verdict.action == GovernanceAction.VETO:
             vetoed_candidates.append((idx, opp, verdict))
 
@@ -393,7 +437,8 @@ def render_mispriced_terminal(
         lines.append(
             f" {idx:>2} | {opp.market_type:<7} | {game_str:<28} | {opp.side:<5} | {line_str:>6} | "
             f"{opp.consensus_fair_prob * 100:>5.1f}% | {opp.model_prob * 100:>5.1f}% | "
-            f"{opp.edge_pct * 100:>+6.1f}% | {opp.method_spread * 100:>5.2f}pp | {opp.play_score:>5.1f} | "
+            f"{opp.edge_pct * 100:>+6.1f}% | {opp.method_spread * 100:>5.2f}pp | "
+            f"{opp.play_score:>5.1f} | "
             f"{str(opp.play_tier):<9} | {str(opp.qual_status):<9} | {action_str:<8} | {best_str}"
         )
 
@@ -403,10 +448,16 @@ def render_mispriced_terminal(
         lines.append("GOVERNANCE VETO CALLOUTS")
         lines.append(DIVIDER_HEAVY)
         for idx, opp, v in vetoed_candidates:
-            lines.append(f"\n[GOVERNANCE VETO] Candidate #{idx} ({opp.market} {opp.side} {opp.line}):")
+            lines.append(
+                f"\n[GOVERNANCE VETO] Candidate #{idx} ({opp.market} {opp.side} {opp.line}):"
+            )
             rules = ", ".join(v.triggered_rules) if v and v.triggered_rules else "Negative Gate"
             lines.append(f"  Triggered Rules: {rules}")
-            theses = "; ".join(v.counter_theses) if v and v.counter_theses else "Failed governance qualification."
+            theses = (
+                "; ".join(v.counter_theses)
+                if v and v.counter_theses
+                else "Failed governance qualification."
+            )
             lines.append(f"  Counter-Thesis:  {theses}")
 
     lines.append(f"\nTotal: {len(candidates)} mispriced opportunities detected.")

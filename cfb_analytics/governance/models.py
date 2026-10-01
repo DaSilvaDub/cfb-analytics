@@ -2,8 +2,10 @@
 
 Provides frozen dataclasses, action enums, and mathematical formulas for:
 1. Governance Verdicts: Pre-bet gating, downgrading, vetoing, and target market overrides.
-2. Parlay Leg Records: Qualified individual wagers admitting conference, weather, and QB risk attributes.
-3. Parlay Recommendations: Optimized multi-leg wagers with correlation penalties, payout multipliers,
+2. Parlay Leg Records: Qualified individual wagers admitting conference, weather, and QB risk
+   attributes.
+3. Parlay Recommendations: Optimized multi-leg wagers with correlation penalties, payout
+   multipliers,
    and fragility index quantification.
 
 All models strictly enforce:
@@ -14,21 +16,24 @@ All models strictly enforce:
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass, field
-from enum import Enum
-from typing import Any, Sequence
+from enum import StrEnum
+from typing import Any
 
 # Mandatory shadow mode disclaimer for unpromoted research output
 SHADOW_MODE_DISCLAIMER: str = "UNPROMOTED - shadow output, not decision-grade"
 
 
-class GovernanceAction(str, Enum):
+class GovernanceAction(StrEnum):
     """Actionable decision emitted by the Grok Governance Engine."""
 
-    APPROVE = "APPROVE"      # Candidate wager passes all gates and is endorsed for execution/parlays
-    DOWNGRADE = "DOWNGRADE"  # Candidate wager value is reduced; recommended stake cut or market redirect
-    VETO = "VETO"            # Candidate wager is strictly forbidden due to fatal situational contradictions
-    PASS = "PASS"            # Candidate wager lacks sufficient edge, fails structural test, or is a trap
+    APPROVE = "APPROVE"  # Candidate wager passes all gates and is endorsed for execution/parlays
+    DOWNGRADE = (
+        "DOWNGRADE"  # Candidate wager value is reduced; recommended stake cut or market redirect
+    )
+    VETO = "VETO"  # Candidate wager is strictly forbidden due to fatal situational contradictions
+    PASS = "PASS"  # Candidate wager lacks sufficient edge, fails structural test, or is a trap
 
 
 @dataclass(frozen=True)
@@ -57,14 +62,18 @@ class GovernanceVerdict:
     """Authoritative gating decision emitted for a single candidate betting opportunity.
 
     Attributes:
-        candidate_id: Unique deterministic identifier for candidate (e.g., 'cfbd:401520182:SPREAD:AWAY').
+        candidate_id: Unique deterministic identifier for candidate (e.g.,
+            'cfbd:401520182:SPREAD:AWAY').
         action: Final governance action (APPROVE, DOWNGRADE, VETO, PASS).
-        triggered_rules: Immutable sequence of rule identifiers that fired (e.g., ('RULE_A', 'RULE_F')).
+        triggered_rules: Immutable sequence of rule identifiers that fired (e.g., ('RULE_A',
+            'RULE_F')).
         counter_theses: Concrete explanations of situational risks or contradictions identified.
         original_confidence: Confidence score before governance evaluation (scale 0.0 to 10.0).
-        adjusted_confidence: Confidence score after rule adjustments and penalties (scale 0.0 to 10.0).
+        adjusted_confidence: Confidence score after rule adjustments and penalties (scale 0.0 to
+            10.0).
         parlay_eligible: Whether candidate qualifies for inclusion in multi-leg parlay construction.
-        target_market_override: Redirected market recommendation (e.g., 'FIRST_HALF_SPREAD'), or None.
+        target_market_override: Redirected market recommendation (e.g., 'FIRST_HALF_SPREAD'), or
+            None.
         notes: Synthesized analytical notes describing the governance rationale.
         disclaimer: Mandatory shadow mode disclaimer.
     """
@@ -104,7 +113,9 @@ class GovernanceVerdict:
         """Serialize verdict to a standard JSON-compatible dictionary."""
         return {
             "candidate_id": self.candidate_id,
-            "action": self.action.value if isinstance(self.action, GovernanceAction) else str(self.action),
+            "action": self.action.value
+            if isinstance(self.action, GovernanceAction)
+            else str(self.action),
             "triggered_rules": list(self.triggered_rules),
             "counter_theses": list(self.counter_theses),
             "original_confidence": round(self.original_confidence, 2),
@@ -131,7 +142,8 @@ class ParlayLeg:
         fair_prob: Vig-free consensus or model fair win probability (0.0 to 1.0).
         edge_pct: Mathematical edge percentage (model_prob - consensus_fair_prob).
         conference: Primary conference of the backed team (e.g. 'SEC', 'Big Ten').
-        weather_hazard: True if game is exposed to high wind (>= 18 mph / 29 kph) or precip (>= 2.5 mm).
+        weather_hazard: True if game is exposed to high wind (>= 18 mph / 29 kph) or precip (>= 2.5
+            mm).
         qb_news_risk: True if starting QB is unconfirmed or returning from injury.
         is_heavy_favorite: True if odds_american <= -600 (chalk trap risk).
         disclaimer: Mandatory shadow mode disclaimer.
@@ -338,7 +350,9 @@ class ParlayTicket:
             "has_parasitic_leg": self.has_parasitic_leg,
             "legs": [leg.to_dict() for leg in self.legs],
             "marginal_analyses": [m.to_dict() for m in self.marginal_analyses],
-            "alternate_pruned_ticket": self.alternate_pruned_ticket.to_dict() if self.alternate_pruned_ticket else None,
+            "alternate_pruned_ticket": self.alternate_pruned_ticket.to_dict()
+            if self.alternate_pruned_ticket
+            else None,
             "disclaimer": self.disclaimer,
         }
 
@@ -367,6 +381,7 @@ class ParlaySlateSummary:
 # =============================================================================
 # Mathematical Odds & Conversion Utilities
 # =============================================================================
+
 
 def american_to_decimal(american: int) -> float:
     """Convert American odds to standard European decimal odds multiplier.
@@ -418,8 +433,10 @@ def compute_correlation_penalty(legs: Sequence[ParlayLeg]) -> float:
     """Quantify correlation and risk discount across multiple parlay legs.
 
     Evaluates:
-    1. Same-Conference Overlap: pairs(c) * 0.03 per duplicate leg in the same conference (capped at 0.12).
-    2. Weather Hazard Overlap: High wind (>= 18 mph / 29 kph) or precip (>= 2.5 mm) adds 0.04 per leg (capped at 0.16).
+    1. Same-Conference Overlap: pairs(c) * 0.03 per duplicate leg in the same conference (capped at
+       0.12).
+    2. Weather Hazard Overlap: High wind (>= 18 mph / 29 kph) or precip (>= 2.5 mm) adds 0.04 per
+       leg (capped at 0.16).
     3. QB Volatility Overlap: Unconfirmed starting QB adds 0.04 per unconfirmed leg.
     4. Heavy Public Favorite Chalk Penalty: Odds <= -600 incur progressive 0.015 to 0.05 penalty.
     5. Leg Count Decay: 0.02 per leg above 5 legs.
@@ -454,7 +471,8 @@ def compute_correlation_penalty(legs: Sequence[ParlayLeg]) -> float:
             pairs = (cnt * (cnt - 1)) // 2
             conf_penalty += min(0.12, pairs * 0.03)
 
-    # 2. Weather hazard penalty: 0.04 per hazard leg beyond the first (or 0.04 per hazard leg, max 0.16)
+    # 2. Weather hazard penalty: 0.04 per hazard leg beyond the first (or 0.04 per hazard leg, max
+    # 0.16)
     weather_penalty = min(0.16, 0.04 * weather_hazard_count)
 
     # 3. QB news penalty: 0.04 per volatile QB leg

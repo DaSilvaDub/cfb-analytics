@@ -17,8 +17,9 @@ Provides:
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Any, Sequence
+from typing import Any
 
 from cfb_analytics.governance.models import (
     SHADOW_MODE_DISCLAIMER,
@@ -42,15 +43,15 @@ class CandidateWager:
 
     candidate_id: str
     game_id: str
-    market_type: str         # 'SPREAD', 'TOTAL', 'TEAM_PROP', 'ML'
-    market: str              # 'SPREAD', 'TOTAL', 'POINTS', 'RUSHING_YARDS', 'RECEIVING_YARDS'
-    side: str                # 'HOME', 'AWAY', 'OVER', 'UNDER'
-    line: float              # Market line (e.g. -28.0, 58.5, +3.5)
-    odds_american: int = -110       # Actionable American odds (e.g. -110, +135)
-    confidence: float = 7.0         # Original confidence score (0.0 to 10.0 scale)
-    edge_pct: float = 0.05          # Edge percentage
-    fair_prob: float = 0.50         # Vig-free fair probability
-    target_team: str = ""           # Specific team backed, or empty string
+    market_type: str  # 'SPREAD', 'TOTAL', 'TEAM_PROP', 'ML'
+    market: str  # 'SPREAD', 'TOTAL', 'POINTS', 'RUSHING_YARDS', 'RECEIVING_YARDS'
+    side: str  # 'HOME', 'AWAY', 'OVER', 'UNDER'
+    line: float  # Market line (e.g. -28.0, 58.5, +3.5)
+    odds_american: int = -110  # Actionable American odds (e.g. -110, +135)
+    confidence: float = 7.0  # Original confidence score (0.0 to 10.0 scale)
+    edge_pct: float = 0.05  # Edge percentage
+    fair_prob: float = 0.50  # Vig-free fair probability
+    target_team: str = ""  # Specific team backed, or empty string
 
     @classmethod
     def from_opportunity(cls, opp: Any, target_team: str = "") -> CandidateWager:
@@ -194,7 +195,8 @@ class HomePowerSmashScriptRule(BaseGrokRule):
     """Rule A: The Home Power Smash Script.
 
     Trigger: Home Power conference team coming off a loss/underperformance, playing a team that
-    either lost to FCS, scored <= 7 against a Power team, or is a severely outmatched G5/MAC/FCS opponent.
+    either lost to FCS, scored <= 7 against a Power team, or is a severely outmatched G5/MAC/FCS
+    opponent.
     Action:
     - OVER on total: APPROVE with confidence boost (+1.5).
     - 1H Favorite spread: APPROVE with confidence boost (+1.5).
@@ -250,18 +252,17 @@ class HomePowerSmashScriptRule(BaseGrokRule):
             )
 
         # 3. 1H Favorite Spread (or Home spread explicitly targeting 1H)
-        if "1H" in m_upper or "FIRST_HALF" in m_upper:
-            if s_upper == "HOME":
-                return RuleResult(
-                    rule_id=self.rule_id,
-                    rule_name=self.rule_name,
-                    triggered=True,
-                    action=GovernanceAction.APPROVE,
-                    target_market_override="FIRST_HALF_SPREAD",
-                    confidence_delta=1.5,
-                    parlay_eligible=True,
-                    notes="Rule A: 1H favorite spread captures smash script without 4Q backdoor risk.",
-                )
+        if ("1H" in m_upper or "FIRST_HALF" in m_upper) and s_upper == "HOME":
+            return RuleResult(
+                rule_id=self.rule_id,
+                rule_name=self.rule_name,
+                triggered=True,
+                action=GovernanceAction.APPROVE,
+                target_market_override="FIRST_HALF_SPREAD",
+                confidence_delta=1.5,
+                parlay_eligible=True,
+                notes="Rule A: 1H favorite spread captures smash script without 4Q backdoor risk.",
+            )
 
         # 4. Full Game Dog (Away taking points)
         if m_upper == "SPREAD" and s_upper == "AWAY" and candidate.line > 0:
@@ -271,7 +272,8 @@ class HomePowerSmashScriptRule(BaseGrokRule):
                 triggered=True,
                 action=GovernanceAction.VETO,
                 counter_thesis=(
-                    "Rule A Veto: Never back outmatched dog against wounded Power home team looking for statement blowout."
+                    "Rule A Veto: Never back outmatched dog against wounded Power home team "
+                    "looking for statement blowout."
                 ),
                 confidence_delta=-4.0,
                 parlay_eligible=False,
@@ -286,7 +288,8 @@ class HomePowerSmashScriptRule(BaseGrokRule):
                 action=GovernanceAction.DOWNGRADE,
                 target_market_override="FIRST_HALF_SPREAD",
                 confidence_delta=-1.0,
-                notes="Rule A: Downgrade full-game cover in favor of 1H spread to avoid 4Q starter substitutions.",
+                notes="Rule A: Downgrade full-game cover in favor of 1H spread to avoid 4Q "
+                      "starter substitutions.",
             )
 
         return self._neutral()
@@ -298,9 +301,25 @@ class HomePowerSmashScriptRule(BaseGrokRule):
         if context.talent_composite_home >= 650.0:
             return True
         power_names = {
-            "georgia", "alabama", "ohio state", "michigan", "texas", "lsu", "usc",
-            "florida", "tennessee", "penn state", "clemson", "florida state", "oregon",
-            "oklahoma", "auburn", "texas a&m", "miami", "washington", "wisconsin",
+            "georgia",
+            "alabama",
+            "ohio state",
+            "michigan",
+            "texas",
+            "lsu",
+            "usc",
+            "florida",
+            "tennessee",
+            "penn state",
+            "clemson",
+            "florida state",
+            "oregon",
+            "oklahoma",
+            "auburn",
+            "texas a&m",
+            "miami",
+            "washington",
+            "wisconsin",
         }
         if any(p in team_name for p in power_names):
             return True
@@ -326,7 +345,20 @@ class HomePowerSmashScriptRule(BaseGrokRule):
         opp_name = context.away_team.lower()
         if context.talent_composite_away < 550.0:
             return True
-        if any(token in opp_name for token in ("charlotte", "uab", "marshall", "fcs", "montana", "vanderbilt", "kent state", "akron", "umass")):
+        if any(
+            token in opp_name
+            for token in (
+                "charlotte",
+                "uab",
+                "marshall",
+                "fcs",
+                "montana",
+                "vanderbilt",
+                "kent state",
+                "akron",
+                "umass",
+            )
+        ):
             return True
         games = _get_games(context.tape_away)
         for g in games:
@@ -337,7 +369,10 @@ class HomePowerSmashScriptRule(BaseGrokRule):
                 return True
             pts = _get_points_scored(g)
             opp_conf = _get_opp_conf(g)
-            if (opp_conf in P4_CONFERENCES or any(p in opp_n for p in ("auburn", "alabama", "georgia", "power"))) and pts <= 7:
+            if (
+                opp_conf in P4_CONFERENCES
+                or any(p in opp_n for p in ("auburn", "alabama", "georgia", "power"))
+            ) and pts <= 7:
                 return True
         tier = classify_opponent(school=context.away_team)
         return tier in (OpponentTier.BOTTOM_G5, OpponentTier.CUPCAKE_FCS)
@@ -377,17 +412,21 @@ class MontanaRule(BaseGrokRule):
                 triggered=True,
                 action=GovernanceAction.VETO,
                 counter_thesis=(
-                    "Rule B (Montana Rule) Veto: Top FCS ranking is not a shield against desperate, "
-                    "physically superior FBS roster at home hunting first win; do not take FCS points under 24."
+                    "Rule B (Montana Rule) Veto: Top FCS ranking is not a shield against "
+                    "desperate, "
+                    "physically superior FBS roster at home hunting first win; do not take FCS "
+                    "points under 24."
                 ),
                 confidence_delta=-5.0,
                 parlay_eligible=False,
             )
 
         # 2. Home FBS Favorite Cover / 1H / OVER
-        if (m_upper == "SPREAD" and s_upper == "HOME") or (
-            "1H" in m_upper and s_upper == "HOME"
-        ) or ("TOTAL" in m_upper and s_upper == "OVER"):
+        if (
+            (m_upper == "SPREAD" and s_upper == "HOME")
+            or ("1H" in m_upper and s_upper == "HOME")
+            or ("TOTAL" in m_upper and s_upper == "OVER")
+        ):
             return RuleResult(
                 rule_id=self.rule_id,
                 rule_name=self.rule_name,
@@ -414,7 +453,12 @@ class MontanaRule(BaseGrokRule):
 
     def _is_fcs_opponent(self, context: SituationalContext) -> bool:
         opp_lower = context.away_team.lower()
-        if "montana" in opp_lower or "fcs" in opp_lower or "south dakota state" in opp_lower or "ndsu" in opp_lower:
+        if (
+            "montana" in opp_lower
+            or "fcs" in opp_lower
+            or "south dakota state" in opp_lower
+            or "ndsu" in opp_lower
+        ):
             return True
         tier = classify_opponent(school=context.away_team)
         if tier == OpponentTier.CUPCAKE_FCS:
@@ -440,7 +484,9 @@ class FatRoadDogFatigueRule(BaseGrokRule):
         candidate: CandidateWager,
     ) -> RuleResult:
         kickoff_hour = parse_kickoff_et_hour(context.kickoff_et)
-        is_late_kickoff = (kickoff_hour is not None and kickoff_hour >= 22.5) or context.is_late_kickoff
+        is_late_kickoff = (
+            kickoff_hour is not None and kickoff_hour >= 22.5
+        ) or context.is_late_kickoff
         is_fatigued = is_late_kickoff or context.travel_fatigue_tax_away >= 1.5
 
         if not is_fatigued:
@@ -457,9 +503,13 @@ class FatRoadDogFatigueRule(BaseGrokRule):
             elif m_upper == "SPREAD" and s_upper == "AWAY":
                 market_spread = -candidate.line
             else:
-                market_spread = 25.0 if (context.travel_fatigue_tax_away >= 1.5 and is_late_kickoff) else 0.0
+                market_spread = (
+                    25.0 if (context.travel_fatigue_tax_away >= 1.5 and is_late_kickoff) else 0.0
+                )
 
-        is_heavy_road_fav = market_spread >= 25.0 or (m_upper == "SPREAD" and s_upper == "AWAY" and candidate.line <= -25.0)
+        is_heavy_road_fav = market_spread >= 25.0 or (
+            m_upper == "SPREAD" and s_upper == "AWAY" and candidate.line <= -25.0
+        )
 
         if not is_heavy_road_fav:
             return self._neutral()
@@ -474,8 +524,10 @@ class FatRoadDogFatigueRule(BaseGrokRule):
                 triggered=True,
                 action=GovernanceAction.VETO,
                 counter_thesis=(
-                    f"Rule C Veto: Heavy road favorite laying -25+ at {context.kickoff_et} under road fatigue. "
-                    "Road favorites pull starters early, bleed clock, and concede late backdoor covers."
+                    f"Rule C Veto: Heavy road favorite laying -25+ at {context.kickoff_et} under "
+                    "road fatigue. "
+                    "Road favorites pull starters early, bleed clock, and concede late backdoor "
+                    "covers."
                 ),
                 confidence_delta=-5.0,
                 parlay_eligible=False,
@@ -518,14 +570,20 @@ class ThinDogTrapRule(BaseGrokRule):
         m_upper = candidate.market.upper()
         s_upper = candidate.side.upper()
 
-        is_thin_dog = m_upper in ("SPREAD", "FIRST_HALF_SPREAD", "1H") and (1.5 <= candidate.line <= 6.0)
+        is_thin_dog = m_upper in ("SPREAD", "FIRST_HALF_SPREAD", "1H") and (
+            1.5 <= candidate.line <= 6.0
+        )
         if not is_thin_dog:
             return self._neutral()
 
         is_dog_home = s_upper == "HOME"
         # Opponent QB status
-        opp_qb_injured = not (context.qb_away_confirmed if is_dog_home else context.qb_home_confirmed)
-        opp_qb_share = context.qb_away_attempt_share if is_dog_home else context.qb_home_attempt_share
+        opp_qb_injured = not (
+            context.qb_away_confirmed if is_dog_home else context.qb_home_confirmed
+        )
+        opp_qb_share = (
+            context.qb_away_attempt_share if is_dog_home else context.qb_home_attempt_share
+        )
         if opp_qb_share < 0.70:
             opp_qb_injured = True
 
@@ -534,7 +592,9 @@ class ThinDogTrapRule(BaseGrokRule):
         tape_opp = context.tape_away if is_dog_home else context.tape_home
         dog_net_epa = tape_dog.offensive_floor_epa - tape_dog.defensive_floor_epa
         opp_net_epa = tape_opp.offensive_floor_epa - tape_opp.defensive_floor_epa
-        tape_20pt_edge = (dog_net_epa - opp_net_epa) >= 0.20 or (getattr(context, "tape_differential", 0.0) >= 20.0)
+        tape_20pt_edge = (dog_net_epa - opp_net_epa) >= 0.20 or (
+            getattr(context, "tape_differential", 0.0) >= 20.0
+        )
 
         # Trench mismatch
         trench_dog = context.trench_attrition_home if is_dog_home else context.trench_attrition_away
@@ -571,7 +631,8 @@ class ThinDogTrapRule(BaseGrokRule):
             triggered=True,
             action=GovernanceAction.VETO,
             counter_thesis=(
-                f"Rule D: Thin underdogs ({candidate.line:+g}) are traps without confirmed QB injury, "
+                f"Rule D: Thin underdogs ({candidate.line:+g}) are traps without confirmed QB "
+                "injury, "
                 ">20 pt tape margin, or decisive trench mismatch."
             ),
             confidence_delta=-4.5,
@@ -626,7 +687,8 @@ class HighScoringConferenceRule(BaseGrokRule):
                 rule_name=self.rule_name,
                 triggered=True,
                 action=GovernanceAction.VETO,
-                counter_thesis="Rule E: Both offenses average 30+ PPG in conference play; do not bet UNDER.",
+                counter_thesis="Rule E: Both offenses average 30+ PPG in conference play; do not "
+                               "bet UNDER.",
                 confidence_delta=-4.0,
                 parlay_eligible=False,
             )
@@ -638,7 +700,8 @@ class HighScoringConferenceRule(BaseGrokRule):
                 triggered=True,
                 action=GovernanceAction.DOWNGRADE,
                 confidence_delta=-1.0,
-                notes="Rule E: Target OVER first, side second due to high fourth-quarter variance in shootouts.",
+                notes="Rule E: Target OVER first, side second due to high fourth-quarter variance "
+                      "in shootouts.",
             )
 
         return self._neutral()
@@ -648,8 +711,19 @@ class HighScoringConferenceRule(BaseGrokRule):
             return True
         home_name = context.home_team.lower()
         away_name = context.away_team.lower()
-        # Common conference matchups in CFB tests (e.g. UCLA vs Purdue in B1G, Georgia vs Vandy in SEC)
-        b1g = {"ucla", "purdue", "michigan", "ohio state", "penn state", "oregon", "usc", "wisconsin", "iowa"}
+        # Common conference matchups in CFB tests (e.g. UCLA vs Purdue in B1G, Georgia vs Vandy in
+        # SEC)
+        b1g = {
+            "ucla",
+            "purdue",
+            "michigan",
+            "ohio state",
+            "penn state",
+            "oregon",
+            "usc",
+            "wisconsin",
+            "iowa",
+        }
         sec = {"georgia", "vanderbilt", "alabama", "lsu", "texas", "florida", "tennessee", "auburn"}
         if (any(t in home_name for t in b1g) and any(t in away_name for t in b1g)) or (
             any(t in home_name for t in sec) and any(t in away_name for t in sec)
@@ -666,9 +740,7 @@ class HighScoringConferenceRule(BaseGrokRule):
             away_conf = _get_opp_conf(g)
             if away_conf:
                 break
-        if home_conf and away_conf and home_conf == away_conf:
-            return True
-        return False
+        return bool(home_conf and away_conf and home_conf == away_conf)
 
 
 class FirstHalfPreferenceRule(BaseGrokRule):
@@ -689,7 +761,6 @@ class FirstHalfPreferenceRule(BaseGrokRule):
         candidate: CandidateWager,
     ) -> RuleResult:
         m_upper = candidate.market.upper()
-        s_upper = candidate.side.upper()
 
         is_fav_laying_24_to_35 = False
         if m_upper == "SPREAD" and (-35.0 <= candidate.line <= -24.0):
@@ -697,17 +768,19 @@ class FirstHalfPreferenceRule(BaseGrokRule):
 
         if not is_fav_laying_24_to_35:
             # Check if candidate is 1H spread for a massive blowout
-            if "1H" in m_upper or "FIRST_HALF" in m_upper:
-                if -17.0 <= candidate.line <= -14.0 or candidate.line < 0:
-                    return RuleResult(
-                        rule_id=self.rule_id,
-                        rule_name=self.rule_name,
-                        triggered=True,
-                        action=GovernanceAction.APPROVE,
-                        confidence_delta=1.0,
-                        parlay_eligible=True,
-                        notes="Rule F Approved: 1H spread captures maximum starter tempo and intensity without backdoor risk.",
-                    )
+            if ("1H" in m_upper or "FIRST_HALF" in m_upper) and (
+                -17.0 <= candidate.line <= -14.0 or candidate.line < 0
+            ):
+                return RuleResult(
+                    rule_id=self.rule_id,
+                    rule_name=self.rule_name,
+                    triggered=True,
+                    action=GovernanceAction.APPROVE,
+                    confidence_delta=1.0,
+                    parlay_eligible=True,
+                    notes="Rule F Approved: 1H spread captures maximum starter tempo and "
+                          "intensity without backdoor risk.",
+                )
             return self._neutral()
 
         return RuleResult(
@@ -717,11 +790,13 @@ class FirstHalfPreferenceRule(BaseGrokRule):
             action=GovernanceAction.DOWNGRADE,
             target_market_override="FIRST_HALF_SPREAD",
             counter_thesis=(
-                f"Rule F: Massive favorite laying {candidate.line:+g} carries extreme 4Q garbage-time and "
+                f"Rule F: Massive favorite laying {candidate.line:+g} carries extreme 4Q "
+                "garbage-time and "
                 "kneel-down backdoor risk. Target 1H spread instead."
             ),
             confidence_delta=-1.5,
-            notes="Rule F: Massive full-game blowout covers risk 4th quarter substitutions and backdoor drives; prefer 1H spread (-14 to -17).",
+            notes="Rule F: Massive full-game blowout covers risk 4th quarter substitutions and "
+                  "backdoor drives; prefer 1H spread (-14 to -17).",
         )
 
 
@@ -748,27 +823,39 @@ class GrokRuleEngine:
         self.rule_e = HighScoringConferenceRule()
         self.rule_f = FirstHalfPreferenceRule()
 
-    def evaluate_rule_a(self, candidate: Any, context: SituationalContext, reasoning_card: Any = None) -> RuleResult:
+    def evaluate_rule_a(
+        self, candidate: Any, context: SituationalContext, reasoning_card: Any = None
+    ) -> RuleResult:
         cw = _to_candidate_wager(candidate)
         return self.rule_a.evaluate(context, cw)
 
-    def evaluate_rule_b(self, candidate: Any, context: SituationalContext, reasoning_card: Any = None) -> RuleResult:
+    def evaluate_rule_b(
+        self, candidate: Any, context: SituationalContext, reasoning_card: Any = None
+    ) -> RuleResult:
         cw = _to_candidate_wager(candidate)
         return self.rule_b.evaluate(context, cw)
 
-    def evaluate_rule_c(self, candidate: Any, context: SituationalContext, reasoning_card: Any = None) -> RuleResult:
+    def evaluate_rule_c(
+        self, candidate: Any, context: SituationalContext, reasoning_card: Any = None
+    ) -> RuleResult:
         cw = _to_candidate_wager(candidate)
         return self.rule_c.evaluate(context, cw)
 
-    def evaluate_rule_d(self, candidate: Any, context: SituationalContext, reasoning_card: Any = None) -> RuleResult:
+    def evaluate_rule_d(
+        self, candidate: Any, context: SituationalContext, reasoning_card: Any = None
+    ) -> RuleResult:
         cw = _to_candidate_wager(candidate)
         return self.rule_d.evaluate(context, cw)
 
-    def evaluate_rule_e(self, candidate: Any, context: SituationalContext, reasoning_card: Any = None) -> RuleResult:
+    def evaluate_rule_e(
+        self, candidate: Any, context: SituationalContext, reasoning_card: Any = None
+    ) -> RuleResult:
         cw = _to_candidate_wager(candidate)
         return self.rule_e.evaluate(context, cw)
 
-    def evaluate_rule_f(self, candidate: Any, context: SituationalContext, reasoning_card: Any = None) -> RuleResult:
+    def evaluate_rule_f(
+        self, candidate: Any, context: SituationalContext, reasoning_card: Any = None
+    ) -> RuleResult:
         cw = _to_candidate_wager(candidate)
         return self.rule_f.evaluate(context, cw)
 
@@ -795,7 +882,9 @@ class GrokRuleEngine:
     ) -> GovernanceVerdict:
         """Evaluate candidate opportunity against all rules and synthesize final verdict."""
         # Handle flexible argument orders (context, candidate) or (candidate, context)
-        if not isinstance(context, SituationalContext) and isinstance(candidate, SituationalContext):
+        if not isinstance(context, SituationalContext) and isinstance(
+            candidate, SituationalContext
+        ):
             context, candidate = candidate, context
 
         cw = _to_candidate_wager(candidate)

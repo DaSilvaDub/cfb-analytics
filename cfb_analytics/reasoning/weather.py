@@ -2,7 +2,8 @@
 
 Models micro-climate conditions at kickoff and throughout game duration:
 - Weather attenuation curves (wind, gust, precipitation, extreme cold, extreme heat).
-- Pure standard library volume redistribution law: Delta_pass shifts 0.85 * Delta_pass into rush attempts.
+- Pure standard library volume redistribution law: Delta_pass shifts 0.85 * Delta_pass into rush
+  attempts.
 - Indoor/dome strict bypass.
 - Venue elevation physics (>=1200m cardiovascular fatigue tax and field goal range boost).
 - Haversine travel distance, time-zone displacement, and the Late Kickoff Penalty
@@ -50,7 +51,8 @@ def calculate_weather_multipliers(
             comp_prob_mult=1.0,
             ypc_mult=1.0,
             is_extreme_weather=False,
-            weather_summary="Indoor/Dome stadium. Climate controlled; neutral atmospheric conditions.",
+            weather_summary="Indoor/Dome stadium. Climate controlled; neutral atmospheric "
+                            "conditions.",
         )
 
     # 1. Wind Speed & Turbulent Gusts
@@ -64,9 +66,7 @@ def calculate_weather_multipliers(
 
     # 2. Precipitation
     precip_eff = (
-        (precip_prob - 50.0) * 0.02
-        if (precip_mm == 0.0 and precip_prob >= 60.0)
-        else precip_mm
+        (precip_prob - 50.0) * 0.02 if (precip_mm == 0.0 and precip_prob >= 60.0) else precip_mm
     )
     excess_precip = min(15.0, max(0.0, precip_eff - 0.1))
 
@@ -103,22 +103,13 @@ def calculate_weather_multipliers(
         max(0.50, min(1.0, m_wind_comp_prob * m_precip_comp_prob * m_temp_comp_prob)),
         4,
     )
-    ypc_mult = round(
-        max(0.50, min(1.0, m_wind_ypc * m_precip_ypc * m_temp_ypc)), 4
-    )
-    scoring_mult = round(
-        max(0.55, min(1.0, m_wind_pts * m_precip_pts * m_temp_pts)), 4
-    )
+    ypc_mult = round(max(0.50, min(1.0, m_wind_ypc * m_precip_ypc * m_temp_ypc)), 4)
+    scoring_mult = round(max(0.55, min(1.0, m_wind_pts * m_precip_pts * m_temp_pts)), 4)
 
     # 5. Run/Pass volume shift: lost pass volume converted 0.85x into rushing volume
     rush_vol_mult = round(1.0 + (1.0 - pass_vol_mult) * 0.85, 4)
 
-    is_extreme = bool(
-        wind_kph >= 35.0
-        or gust_kph >= 48.0
-        or precip_mm >= 5.0
-        or temp_c < 0.0
-    )
+    is_extreme = bool(wind_kph >= 35.0 or gust_kph >= 48.0 or precip_mm >= 5.0 or temp_c < 0.0)
 
     summary = (
         f"Outdoor weather: {temp_c:.1f}°C, wind {wind_kph:.1f} kph (gusts {gust_kph:.1f} kph), "
@@ -173,19 +164,14 @@ def redistribute_pass_to_rush(
     )
 
 
-def calculate_haversine_distance_miles(
-    lat1: float, lon1: float, lat2: float, lon2: float
-) -> float:
+def calculate_haversine_distance_miles(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     """Pure stdlib Haversine great-circle distance in miles."""
     phi1 = math.radians(lat1)
     phi2 = math.radians(lat2)
     dphi = math.radians(lat2 - lat1)
     dlambda = math.radians(lon2 - lon1)
 
-    a = (
-        math.sin(dphi / 2.0) ** 2
-        + math.cos(phi1) * math.cos(phi2) * math.sin(dlambda / 2.0) ** 2
-    )
+    a = math.sin(dphi / 2.0) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(dlambda / 2.0) ** 2
     c = 2.0 * math.atan2(math.sqrt(a), math.sqrt(1.0 - a))
     return round(3958.8 * c, 1)
 
@@ -212,7 +198,10 @@ def calculate_fg_range_boost(venue_elevation_m: float | None) -> float:
 
 
 def parse_kickoff_et_hour(kickoff_et: str) -> float | None:
-    """Parse string kickoff time like '10:30 p.m.', '11:00 PM', '10:30PM ET', or '22:30' into float hours."""
+    """Parse a kickoff time into float hours.
+
+    Accepts '10:30 p.m.', '11:00 PM', '10:30PM ET' or '22:30'.
+    """
     if not kickoff_et:
         return None
     clean = kickoff_et.strip().lower()
@@ -282,9 +271,7 @@ def evaluate_travel_profile(
     total_tax = round(min(4.0, dist_tax + tz_tax + late_tax + alt_tax), 2)
 
     # Grok Rule C: Fat road dogs vs fatigued late road favorites (-20+ at >=10:30 PM ET)
-    rule_c_triggered = bool(
-        is_late_kickoff and spread_line is not None and spread_line <= -20.0
-    )
+    rule_c_triggered = bool(is_late_kickoff and spread_line is not None and spread_line <= -20.0)
 
     return TravelProfile(
         distance_miles=round(distance_miles, 1),

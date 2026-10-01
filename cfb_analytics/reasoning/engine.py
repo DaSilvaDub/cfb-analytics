@@ -123,9 +123,12 @@ class MultiFactorReasoningEngine:
 
         return (
             f"Tape Profile ({team_name}): {n_honest} honest FBS games analyzed "
-            f"({n_cupcakes} cupcake blowouts stripped). Offensive EPA: floor {tape.offensive_floor_epa:+.2f}, "
-            f"ceiling {tape.offensive_ceiling_epa:+.2f} (success rate {tape.honest_success_rate:.1%}). "
-            f"Defensive EPA allowed: floor {tape.defensive_floor_epa:+.2f}, ceiling {tape.defensive_ceiling_epa:+.2f}. "
+            f"({n_cupcakes} cupcake blowouts stripped). Offensive EPA: floor "
+            f"{tape.offensive_floor_epa:+.2f}, "
+            f"ceiling {tape.offensive_ceiling_epa:+.2f} (success rate "
+            f"{tape.honest_success_rate:.1%}). "
+            f"Defensive EPA allowed: floor {tape.defensive_floor_epa:+.2f}, ceiling "
+            f"{tape.defensive_ceiling_epa:+.2f}. "
             f"Opponent honest defensive floor EPA: {opp_tape.defensive_floor_epa:+.2f}."
         )
 
@@ -158,7 +161,8 @@ class MultiFactorReasoningEngine:
         eff_wind = w.effective_wind_kph if w.effective_wind_kph > 0 else w.wind_kph
         return (
             f"Venue & Weather: Kickoff {temp_f:.1f}°F ({w.temperature_c:.1f}°C), outdoor. "
-            f"Wind: {w.wind_kph:.1f} kph sustained (gusts {w.gust_kph:.1f} kph, effective {eff_wind:.1f} kph). "
+            f"Wind: {w.wind_kph:.1f} kph sustained (gusts {w.gust_kph:.1f} kph, effective "
+            f"{eff_wind:.1f} kph). "
             f"Precipitation: {w.precip_mm:.1f} mm. Multipliers: pass {w.pass_vol_mult:.2f}x, "
             f"rush {w.rush_vol_mult:.2f}x, scoring {w.scoring_mult:.2f}x. "
             f"Away travel fatigue tax: {context.travel_fatigue_tax_away:.1f} pts."

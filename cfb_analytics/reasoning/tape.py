@@ -22,63 +22,69 @@ from cfb_analytics.reasoning.models import (
 )
 
 # Canonical conference groupings (case-insensitive)
-P4_CONFERENCES: frozenset[str] = frozenset({
-    "sec",
-    "southeastern",
-    "southeastern conference",
-    "big ten",
-    "big ten conference",
-    "b1g",
-    "big 12",
-    "big 12 conference",
-    "big12",
-    "acc",
-    "atlantic coast conference",
-    "pac-12",
-    "pac 12",
-    "pac12",  # Historical Power
-})
+P4_CONFERENCES: frozenset[str] = frozenset(
+    {
+        "sec",
+        "southeastern",
+        "southeastern conference",
+        "big ten",
+        "big ten conference",
+        "b1g",
+        "big 12",
+        "big 12 conference",
+        "big12",
+        "acc",
+        "atlantic coast conference",
+        "pac-12",
+        "pac 12",
+        "pac12",  # Historical Power
+    }
+)
 
-G5_CONFERENCES: frozenset[str] = frozenset({
-    "american",
-    "american athletic",
-    "american athletic conference",
-    "aac",
-    "mountain west",
-    "mountain west conference",
-    "mwc",
-    "sun belt",
-    "sun belt conference",
-    "sbc",
-    "mid-american",
-    "mid-american conference",
-    "mac",
-    "conference usa",
-    "c-usa",
-    "cusa",
-})
+G5_CONFERENCES: frozenset[str] = frozenset(
+    {
+        "american",
+        "american athletic",
+        "american athletic conference",
+        "aac",
+        "mountain west",
+        "mountain west conference",
+        "mwc",
+        "sun belt",
+        "sun belt conference",
+        "sbc",
+        "mid-american",
+        "mid-american conference",
+        "mac",
+        "conference usa",
+        "c-usa",
+        "cusa",
+    }
+)
 
-FCS_CONFERENCES: frozenset[str] = frozenset({
-    "big sky",
-    "mvfc",
-    "missouri valley football",
-    "missouri valley",
-    "caa",
-    "ivy",
-    "ivy league",
-    "southern",
-    "socon",
-    "southland",
-    "swac",
-    "meac",
-    "patriot",
-    "patriot league",
-    "pioneer",
-    "ovc",
-    "united athletic",
-    "nec",
-    "fcs",
-})
+FCS_CONFERENCES: frozenset[str] = frozenset(
+    {
+        "big sky",
+        "mvfc",
+        "missouri valley football",
+        "missouri valley",
+        "caa",
+        "ivy",
+        "ivy league",
+        "southern",
+        "socon",
+        "southland",
+        "swac",
+        "meac",
+        "patriot",
+        "patriot league",
+        "pioneer",
+        "ovc",
+        "united athletic",
+        "nec",
+        "fcs",
+    }
+)
 
 # Thresholds for junk cupcake blowout identification
 BLOWOUT_MARGIN_THRESHOLD: int = 24
@@ -117,16 +123,20 @@ def classify_opponent(
             talent_composite is not None and talent_composite < 450.0
         ):
             return OpponentTier.BOTTOM_G5
-        if conf_lower in {
-            "mac",
-            "mid-american",
-            "mid-american conference",
-            "c-usa",
-            "cusa",
-            "conference usa",
-        }:
-            if elo_rating is not None and elo_rating < 1350.0:
-                return OpponentTier.BOTTOM_G5
+        if (
+            conf_lower
+            in {
+                "mac",
+                "mid-american",
+                "mid-american conference",
+                "c-usa",
+                "cusa",
+                "conference usa",
+            }
+            and elo_rating is not None
+            and elo_rating < 1350.0
+        ):
+            return OpponentTier.BOTTOM_G5
         return OpponentTier.HONEST_FBS
 
     return OpponentTier.UNKNOWN
@@ -149,8 +159,7 @@ def classify_tape_game(
     if opponent_tier in (OpponentTier.CUPCAKE_FCS, OpponentTier.BOTTOM_G5):
         # A blowout against cupcake competition is JUNK tape
         if margin >= BLOWOUT_MARGIN_THRESHOLD or (
-            points_scored >= BLOWOUT_POINTS_SCORED
-            and points_allowed <= BLOWOUT_POINTS_ALLOWED
+            points_scored >= BLOWOUT_POINTS_SCORED and points_allowed <= BLOWOUT_POINTS_ALLOWED
         ):
             return TapeCategory.CUPCAKE_BLOWOUT
         # A close game or loss against a cupcake is HONEST STRUGGLE tape (establishes floor!)
@@ -315,28 +324,31 @@ def analyze_tape(
     inflation_gap_epa = max(0.0, round(raw_ceil_epa - off_ceil_epa, 3))
 
     is_inflated = (
-        cupcake_count > 0
-        and (inflation_gap_pts >= 14.0 or inflation_gap_epa >= 0.18)
+        cupcake_count > 0 and (inflation_gap_pts >= 14.0 or inflation_gap_epa >= 0.18)
     ) or (not has_honest)
 
     # Generate Descriptive Tape Summary
     if not has_honest:
         summary = (
             f"WARNING: Zero honest tape ({cupcake_count} cupcake blowouts filtered). "
-            f"Raw ceiling {raw_ceil_pts} pts (+{raw_ceil_epa:.2f} EPA) unverified against Power competition; "
+            f"Raw ceiling {raw_ceil_pts} pts (+{raw_ceil_epa:.2f} EPA) unverified against Power "
+            "competition; "
             f"regressed ceiling capped at {off_ceil_pts} pts (+{off_ceil_epa:.2f} EPA)."
         )
     elif is_inflated:
         summary = (
             f"CUPCAKE INFLATION DETECTED: {cupcake_count} cupcake blowouts removed. "
-            f"Raw ceiling {raw_ceil_pts} pts (+{raw_ceil_epa:.2f} EPA) inflated by +{inflation_gap_pts:.0f} pts "
-            f"over honest ceiling {off_ceil_pts} pts (+{off_ceil_epa:.2f} EPA across {honest_count} honest games). "
+            f"Raw ceiling {raw_ceil_pts} pts (+{raw_ceil_epa:.2f} EPA) inflated by "
+            f"+{inflation_gap_pts:.0f} pts "
+            f"over honest ceiling {off_ceil_pts} pts (+{off_ceil_epa:.2f} EPA across "
+            f"{honest_count} honest games). "
             f"Honest offensive floor is {off_floor_pts} pts ({off_floor_epa:+.2f} EPA)."
         )
     else:
         summary = (
             f"Honest tape baseline: {honest_count} games evaluated. "
-            f"Offensive bounds: {off_floor_pts}-{off_ceil_pts} pts (EPA {off_floor_epa:+.2f} to {off_ceil_epa:+.2f}, "
+            f"Offensive bounds: {off_floor_pts}-{off_ceil_pts} pts (EPA {off_floor_epa:+.2f} to "
+            f"{off_ceil_epa:+.2f}, "
             f"SR {off_floor_sr:.1%}-{off_ceil_sr:.1%}). "
             f"Defensive bounds: {def_floor_pts}-{def_ceil_pts} pts allowed."
         )

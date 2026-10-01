@@ -16,34 +16,28 @@ Verifies:
 from __future__ import annotations
 
 from dataclasses import FrozenInstanceError
+
 import pytest
 
 from cfb_analytics.governance import (
     SHADOW_MODE_DISCLAIMER,
     BaseGrokRule,
     CandidateWager,
-    FatRoadDogFatigueRule,
-    FirstHalfPreferenceRule,
     GovernanceAction,
     GovernanceGate,
     GovernanceVerdict,
     GrokRuleEngine,
-    HighScoringConferenceRule,
     HomePowerSmashScriptRule,
     MarginalLegAnalysis,
-    MontanaRule,
     OptimizerMode,
     ParlayLeg,
     ParlayOptimizer,
     ParlayRecommendation,
-    ParlaySlateSummary,
     ParlayTicket,
     RuleResult,
-    ThinDogTrapRule,
     american_to_decimal,
     compute_correlation_penalty,
     compute_efficiency_ratio,
-    compute_fragility_index,
     compute_parlay_payout,
     decimal_to_american,
 )
@@ -59,7 +53,6 @@ from cfb_analytics.scanner.models import (
     PlayTier,
     QualificationStatus,
 )
-
 
 # =============================================================================
 # Fixtures
