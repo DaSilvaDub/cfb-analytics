@@ -13,6 +13,7 @@ Tests:
 from __future__ import annotations
 
 from dataclasses import FrozenInstanceError
+
 import pytest
 
 from cfb_analytics.reasoning.engine import MultiFactorReasoningEngine
@@ -308,10 +309,7 @@ class TestTapeReasoning:
         assert classify_opponent(conference="Big Sky") == OpponentTier.CUPCAKE_FCS
         assert classify_opponent(conference="Mountain West") == OpponentTier.HONEST_FBS
         # Bottom G5 with low Elo
-        assert (
-            classify_opponent(conference="MAC", elo_rating=1280.0)
-            == OpponentTier.BOTTOM_G5
-        )
+        assert classify_opponent(conference="MAC", elo_rating=1280.0) == OpponentTier.BOTTOM_G5
 
     def test_classify_tape_game_blowout_vs_struggle(self) -> None:
         # Blowout against FCS is junk tape
@@ -577,7 +575,9 @@ class TestRosterAndTrenchReasoning:
 class TestNegativeFavoriteGate:
     """Exhaustive tests for negative_gate.py across all 5 dimensions."""
 
-    def test_cleared_favorite_with_affirmative_edges(self, base_context: SituationalContext) -> None:
+    def test_cleared_favorite_with_affirmative_edges(
+        self, base_context: SituationalContext
+    ) -> None:
         gate = NegativeFavoriteGate()
         res = gate.evaluate(
             base_context,
@@ -612,9 +612,7 @@ class TestNegativeFavoriteGate:
         assert "inflated by cupcake blowout tape" in str(res.counter_thesis)
         assert res.confidence_penalty >= 4.0
 
-    def test_road_fatigue_late_kickoff_rule_c_veto(
-        self, base_context: SituationalContext
-    ) -> None:
+    def test_road_fatigue_late_kickoff_rule_c_veto(self, base_context: SituationalContext) -> None:
         ctx = SituationalContext(
             **{
                 **base_context.__dict__,
@@ -630,12 +628,8 @@ class TestNegativeFavoriteGate:
         assert "fat_road_dog_rule_c_veto" in res.disqualifying_reasons
         assert "Rule C Veto" in str(res.counter_thesis)
 
-    def test_unconfirmed_qb_disqualification(
-        self, base_context: SituationalContext
-    ) -> None:
-        ctx = SituationalContext(
-            **{**base_context.__dict__, "qb_home_confirmed": False}
-        )
+    def test_unconfirmed_qb_disqualification(self, base_context: SituationalContext) -> None:
+        ctx = SituationalContext(**{**base_context.__dict__, "qb_home_confirmed": False})
         gate = NegativeFavoriteGate()
         res = gate.evaluate(ctx, market="SPREAD", side="HOME", line=-14.0)
 
@@ -644,12 +638,8 @@ class TestNegativeFavoriteGate:
         assert "unconfirmed_qb_disqualification" in res.disqualifying_reasons
         assert "Unconfirmed quarterback status" in str(res.counter_thesis)
 
-    def test_severe_trench_attrition_veto(
-        self, base_context: SituationalContext
-    ) -> None:
-        ctx = SituationalContext(
-            **{**base_context.__dict__, "trench_attrition_home": 0.40}
-        )
+    def test_severe_trench_attrition_veto(self, base_context: SituationalContext) -> None:
+        ctx = SituationalContext(**{**base_context.__dict__, "trench_attrition_home": 0.40})
         gate = NegativeFavoriteGate()
         res = gate.evaluate(ctx, market="SPREAD", side="HOME", line=-13.5)
 
@@ -658,9 +648,7 @@ class TestNegativeFavoriteGate:
         assert "severe_trench_attrition" in res.disqualifying_reasons
         assert "Critical trench attrition" in str(res.counter_thesis)
 
-    def test_compound_rest_lookahead_trap_veto(
-        self, base_context: SituationalContext
-    ) -> None:
+    def test_compound_rest_lookahead_trap_veto(self, base_context: SituationalContext) -> None:
         ctx = SituationalContext(
             **{
                 **base_context.__dict__,
@@ -677,9 +665,7 @@ class TestNegativeFavoriteGate:
         assert "compound_rest_lookahead_trap" in res.disqualifying_reasons
         assert "Classic trap spot" in str(res.counter_thesis)
 
-    def test_brand_name_talent_mismatch_veto(
-        self, base_context: SituationalContext
-    ) -> None:
+    def test_brand_name_talent_mismatch_veto(self, base_context: SituationalContext) -> None:
         ctx = SituationalContext(
             **{
                 **base_context.__dict__,
@@ -702,13 +688,9 @@ class TestNegativeFavoriteGate:
         assert "thin_dog_trap_rule_d" in res.disqualifying_reasons
         assert "Rule D" in str(res.counter_thesis)
 
-    def test_thin_dog_rule_d_exception_clears(
-        self, base_context: SituationalContext
-    ) -> None:
+    def test_thin_dog_rule_d_exception_clears(self, base_context: SituationalContext) -> None:
         # Opponent QB is unconfirmed
-        ctx = SituationalContext(
-            **{**base_context.__dict__, "qb_home_confirmed": False}
-        )
+        ctx = SituationalContext(**{**base_context.__dict__, "qb_home_confirmed": False})
         gate = NegativeFavoriteGate()
         res = gate.evaluate(ctx, market="SPREAD", side="AWAY", line=3.5)
 
@@ -753,12 +735,8 @@ class TestMultiFactorReasoningEngine:
         assert card.is_favorite_vetoed is False
         assert card.tier in ("STRONG", "ELITE")
 
-    def test_vetoed_candidate_caps_tier_at_avoid(
-        self, base_context: SituationalContext
-    ) -> None:
-        ctx = SituationalContext(
-            **{**base_context.__dict__, "qb_home_confirmed": False}
-        )
+    def test_vetoed_candidate_caps_tier_at_avoid(self, base_context: SituationalContext) -> None:
+        ctx = SituationalContext(**{**base_context.__dict__, "qb_home_confirmed": False})
         engine = MultiFactorReasoningEngine()
         card = engine.evaluate_candidate(
             ctx,
@@ -773,9 +751,7 @@ class TestMultiFactorReasoningEngine:
         assert card.counter_thesis is not None
         assert card.confidence <= 4.5
 
-    def test_extreme_weather_compression_outdoor(
-        self, base_context: SituationalContext
-    ) -> None:
+    def test_extreme_weather_compression_outdoor(self, base_context: SituationalContext) -> None:
         windy = WeatherProfile(
             temperature_c=10.0,
             wind_kph=38.0,
@@ -789,19 +765,13 @@ class TestMultiFactorReasoningEngine:
         )
         ctx = SituationalContext(**{**base_context.__dict__, "weather": windy})
         engine = MultiFactorReasoningEngine()
-        card = engine.evaluate_candidate(
-            ctx, market="SPREAD", side="HOME", line=-20.5
-        )
+        card = engine.evaluate_candidate(ctx, market="SPREAD", side="HOME", line=-20.5)
 
         assert card.is_favorite_vetoed is True
         assert "Weather compression" in str(card.counter_thesis)
-        assert any(
-            "Weather compression" in warning for warning in card.contra_indications
-        )
+        assert any("Weather compression" in warning for warning in card.contra_indications)
 
-    def test_dome_bypasses_weather_penalties(
-        self, base_context: SituationalContext
-    ) -> None:
+    def test_dome_bypasses_weather_penalties(self, base_context: SituationalContext) -> None:
         dome_weather = WeatherProfile(
             temperature_c=22.0,
             wind_kph=0.0,
@@ -815,9 +785,7 @@ class TestMultiFactorReasoningEngine:
         )
         ctx = SituationalContext(**{**base_context.__dict__, "weather": dome_weather})
         engine = MultiFactorReasoningEngine()
-        card = engine.evaluate_candidate(
-            ctx, market="SPREAD", side="HOME", line=-20.5
-        )
+        card = engine.evaluate_candidate(ctx, market="SPREAD", side="HOME", line=-20.5)
 
         assert "Indoor/Dome" in card.weather_venue_summary
         assert card.is_favorite_vetoed is False

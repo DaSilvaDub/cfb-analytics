@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import re
 from collections import defaultdict
 from pathlib import Path
@@ -105,21 +106,17 @@ def box_maps(client: CFBDClient) -> tuple[dict, dict]:
         a, b = names
         for school, opp in ((a, b), (b, a)):
             cats = stats_by.get(school) or {}
-            try:
+            with contextlib.suppress(TypeError, ValueError):
                 rush[(school, opp)] = float(
                     cats.get("rushingYards") or cats.get("rushing yards") or "nan"
                 )
-            except (TypeError, ValueError):
-                pass
-            try:
+            with contextlib.suppress(TypeError, ValueError):
                 rec[(school, opp)] = float(
                     cats.get("netPassingYards")
                     or cats.get("passingYards")
                     or cats.get("netPassingYards")
                     or "nan"
                 )
-            except (TypeError, ValueError):
-                pass
     return rush, rec
 
 
@@ -222,7 +219,8 @@ def main() -> None:
         f"  cupcake_tape   {rate(by_flag['cupcake_tape'])}",
         f"  inferred_mark  {rate(by_flag['inferred_mark'])}",
         "",
-        f"{'rk':>3} {'res':<7} {'tier':<6} {'pick':<28} {'mark':>6} {'act':>6} {'kickoff':<11} game",
+        f"{'rk':>3} {'res':<7} {'tier':<6} {'pick':<28} {'mark':>6} {'act':>6} "
+        f"{'kickoff':<11} game",
     ]
     for r in results:
         act = "" if r["actual"] is None else f"{r['actual']:.0f}"

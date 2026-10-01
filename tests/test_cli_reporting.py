@@ -15,7 +15,8 @@ Verifies:
    - `cfb-analytics board --with-reasoning --date <date>` (terminal formatting).
    - `cfb-analytics board --with-reasoning --date <date> --json` (JSON structure, cards, watermark).
    - `cfb-analytics mispriced --date <date>` (terminal formatting).
-   - `cfb-analytics mispriced --date <date> --json` (JSON structure, edge %, method spread, disclaimer).
+   - `cfb-analytics mispriced --date <date> --json` (JSON structure, edge %, method spread,
+     disclaimer).
 5. Error handling:
    - Database does not exist (exit code 1, helpful message).
    - Empty slate / no consensus for date (exit code 0, informative message).
@@ -30,6 +31,7 @@ from __future__ import annotations
 
 import json
 from unittest.mock import MagicMock
+
 import pytest
 
 from cfb_analytics import cli, paths
@@ -65,7 +67,6 @@ from cfb_analytics.scanner.models import (
     QualificationStatus,
 )
 
-
 # =============================================================================
 # Test Fixtures & Helpers
 # =============================================================================
@@ -92,11 +93,15 @@ def sample_reasoning_card() -> ReasoningCard:
         confidence=8.2,
         tier="STRONG",
         tape_summary="Honest FBS tape confirms 0.24 EPA/play floor against top-50 defenses.",
-        position_qb_summary="QB continuity confirmed (3rd year starter); +1.8 trench matchup advantage.",
+        position_qb_summary="QB continuity confirmed (3rd year starter); +1.8 trench matchup "
+                            "advantage.",
         weather_venue_summary="Kickoff 72F, wind 8 kph, clear conditions. Dome bypass active.",
-        injuries_trench_summary="All 5 starting OL healthy; opponent starting DE out with ankle injury.",
-        program_continuity_summary="4th year HC/OC scheme stability; 8 days rest coming off home win.",
-        mathematical_edge_summary="Model prob 65.2% vs market consensus 58.0% (+7.2% edge, Shin devig).",
+        injuries_trench_summary="All 5 starting OL healthy; opponent starting DE out with ankle "
+                                "injury.",
+        program_continuity_summary="4th year HC/OC scheme stability; 8 days rest coming off home "
+                                   "win.",
+        mathematical_edge_summary="Model prob 65.2% vs market consensus 58.0% (+7.2% edge, Shin "
+                                  "devig).",
         contra_indications=[
             "Do not lay heavy spread points (-14.5) due to conservative run-heavy 4Q script."
         ],
@@ -122,14 +127,18 @@ def sample_vetoed_reasoning_card() -> ReasoningCard:
         confidence=4.1,
         tier="AVOID",
         tape_summary="Tape heavily inflated by 56-0 FCS cupcake blowout. EPA against FBS is -0.05.",
-        position_qb_summary="Starting QB listed as questionable with shoulder sprain; backup has 12 career attempts.",
-        weather_venue_summary="24 kph sustained winds with gusts to 38 kph; passing efficiency degraded 22%.",
+        position_qb_summary="Starting QB listed as questionable with shoulder sprain; backup has "
+                            "12 career attempts.",
+        weather_venue_summary="24 kph sustained winds with gusts to 38 kph; passing efficiency "
+                              "degraded 22%.",
         injuries_trench_summary="Left Tackle and Center scratched; pass protection compromised.",
-        program_continuity_summary="First-year coordinator in hostile rivalry road-like lookahead spot.",
+        program_continuity_summary="First-year coordinator in hostile rivalry road-like lookahead "
+                                   "spot.",
         mathematical_edge_summary="Negative edge: model projection +0.5 vs market line -3.5.",
         contra_indications=["Thin dog trap candidate", "Starting QB unconfirmed"],
         is_favorite_vetoed=True,
-        counter_thesis="VETO: Rule D thin favorite trap. Starting QB questionable, backup unproven, trench health compromised.",
+        counter_thesis="VETO: Rule D thin favorite trap. Starting QB questionable, backup "
+                       "unproven, trench health compromised.",
         matchup_label="Auburn at LSU",
         kickoff_et="7:00 p.m. ET",
         line=-3.5,
@@ -162,7 +171,8 @@ def sample_veto_verdict() -> GovernanceVerdict:
         action=GovernanceAction.VETO,
         triggered_rules=("RULE_D", "NEGATIVE_GATE"),
         counter_theses=(
-            "VETO: Rule D thin favorite trap. Starting QB questionable, backup unproven, trench health compromised.",
+            "VETO: Rule D thin favorite trap. Starting QB questionable, backup unproven, trench "
+            "health compromised.",
         ),
         original_confidence=4.1,
         adjusted_confidence=2.0,

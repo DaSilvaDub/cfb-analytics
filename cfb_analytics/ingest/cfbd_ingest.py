@@ -67,7 +67,7 @@ def backfill_years(
             raw_teams = _fetch(
                 run, f"teams/fbs:{year}", partial(client.fetch_fbs_teams, year)
             )
-            def _call_games():
+            def _call_games(year: int = year):
                 if refresh_games:
                     try:
                         return client.fetch_games(year, refresh=True)

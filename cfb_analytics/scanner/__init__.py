@@ -1,10 +1,13 @@
 """NCAA College Football Comprehensive Mispriced Line Scanner (Milestone 2).
 
 Submodules:
-- models: Frozen dataclasses and enums (MispricedOpportunity, PlayScore, PlayTier, QualificationStatus).
+- models: Frozen dataclasses and enums (MispricedOpportunity, PlayScore, PlayTier,
+  QualificationStatus).
 - spreads: Model 2 spread margin vs devigged consensus spread, cover prob via normal CDF erf, EV.
-- totals: Tempo and weather-adjusted scoring projections vs consensus game totals, normal CDF (sigma=10.75).
-- props: Model 3 team points, rushing yards, and receiving yards vs posted book lines (strictly team props).
+- totals: Tempo and weather-adjusted scoring projections vs consensus game totals, normal CDF
+  (sigma=10.75).
+- props: Model 3 team points, rushing yards, and receiving yards vs posted book lines (strictly team
+  props).
 - scoring: Candidate Play Scoring (0-100 scale) and minimum qualification gates.
 - engine: MispricedScanner orchestrating multi-market scanning and ReasoningCard integration.
 """
@@ -25,8 +28,8 @@ from cfb_analytics.scanner.props import (
     PROB_CAP,
     SIT_QB_SPREAD,
     PlayerPropProhibitedError,
-    calibrated_prop_prob,
     calculate_prop_edge,
+    calibrated_prop_prob,
     evaluate_team_prop_candidate,
     is_sit_qb_candidate,
     validate_team_prop,

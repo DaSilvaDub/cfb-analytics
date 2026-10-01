@@ -1,7 +1,8 @@
 """Mispriced Scanner Engine (Milestone 2).
 
 Orchestrates multi-market scanning across Spreads, Totals, Team Props, and Moneylines:
-- Computes vig-free fair prices using both Shin and Multiplicative methods (leveraging cfb_analytics.models.devig).
+- Computes vig-free fair prices using both Shin and Multiplicative methods (leveraging
+  cfb_analytics.models.devig).
 - Computes method spread = max(prob_shin, prob_mult) - min(prob_shin, prob_mult).
 - Computes edge % = model_prob - consensus_fair_prob.
 - Interfaces cleanly with ReasoningCard from cfb_analytics.reasoning.
@@ -48,7 +49,12 @@ from cfb_analytics.utils import (
 class MispricedScanner:
     """Orchestrator for detecting, devigging, and scoring mispriced college football lines."""
 
-    def __init__(self, *, default_margin_sigma: float = SPREAD_SIGMA_BASE, default_total_sigma: float = TOTAL_SIGMA_BASE) -> None:
+    def __init__(
+        self,
+        *,
+        default_margin_sigma: float = SPREAD_SIGMA_BASE,
+        default_total_sigma: float = TOTAL_SIGMA_BASE,
+    ) -> None:
         self.margin_sigma = default_margin_sigma
         self.total_sigma = default_total_sigma
 
@@ -141,7 +147,10 @@ class MispricedScanner:
         rejection_notes: list[str] = []
 
         if reasoning_card is not None:
-            if reasoning_card.is_favorite_vetoed and side.strip().upper() == reasoning_card.side.strip().upper():
+            if (
+                reasoning_card.is_favorite_vetoed
+                and side.strip().upper() == reasoning_card.side.strip().upper()
+            ):
                 is_vetoed = True
                 if reasoning_card.counter_thesis:
                     rejection_notes.append(f"counter_thesis: {reasoning_card.counter_thesis}")
@@ -197,9 +206,8 @@ class MispricedScanner:
     ) -> MispricedOpportunity:
         """Scan and evaluate a Game Total opportunity."""
         flags: tuple[str, ...] = kwargs.pop("flags", ())
-        if reasoning_card is not None:
-            if reasoning_card.contra_indications:
-                flags = tuple(list(flags) + list(reasoning_card.contra_indications))
+        if reasoning_card is not None and reasoning_card.contra_indications:
+            flags = tuple(list(flags) + list(reasoning_card.contra_indications))
 
         return evaluate_total_candidate(
             game_id=game_id,
@@ -236,9 +244,8 @@ class MispricedScanner:
     ) -> MispricedOpportunity | None:
         """Scan and evaluate a Team Prop opportunity (strictly team props)."""
         flags: tuple[str, ...] = kwargs.pop("flags", ())
-        if reasoning_card is not None:
-            if reasoning_card.contra_indications:
-                flags = tuple(list(flags) + list(reasoning_card.contra_indications))
+        if reasoning_card is not None and reasoning_card.contra_indications:
+            flags = tuple(list(flags) + list(reasoning_card.contra_indications))
 
         return evaluate_team_prop_candidate(
             game_id=game_id,
@@ -288,7 +295,10 @@ class MispricedScanner:
         flags: tuple[str, ...] = kwargs.pop("flags", ())
         is_vetoed = False
         if reasoning_card is not None:
-            if reasoning_card.is_favorite_vetoed and side_clean == reasoning_card.side.strip().upper():
+            if (
+                reasoning_card.is_favorite_vetoed
+                and side_clean == reasoning_card.side.strip().upper()
+            ):
                 is_vetoed = True
             if reasoning_card.contra_indications:
                 flags = tuple(list(flags) + list(reasoning_card.contra_indications))
@@ -355,7 +365,11 @@ class MispricedScanner:
         card: ReasoningCard | None,
     ) -> MispricedOpportunity:
         """Downgrade candidate when reasoning card counter-thesis vetoes the favorite."""
-        thesis_note = f"counter_thesis: {card.counter_thesis}" if card and card.counter_thesis else "vetoed_by_reasoning"
+        thesis_note = (
+            f"counter_thesis: {card.counter_thesis}"
+            if card and card.counter_thesis
+            else "vetoed_by_reasoning"
+        )
         new_rejections = tuple(list(opp.rejection_reasons) + [thesis_note, "favorite_vetoed"])
         new_flags = tuple(list(opp.flags) + ["vetoed_by_negative_gate"])
 
@@ -410,7 +424,9 @@ class MispricedScanner:
             if consensus_fair_prob is None:
                 if "book_quotes" in c and c["book_quotes"]:
                     side_idx = 0 if c.get("side", "").upper() in ("HOME", "OVER") else 1
-                    p_shin, p_mult, spread = self.devig_book_quotes(c["book_quotes"], side_index=side_idx)
+                    p_shin, p_mult, spread = self.devig_book_quotes(
+                        c["book_quotes"], side_index=side_idx
+                    )
                     consensus_fair_prob = p_shin
                     method_spread = spread
                 elif "price_side" in c and "price_opp" in c:

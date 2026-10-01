@@ -393,7 +393,9 @@ def calculate_play_score(
     s_sample = score_sample_size(sample_size)
     s_conf = score_confirming_insights(confirming_insights_count)
 
-    total_score = round(min(100.0, max(0.0, s_hit + s_edge + s_move + s_price + s_sample + s_conf)), 1)
+    total_score = round(
+        min(100.0, max(0.0, s_hit + s_edge + s_move + s_price + s_sample + s_conf)), 1
+    )
 
     qual_status, rejection_reasons = evaluate_qualification_gates(
         edge=edge_metric,

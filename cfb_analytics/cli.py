@@ -12,6 +12,7 @@ import argparse
 import json
 import os
 import sys
+from typing import Any
 
 from cfb_analytics import config, db, paths
 from cfb_analytics.errors import CfbAnalyticsError, SchemaError
@@ -558,7 +559,8 @@ def _cmd_board(args: argparse.Namespace) -> int:
                 print(json.dumps(payload, indent=2))
                 return 0
             print(
-                f"No moneyline consensus for {args.date}. Run: cfb-analytics market --date {args.date}"
+                f"No moneyline consensus for {args.date}. "
+                f"Run: cfb-analytics market --date {args.date}"
             )
             return 0
 
@@ -664,7 +666,7 @@ def _cmd_board(args: argparse.Namespace) -> int:
             prob = row["prob_shin"] or row["prob_multiplicative"]
             team = row["home"] if row["side"] == "HOME" else row["away"]
             opp = row["away"] if row["side"] == "HOME" else row["home"]
-            flags_raw = row["flags"] if "flags" in row.keys() else "[]"
+            flags_raw = row["flags"] if "flags" in row.keys() else "[]"  # noqa: SIM118 - sqlite3.Row `in` checks values, not columns
             flags = ",".join(json.loads(flags_raw or "[]")) if isinstance(flags_raw, str) else ""
             print(
                 f"{team or '?':<7} {opp or '?':<7} {row['consensus_price']:>7} "
@@ -674,7 +676,9 @@ def _cmd_board(args: argparse.Namespace) -> int:
             )
 
         if with_reasoning:
-            _print_reasoning_cards(args.date, eligible_rows, cards=cards_by_entry, verdicts=verdicts_by_entry)
+            _print_reasoning_cards(
+                args.date, eligible_rows, cards=cards_by_entry, verdicts=verdicts_by_entry
+            )
 
         print(
             "\nfair% is the vig-free market probability (Shin). spread is the "
@@ -739,7 +743,9 @@ def _cmd_mispriced(args: argparse.Namespace) -> int:
         ).fetchone()
         has_games = bool(slate_games and slate_games["n"] > 0)
 
-        legacy_candidates = build_mispriced_board(conn, args.date, min_edge=0.0) if has_games else []
+        legacy_candidates = (
+            build_mispriced_board(conn, args.date, min_edge=0.0) if has_games else []
+        )
         raw_candidates = [
             {
                 "game_id": c.game_id,

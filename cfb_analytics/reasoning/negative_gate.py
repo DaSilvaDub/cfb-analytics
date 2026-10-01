@@ -131,7 +131,8 @@ class NegativeFavoriteGate:
                 " ".join(theses_parts)
                 if theses_parts
                 else (
-                    f"Negative gate vetoed {fav_team} ({line:+g}): Multiple situational contradictions "
+                    f"Negative gate vetoed {fav_team} ({line:+g}): Multiple situational "
+                    "contradictions "
                     f"({len(minor_contra_indications)}) undermine the market line."
                 )
             )
@@ -194,7 +195,7 @@ class NegativeFavoriteGate:
         elif m_upper == "ML":
             # Moneyline favorites: if price_american < 0 or consensus_fair_prob > 0.50 (or line < 0)
             is_fav_price = (price_american is not None and price_american < 0) or (line < 0)
-            is_fav_prob = (fair_prob is not None and fair_prob > 0.50)
+            is_fav_prob = fair_prob is not None and fair_prob > 0.50
             if is_fav_price or is_fav_prob:
                 if s_upper == "HOME":
                     return True, context.home_team
@@ -207,14 +208,14 @@ class NegativeFavoriteGate:
         ):
             # Team Prop Attribution: inspect market string or team_id for home vs away attribution
             if team_id:
-                is_home = (team_id == context.home_team or team_id == context.home_team_id)
+                is_home = team_id == context.home_team or team_id == context.home_team_id
             elif context.away_team.lower() in market.lower() or "away" in market.lower():
                 is_home = False
             elif context.home_team.lower() in market.lower() or "home" in market.lower():
                 is_home = True
             else:
                 # Default to home team when attributing generic team props unless away is indicated
-                is_home = (s_upper in ("HOME", "OVER"))
+                is_home = s_upper in ("HOME", "OVER")
             return True, context.home_team if is_home else context.away_team
 
         return False, ""
@@ -227,10 +228,7 @@ class NegativeFavoriteGate:
         line: float,
     ) -> bool:
         """Check if candidate is backing a thin underdog (+1.5 to +6.0)."""
-        if market == "SPREAD":
-            if (side in ("HOME", "AWAY")) and 1.5 <= line <= 6.0:
-                return True
-        return False
+        return market == "SPREAD" and side in ("HOME", "AWAY") and 1.5 <= line <= 6.0
 
     def _evaluate_thin_dog_trap(
         self,
@@ -250,7 +248,8 @@ class NegativeFavoriteGate:
         tape_opp = context.tape_away if is_dog_home else context.tape_home
         tape_dog = context.tape_home if is_dog_home else context.tape_away
 
-        # Compare net efficiency margins: defensive_floor_epa is EPA allowed per play (negative is elite).
+        # Compare net efficiency margins: defensive_floor_epa is EPA allowed per play (negative is
+        # elite).
         # Net efficiency margin = offensive floor EPA minus defensive floor EPA allowed.
         dog_net = tape_dog.offensive_floor_epa - tape_dog.defensive_floor_epa
         opp_net = tape_opp.offensive_floor_epa - tape_opp.defensive_floor_epa
@@ -297,21 +296,25 @@ class NegativeFavoriteGate:
         # Check cupcake inflation
         if tape.cupcake_games_filtered > 0:
             warnings.append(
-                f"Cupcake inflation: {tape.cupcake_games_filtered} junk game(s) stripped from baseline"
+                f"Cupcake inflation: {tape.cupcake_games_filtered} junk game(s) stripped from "
+                "baseline"
             )
             if tape.offensive_floor_epa < -0.02 and abs(line) >= 10.0:
                 thesis = (
                     f"Favorite {fav_team} line ({line:+g}) is inflated by cupcake blowout tape. "
                     f"Against honest FBS competition, offensive floor EPA drops to "
-                    f"{tape.offensive_floor_epa:+.2f}, failing to demonstrate multi-score cover separation."
+                    f"{tape.offensive_floor_epa:+.2f}, failing to demonstrate multi-score cover "
+                    "separation."
                 )
                 return "cupcake_tape_mirage", thesis, warnings
 
-        # Stagnation against capable defense: offensive floor EPA suppressed by opponent defensive floor EPA allowed
+        # Stagnation against capable defense: offensive floor EPA suppressed by opponent defensive
+        # floor EPA allowed
         if (tape.offensive_floor_epa + opp_tape.defensive_floor_epa) < 0.0 and abs(line) >= 14.0:
             warnings.append(
                 f"Tape mismatch: Offensive floor EPA ({tape.offensive_floor_epa:+.2f}) "
-                f"trails opponent defensive resistance ({opp_tape.defensive_floor_epa:+.2f} allowed)"
+                f"trails opponent defensive resistance ({opp_tape.defensive_floor_epa:+.2f} "
+                "allowed)"
             )
 
         return None, "", warnings
@@ -334,7 +337,8 @@ class NegativeFavoriteGate:
             if is_late_kickoff or has_fatigue_tax:
                 thesis = (
                     f"Grok Rule C Veto: Heavy road favorite {fav_team} laying {line:+g} at "
-                    f"{context.kickoff_et} under road fatigue tax ({context.travel_fatigue_tax_away:.1f} pts). "
+                    f"{context.kickoff_et} under road fatigue tax "
+                    f"({context.travel_fatigue_tax_away:.1f} pts). "
                     f"Late-night cross-country favorites pull starters early, bleed clock, and "
                     f"concede fourth-quarter backdoor covers."
                 )
@@ -352,7 +356,8 @@ class NegativeFavoriteGate:
 
             if is_windy:
                 warnings.append(
-                    f"Weather compression: Sustained wind {w.wind_kph:.1f} kph (gusts {w.gust_kph:.1f} kph)"
+                    f"Weather compression: Sustained wind {w.wind_kph:.1f} kph (gusts "
+                    f"{w.gust_kph:.1f} kph)"
                 )
             if is_wet:
                 warnings.append(f"Weather compression: Precipitation {w.precip_mm:.1f} mm")
@@ -361,7 +366,8 @@ class NegativeFavoriteGate:
                 thesis = (
                     f"Weather compression veto: Adverse conditions ({w.wind_kph:.0f} kph wind, "
                     f"scoring multiplier {w.scoring_mult:.2f}x) compress total possessions, "
-                    f"forcing ground-bound clock bleed and eliminating the scoring margin required for {line:+g}."
+                    "forcing ground-bound clock bleed and eliminating the scoring margin "
+                    f"required for {line:+g}."
                 )
                 return "weather_possession_compression", thesis, warnings
 
@@ -406,17 +412,21 @@ class NegativeFavoriteGate:
             if abs(line) >= 10.0 and "severe_trench_attrition" not in criticals:
                 criticals.append("severe_trench_attrition")
                 theses.append(
-                    f"Critical trench attrition ({trench_fav:.0%}) for {fav_team}: Severe OL/DL personnel losses "
+                    f"Critical trench attrition ({trench_fav:.0%}) for {fav_team}: Severe OL/DL "
+                    "personnel losses "
                     f"compromise line-of-scrimmage push, elevating sack risk and stalling drives."
                 )
 
         if ol_out >= 2 or dl_out >= 2:
-            warnings.append(f"Compound trench attrition: {ol_out} OL and {dl_out} DL starters unavailable")
+            warnings.append(
+                f"Compound trench attrition: {ol_out} OL and {dl_out} DL starters unavailable"
+            )
             if abs(line) >= 10.0 and "severe_trench_attrition" not in criticals:
                 criticals.append("severe_trench_attrition")
                 theses.append(
                     f"Compound trench attrition ({ol_out} OL, {dl_out} DL out) for {fav_team}: "
-                    f"Multiple line-of-scrimmage starters unavailable, degrading pass protection and run fits."
+                    "Multiple line-of-scrimmage starters unavailable, degrading pass protection "
+                    "and run fits."
                 )
         elif ol_out > 0:
             warnings.append(f"Offensive line attrition: {ol_out} starting OL unavailable")
@@ -449,12 +459,15 @@ class NegativeFavoriteGate:
 
         if spread_gap >= 12.0 and talent_delta < 50.0:
             warnings.append(
-                f"Brand name inflation: Talent delta ({talent_delta:+.1f}) does not support {line:+g} spread"
+                f"Brand name inflation: Talent delta ({talent_delta:+.1f}) does not support "
+                f"{line:+g} spread"
             )
             if abs(line) >= 14.0:
                 thesis = (
-                    f"Brand-name premium trap: {fav_team} carries public prestige pricing ({line:+g}), "
-                    f"but roster talent composite differential ({talent_delta:+.1f}) shows near-parity "
+                    f"Brand-name premium trap: {fav_team} carries public prestige pricing "
+                    f"({line:+g}), "
+                    f"but roster talent composite differential ({talent_delta:+.1f}) shows "
+                    "near-parity "
                     f"in baseline physical caliber."
                 )
                 return "brand_name_talent_mismatch", thesis, warnings
@@ -477,7 +490,8 @@ class NegativeFavoriteGate:
         has_rest_deficit = (rest_opp >= REST_DAYS_BYE) and (rest_fav <= REST_DAYS_SHORT)
         if has_rest_deficit:
             warnings.append(
-                f"Rest disparity: Opponent off bye ({rest_opp:.0f}d) vs favorite short turnaround ({rest_fav:.0f}d)"
+                f"Rest disparity: Opponent off bye ({rest_opp:.0f}d) vs favorite short turnaround "
+                f"({rest_fav:.0f}d)"
             )
 
         # Lookahead Spot
@@ -487,8 +501,10 @@ class NegativeFavoriteGate:
         # Compound trap
         if has_rest_deficit and lookahead and abs(line) >= 10.0:
             thesis = (
-                f"Classic trap spot: {fav_team} faces a major rest deficit ({rest_fav:.0f}d vs {rest_opp:.0f}d) "
-                f"combined with a lookahead distraction ahead of a marquee game, making {line:+g} highly fragile."
+                f"Classic trap spot: {fav_team} faces a major rest deficit ({rest_fav:.0f}d vs "
+                f"{rest_opp:.0f}d) "
+                f"combined with a lookahead distraction ahead of a marquee game, making {line:+g} "
+                "highly fragile."
             )
             return "compound_rest_lookahead_trap", thesis, warnings
 

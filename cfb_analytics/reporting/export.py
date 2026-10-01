@@ -237,16 +237,17 @@ def export_board_json(
     card_records: list[dict[str, Any]] = []
 
     for r in rows:
-        prob = r["prob_shin"] or r["prob_multiplicative"]
+        # Rows are sqlite3.Row: `"x" in row` tests values, so membership is
+        # checked against row.keys() (SIM118 does not apply).
         entry_key = f"{r['game_id']}:ML:{r['side']}"
         card = cards_map.get(entry_key)
         verdict = verdicts_map.get(entry_key)
 
         entry_dict = {
             "game_id": r["game_id"],
-            "kickoff_utc": r["kickoff_utc"] if "kickoff_utc" in r.keys() else "",
-            "home": r["home"] if "home" in r.keys() else "",
-            "away": r["away"] if "away" in r.keys() else "",
+            "kickoff_utc": r["kickoff_utc"] if "kickoff_utc" in r.keys() else "",  # noqa: SIM118
+            "home": r["home"] if "home" in r.keys() else "",  # noqa: SIM118
+            "away": r["away"] if "away" in r.keys() else "",  # noqa: SIM118
             "side": r["side"],
             "consensus_price": r["consensus_price"],
             "best_price": r["best_price"],
@@ -257,7 +258,7 @@ def export_board_json(
             "hold": r["hold"],
             "n_books": r["n_books"],
             "flags": json.loads(r["flags"] or "[]")
-            if ("flags" in r.keys() and isinstance(r["flags"], str))
+            if ("flags" in r.keys() and isinstance(r["flags"], str))  # noqa: SIM118
             else [],
             "reasoning_card": card.to_dict() if hasattr(card, "to_dict") else None,
             "governance_verdict": verdict.to_dict() if verdict else None,

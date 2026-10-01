@@ -8,7 +8,6 @@ genuine SituationalContext dossiers for games and full slates.
 from __future__ import annotations
 
 import sqlite3
-from typing import Any
 
 from cfb_analytics.features.over_confidence import format_kickoff_et
 from cfb_analytics.features.qb import presumptive_starter_as_of
@@ -57,9 +56,7 @@ def _load_weather(conn: sqlite3.Connection, game_id: str, venue_id: str | None) 
             v_row = None
 
     is_indoor = False
-    if w_row and w_row["is_indoor"]:
-        is_indoor = True
-    elif v_row and v_row["dome"]:
+    if w_row and w_row["is_indoor"] or v_row and v_row["dome"]:
         is_indoor = True
 
     if w_row:
@@ -102,11 +99,17 @@ def _load_tape_profile(
                       opp.team_id AS opp_id, opp.school AS opp_school,
                       opp.conference AS opp_conf, opp.classification AS opp_class,
                       (CASE WHEN g.home_team_id = ? THEN 1 ELSE 0 END) AS is_home,
-                      (CASE WHEN g.home_team_id = ? THEN g.home_points - g.away_points ELSE g.away_points - g.home_points END) AS margin,
-                      (CASE WHEN g.home_team_id = ? THEN g.home_points ELSE g.away_points END) AS points_scored,
-                      (CASE WHEN g.home_team_id = ? THEN g.away_points ELSE g.home_points END) AS points_allowed
+                      (CASE WHEN g.home_team_id = ?
+                            THEN g.home_points - g.away_points
+                            ELSE g.away_points - g.home_points END) AS margin,
+                      (CASE WHEN g.home_team_id = ?
+                            THEN g.home_points ELSE g.away_points END) AS points_scored,
+                      (CASE WHEN g.home_team_id = ?
+                            THEN g.away_points ELSE g.home_points END) AS points_allowed
                FROM games g
-               JOIN teams opp ON opp.team_id = (CASE WHEN g.home_team_id = ? THEN g.away_team_id ELSE g.home_team_id END)
+               JOIN teams opp ON opp.team_id = (
+                   CASE WHEN g.home_team_id = ? THEN g.away_team_id ELSE g.home_team_id END
+               )
                WHERE g.completed = 1 AND (g.home_team_id = ? OR g.away_team_id = ?)
                  AND g.kickoff_utc < ?
                ORDER BY g.kickoff_utc DESC LIMIT 6""",
@@ -300,8 +303,10 @@ def _load_travel_tax(
             return 0.0
 
         dist = calculate_haversine_distance_miles(
-            v_orig["latitude"], v_orig["longitude"],
-            v_dest["latitude"], v_dest["longitude"],
+            v_orig["latitude"],
+            v_orig["longitude"],
+            v_dest["latitude"],
+            v_dest["longitude"],
         )
         travel = evaluate_travel_profile(
             distance_miles=dist,
