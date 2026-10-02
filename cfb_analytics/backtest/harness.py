@@ -77,6 +77,7 @@ from cfb_analytics.features.rest import RestLookup
 from cfb_analytics.features.team_ratings import (
     apply_shrinkage_prior,
     previous_season_final_ratings,
+    prior_only_ratings,
 )
 from cfb_analytics.models.elo import DEFAULT_K as DEFAULT_ELO_K
 from cfb_analytics.models.elo import HFA_ELO_POINTS
@@ -151,6 +152,8 @@ def run_walk_forward(
     elo_hfa: float = HFA_ELO_POINTS,
     logit_l2_lambda: float = DEFAULT_LOGIT_L2_LAMBDA,
     logit_min_n: int = 30,
+    allow_prior_only: bool = False,
+    skip_logit: bool = False,
 ) -> WalkForwardRun:
     run = WalkForwardRun()
     rest_lookup = RestLookup(conn)
@@ -200,6 +203,15 @@ def run_walk_forward(
                     conn, ratings, season,
                     previous_season_ratings=previous_season_ratings, coeffs=coeffs,
                 )
+            if ratings.status != "active" and allow_prior_only and apply_shrinkage:
+                # Week-1 / cold-start: synthesize a prior-only ridge book so
+                # the season is not blacked out before min_games accumulate.
+                prior = prior_only_ratings(
+                    conn, season,
+                    previous_season_ratings=previous_season_ratings, coeffs=coeffs,
+                )
+                if prior is not None:
+                    ratings = prior
             if ratings.status != "active":
                 run.skipped_insufficient_history += len(week_games)
                 continue
@@ -207,11 +219,14 @@ def run_walk_forward(
             elo_ratings_for_week = fit_internal_elo_as_of(
                 conn, season, as_of_utc, k=elo_k, hfa=elo_hfa, min_games=min_games,
                 previous_season_ratings=previous_season_elo,
+                allow_prior_only=allow_prior_only,
             )
-            logistic_fit_for_week = fit_logistic_as_of(
-                conn, as_of_utc, l2_lambda=logit_l2_lambda, min_n=logit_min_n,
-                rest_lookup=rest_lookup,
-            )
+            logistic_fit_for_week = None
+            if not skip_logit:
+                logistic_fit_for_week = fit_logistic_as_of(
+                    conn, as_of_utc, l2_lambda=logit_l2_lambda, min_n=logit_min_n,
+                    rest_lookup=rest_lookup,
+                )
 
             for row in week_games:
                 neutral_site = bool(row["neutral_site"])
@@ -222,22 +237,24 @@ def run_walk_forward(
                     run.skipped_unrated_team += 1
                     continue
                 home_id, away_id = row["home_team_id"], row["away_team_id"]
-                logit_win_prob = logistic_fit_for_week.probability(
-                    game_features(
-                        home_id, away_id, neutral_site=neutral_site,
-                        talent_z=talent_z, returning_z=returning_z,
-                        home_advanced=team_advanced_nets(
-                            advanced_cache, home_id, as_of_utc, season=season
-                        ),
-                        away_advanced=team_advanced_nets(
-                            advanced_cache, away_id, as_of_utc, season=season
-                        ),
-                        rest_diff=(
-                            rest_lookup.rest_days(home_id, as_of_utc)
-                            - rest_lookup.rest_days(away_id, as_of_utc)
-                        ),
+                logit_win_prob = None
+                if logistic_fit_for_week is not None:
+                    logit_win_prob = logistic_fit_for_week.probability(
+                        game_features(
+                            home_id, away_id, neutral_site=neutral_site,
+                            talent_z=talent_z, returning_z=returning_z,
+                            home_advanced=team_advanced_nets(
+                                advanced_cache, home_id, as_of_utc, season=season
+                            ),
+                            away_advanced=team_advanced_nets(
+                                advanced_cache, away_id, as_of_utc, season=season
+                            ),
+                            rest_diff=(
+                                rest_lookup.rest_days(home_id, as_of_utc)
+                                - rest_lookup.rest_days(away_id, as_of_utc)
+                            ),
+                        )
                     )
-                )
                 run.predictions.append(GamePrediction(
                     game_id=row["game_id"], season=season, week=week,
                     home_team_id=row["home_team_id"], away_team_id=row["away_team_id"],

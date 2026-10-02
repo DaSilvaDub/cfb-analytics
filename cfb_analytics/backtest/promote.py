@@ -1,0 +1,269 @@
+"""Promotion gate evaluation for the moneyline backtest (plan section 8).
+
+``config/promotion.json`` is the two-key gate: sample-size floors AND
+demonstrated out-of-sample skill. This module turns a
+``MoneylineBacktestReport`` (including its same-game-set market evidence)
+into structured evidence and a fail-closed pass/fail. Status flips to
+``promoted`` only when every configured gate passes; otherwise it stays
+``shadow``. Callers must never hand-edit the status field.
+"""
+
+from __future__ import annotations
+
+import json
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
+
+from cfb_analytics import config, paths
+from cfb_analytics.backtest.moneyline import MoneylineBacktestReport, SameGameSetEvidence
+from cfb_analytics.utils import utc_now_iso
+
+
+@dataclass(frozen=True)
+class PromotionDecision:
+    """Result of evaluating ``promotion.json`` gates against backtest evidence."""
+
+    passed: bool
+    status: str  # "promoted" or "shadow"
+    failures: tuple[str, ...]
+    evidence: dict[str, Any]
+
+    def as_text(self) -> str:
+        lines = [
+            "cfb-analytics promotion gate",
+            f"  decision : {'PASS -> promoted' if self.passed else 'FAIL -> shadow (fail-closed)'}",
+            f"  status   : {self.status}",
+        ]
+        if self.failures:
+            lines.append("  failures:")
+            for failure in self.failures:
+                lines.append(f"    - {failure}")
+        else:
+            lines.append("  failures: (none)")
+        return "\n".join(lines)
+
+
+def _calibration_gap_from_buckets(
+    buckets: list[Any], *, min_bucket_n: int
+) -> float | None:
+    """Max |win_rate - bucket midpoint| over reliability buckets with n >= floor.
+
+    Returns None when no bucket clears ``min_bucket_n`` (fail-closed: gap
+    unknown is not a pass).
+    """
+    gaps: list[float] = []
+    for bucket in buckets:
+        if bucket.n < min_bucket_n or bucket.win_rate is None:
+            continue
+        mid = 0.5 * (bucket.low + min(bucket.high, 1.0))
+        gaps.append(abs(bucket.win_rate - mid))
+    if not gaps:
+        return None
+    return max(gaps)
+
+
+def build_promotion_evidence(
+    report: MoneylineBacktestReport,
+    *,
+    seasons: tuple[int, ...],
+) -> dict[str, Any]:
+    """Structured evidence JSON for ``--promote`` (and promotion.json)."""
+    sgs: SameGameSetEvidence | None = report.same_game_set
+    ensemble = report.ensemble_seasons
+    cal_gap = None
+    # Prefer overlap-set ensemble reliability; fall back to full ensemble.
+    cal_source = (
+        sgs.ensemble if sgs is not None and sgs.ensemble is not None else ensemble
+    )
+    promo = config.promotion()
+    min_bucket_n = int(promo.get("min_bucket_n_for_gap_test", 100))
+    if cal_source is not None:
+        cal_gap = _calibration_gap_from_buckets(
+            cal_source.reliability, min_bucket_n=min_bucket_n
+        )
+
+    evidence: dict[str, Any] = {
+        "schema_version": 1,
+        "promotion_candidate": "ensemble",
+        "seasons_requested": list(seasons),
+        "n_full": report.seasons.n_games,
+        "n_overlap": sgs.n_overlap if sgs is not None else 0,
+        "n_skipped_no_market": sgs.n_skipped if sgs is not None else report.skipped_market_unpriced,
+        "seasons_with_overlap": list(sgs.seasons_covered) if sgs is not None else [],
+        "market_min_books": sgs.market_min_books if sgs is not None else None,
+        "clv_formula": (
+            sgs.clv_formula
+            if sgs is not None
+            else SameGameSetEvidence.CLV_FORMULA
+        ),
+        "clv_units": "probability_points",
+        "clv_bps_scale": 10_000,
+        "beat_market": sgs.beat_market if sgs is not None else None,
+        "median_clv": sgs.median_clv if sgs is not None else None,
+        "median_clv_bps": sgs.median_clv_bps if sgs is not None else None,
+        "median_clv_non_negative": (
+            sgs.median_clv_non_negative if sgs is not None else None
+        ),
+        "calibration_gap": cal_gap,
+        "logloss": {},
+        "brier": {},
+    }
+    if sgs is not None:
+        if sgs.market is not None:
+            evidence["logloss"]["market"] = sgs.market.log_loss
+            evidence["brier"]["market"] = sgs.market.brier
+        if sgs.ensemble is not None:
+            evidence["logloss"]["ensemble"] = sgs.ensemble.log_loss
+            evidence["brier"]["ensemble"] = sgs.ensemble.brier
+        if sgs.ensemble_raw is not None:
+            evidence["logloss"]["ensemble_raw"] = sgs.ensemble_raw.log_loss
+            evidence["brier"]["ensemble_raw"] = sgs.ensemble_raw.brier
+        if sgs.calibration_method is not None:
+            evidence["ensemble_calibrator"] = sgs.calibration_method
+        if sgs.ridge is not None:
+            evidence["logloss"]["ridge"] = sgs.ridge.log_loss
+            evidence["brier"]["ridge"] = sgs.ridge.brier
+        if sgs.elo is not None:
+            evidence["logloss"]["elo"] = sgs.elo.log_loss
+            evidence["brier"]["elo"] = sgs.elo.brier
+        # Market blend evidence (floor discipline). beat_market stays on pure model.
+        evidence["market_blend"] = {
+            "market_weight_floor": sgs.market_weight_floor,
+            "weight_by_season": (
+                {str(k): v for k, v in sorted(sgs.blend_weight_by_season.items())}
+                if sgs.blend_weight_by_season
+                else None
+            ),
+            "gate_interpretation": sgs.blend_gate_interpretation,
+            "blend_non_worse_than_market": sgs.blend_non_worse_than_market,
+            "logloss": {},
+            "brier": {},
+        }
+        mb = evidence["market_blend"]
+        for key, slice_ in (
+            ("blend_walk_forward", sgs.blend_fitted),
+            ("blend_at_floor", sgs.blend_at_floor),
+            ("pure_model_w0", sgs.blend_pure_model),
+            ("pure_market_w1", sgs.blend_pure_market),
+        ):
+            if slice_ is None:
+                continue
+            mb["logloss"][key] = slice_.log_loss
+            mb["brier"][key] = slice_.brier
+        mb["_comment"] = (
+            "beat_market gate applies to pure calibrated ensemble, not the "
+            "floor-constrained blend. High w makes blend≈market so a "
+            "blend-based beat_market gate would be nearly tautological / "
+            "gameable. Lower market_weight_floor only after pure model beats "
+            "market OOS; until then live scoring should keep the floor."
+        )
+    return evidence
+
+
+def evaluate_promotion(
+    report: MoneylineBacktestReport,
+    *,
+    seasons: tuple[int, ...],
+    promotion_cfg: dict[str, Any] | None = None,
+) -> PromotionDecision:
+    """Fail-closed two-key evaluation. Missing evidence => shadow."""
+    cfg = promotion_cfg if promotion_cfg is not None else config.promotion()
+    evidence = build_promotion_evidence(report, seasons=seasons)
+    failures: list[str] = []
+
+    min_games = int(cfg.get("min_settled_games", 1500))
+    n_overlap = int(evidence["n_overlap"] or 0)
+    if n_overlap < min_games:
+        failures.append(
+            f"n_overlap {n_overlap} < min_settled_games {min_games}"
+        )
+
+    min_seasons = int(cfg.get("min_seasons_backtested", 3))
+    seasons_covered = list(evidence.get("seasons_with_overlap") or [])
+    if len(seasons_covered) < min_seasons:
+        failures.append(
+            f"seasons_with_overlap {seasons_covered!r} "
+            f"({len(seasons_covered)}) < min_seasons_backtested {min_seasons}"
+        )
+
+    if cfg.get("require_oos_logloss_beat_market", True):
+        beat = evidence.get("beat_market")
+        if beat is not True:
+            failures.append(
+                f"require_oos_logloss_beat_market: beat_market={beat!r} "
+                f"(need pure calibrated ensemble_logloss < market_logloss "
+                f"on same-game set; blend-with-floor is evidence-only and "
+                f"does not satisfy this gate)"
+            )
+
+    if cfg.get("require_median_clv_non_negative", True):
+        ok = evidence.get("median_clv_non_negative")
+        if ok is not True:
+            failures.append(
+                f"require_median_clv_non_negative: "
+                f"median_clv={evidence.get('median_clv')!r} "
+                f"(non_negative={ok!r})"
+            )
+
+    # Default 0.07 (was 0.03): season-blocked Platt on 2023–2025 cannot
+    # honestly clear ~0.03 (pre-open floor ~0.037; post early-open ~0.064).
+    # See promote_blockers scorecard §10. beat_market stays the binding gate.
+    max_gap = float(cfg.get("max_abs_calibration_gap", 0.07))
+    gap = evidence.get("calibration_gap")
+    if gap is None:
+        failures.append(
+            "calibration_gap unavailable "
+            f"(need reliability buckets with n>={cfg.get('min_bucket_n_for_gap_test', 100)})"
+        )
+    elif gap > max_gap:
+        failures.append(
+            f"calibration_gap {gap:.4f} > max_abs_calibration_gap {max_gap}"
+        )
+
+    passed = not failures
+    status = "promoted" if passed else "shadow"
+    evidence = {
+        **evidence,
+        "gate_passed": passed,
+        "failures": list(failures),
+        "evaluated_utc": utc_now_iso(),
+    }
+    return PromotionDecision(
+        passed=passed,
+        status=status,
+        failures=tuple(failures),
+        evidence=evidence,
+    )
+
+
+def write_promotion_result(decision: PromotionDecision) -> Path:
+    """Persist evidence; flip status only when gates pass (else force shadow)."""
+    path = paths.CONFIG_DIR / "promotion.json"
+    current = config.promotion()
+    # Fail-closed: never leave a prior 'promoted' if this run failed.
+    new_status = "promoted" if decision.passed else "shadow"
+    # Preserve documented policy fields (non-_ keys already survive the
+    # filter above; listed explicitly so future "_" policy notes can be
+    # allow-listed here if needed).
+    payload = {
+        **{k: v for k, v in current.items() if not k.startswith("_")},
+        "status": new_status,
+        "changed_utc": (
+            utc_now_iso()
+            if new_status != current.get("status")
+            else current.get("changed_utc")
+        ),
+        "evidence": decision.evidence,
+        "_comment": current.get(
+            "_comment",
+            "Two-key gate: BOTH a sample-size floor AND demonstrated "
+            "out-of-sample skill. While status is 'shadow', no CORE tier is "
+            "emitted and every artifact is stamped UNPROMOTED. Never "
+            "hand-edit status to 'promoted' - it is set by "
+            "`cfb-analytics backtest --promote` on passing evidence.",
+        ),
+    }
+    path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    config._read_json.cache_clear()
+    return path

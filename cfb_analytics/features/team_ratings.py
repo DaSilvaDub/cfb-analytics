@@ -128,6 +128,74 @@ def previous_season_final_ratings(
     return ratings if ratings.status == "active" else None
 
 
+
+def prior_only_ratings(
+    conn: sqlite3.Connection,
+    season: int,
+    *,
+    previous_season_ratings: RidgeRatings | None = None,
+    coeffs: ShrinkageCoefficients = DEFAULT_COEFFICIENTS,
+    home_field_advantage: float | None = None,
+) -> RidgeRatings | None:
+    """Synthesize an active ridge book from the early-season prior alone.
+
+    Used when this season has fewer than ``min_games`` completed results but
+    a leakage-safe prior exists (previous-season final + preseason talent /
+    returning-production). Every FBS team (plus any team present in the
+    prior or talent maps) gets ``games=0`` ratings equal to ``prior_rating``;
+    there is no in-season fit to blend. Returns None when no usable prior
+    signal exists at all (e.g. the store's earliest season with no talent
+    rows either) -- callers must then keep the insufficient_history skip.
+    """
+    previous = (
+        previous_season_ratings
+        if previous_season_ratings is not None
+        else previous_season_final_ratings(conn, season)
+    )
+    talent_z = talent_zscores(conn, season)
+    returning_z = returning_ppa_zscores(conn, season)
+    fbs_ids = {
+        row["team_id"]
+        for row in conn.execute(
+            "SELECT team_id FROM teams WHERE classification = 'fbs'"
+        ).fetchall()
+    }
+    team_ids = set(fbs_ids)
+    if previous is not None:
+        team_ids |= set(previous.teams)
+    team_ids |= set(talent_z) | set(returning_z)
+    if not team_ids:
+        return None
+
+    teams: dict[str, TeamRating] = {}
+    for team_id in team_ids:
+        prev = previous.teams.get(team_id) if previous is not None else None
+        z_talent = talent_z.get(team_id)
+        z_returning = returning_z.get(team_id)
+        teams[team_id] = TeamRating(
+            offense=prior_rating(
+                prev.offense if prev is not None else None,
+                z_talent, z_returning, coeffs=coeffs,
+            ),
+            defense=prior_rating(
+                prev.defense if prev is not None else None,
+                z_talent, z_returning, coeffs=coeffs,
+            ),
+            games=0,
+        )
+    hfa = home_field_advantage
+    if hfa is None and previous is not None:
+        hfa = previous.home_field_advantage
+    return RidgeRatings(
+        status="active",
+        n_games=0,
+        ridge_lambda=DEFAULT_RIDGE_LAMBDA,
+        league_avg_points=previous.league_avg_points if previous is not None else None,
+        home_field_advantage=hfa,
+        teams=teams,
+    )
+
+
 def apply_shrinkage_prior(
     conn: sqlite3.Connection,
     ratings: RidgeRatings,
