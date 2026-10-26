@@ -1,4 +1,7 @@
 # Saturday Execution Cheat Sheet
+
+UNPROMOTED - shadow output, not decision-grade
+
 **Source of Truth:** Post-settlement calibration across 2026-09-19 & 2026-09-26 slates.  
 **Rule:** Open every Saturday slate directly from this sheet. No exceptions.
 

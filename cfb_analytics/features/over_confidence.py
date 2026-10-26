@@ -206,12 +206,34 @@ def apply_sample_haircut(inputs: TeamPropsInputs) -> TeamPropsInputs:
     )
 
 
-def _home_spread(conn: sqlite3.Connection, game_id: str) -> float | None:
+def _home_spread(
+    conn: sqlite3.Connection,
+    game_id: str,
+    *,
+    as_of_utc: str,
+    kickoff_utc: str,
+) -> float | None:
+    """Home line from the newest capture strictly before kickoff.
+
+    Book count breaks ties inside that capture only. An older line with more
+    books, or a post-kickoff close, must not decide the sit-QB or +14 gates.
+    """
     row = conn.execute(
         """SELECT line FROM market_consensus
-           WHERE game_id = ? AND market = 'SPREAD' AND side = 'HOME' AND n_books >= 3
-           ORDER BY n_books DESC, as_of_utc DESC LIMIT 1""",
-        (game_id,),
+           WHERE game_id = ? AND market = 'SPREAD' AND side = 'HOME'
+             AND n_books >= 3
+             AND as_of_utc <= ?
+             AND as_of_utc < ?
+             AND as_of_utc = (
+                 SELECT MAX(m.as_of_utc) FROM market_consensus m
+                 WHERE m.game_id = ? AND m.market = 'SPREAD' AND m.side = 'HOME'
+                   AND m.n_books >= 3
+                   AND m.as_of_utc <= ?
+                   AND m.as_of_utc < ?
+             )
+           ORDER BY n_books DESC
+           LIMIT 1""",
+        (game_id, as_of_utc, kickoff_utc, game_id, as_of_utc, kickoff_utc),
     ).fetchone()
     if row is None or row["line"] is None:
         return None
@@ -386,7 +408,9 @@ def build_over_confidence_board(
     raw: list[OverConfidencePick] = []
     for game in slate:
         cutoff = game.kickoff_utc
-        home_spread = _home_spread(conn, game.game_id)
+        home_spread = _home_spread(
+            conn, game.game_id, as_of_utc=as_of, kickoff_utc=cutoff
+        )
         away_spread = None if home_spread is None else -home_spread
         home_id = apply_sample_haircut(_inputs_for(loaded, game, game.home_team_id))
         away_id_in = apply_sample_haircut(_inputs_for(loaded, game, game.away_team_id))
