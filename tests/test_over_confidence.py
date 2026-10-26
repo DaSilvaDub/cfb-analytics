@@ -8,6 +8,7 @@ import pytest
 
 from cfb_analytics.errors import SchemaError
 from cfb_analytics.features.over_confidence import (
+    _home_spread,
     apply_script_adjustment,
     build_over_confidence_board,
     format_kickoff_et,
@@ -93,15 +94,22 @@ def test_inferred_line_is_book_like_not_the_projection() -> None:
     assert mark < 442.0 - 50.0
 
 
-def _insert_spread(conn, game_id: str, home_line: float, *, n_books: int = 14) -> None:
+def _insert_spread(
+    conn,
+    game_id: str,
+    home_line: float,
+    *,
+    n_books: int = 14,
+    as_of: str = "2026-09-19T12:00:00+00:00",
+) -> None:
     conn.execute(
         """INSERT INTO market_consensus
            (game_id, market, line, side, as_of_utc, n_books, consensus_price,
             best_price, best_book, hold, anchor, prob_multiplicative, prob_shin,
             prob_power, prob_spread, flags)
-           VALUES (?, 'SPREAD', ?, 'HOME', '2026-09-19T12:00:00+00:00', ?, -110,
+           VALUES (?, 'SPREAD', ?, 'HOME', ?, ?, -110,
                    -110, 'DK', 0.04, 'all_books', 0.52, 0.52, 0.52, 0.01, '[]')""",
-        (game_id, home_line, n_books),
+        (game_id, home_line, as_of, n_books),
     )
 
 
@@ -356,3 +364,90 @@ def test_missing_team_inputs_do_not_reuse_another_offense(conn) -> None:
             "2026-09-19",
             inputs_by_team={indiana: default_team_props_inputs(data_quality_score=100.0)},
         )
+
+
+def test_invariant10_underdog_trailing_rushing_is_vetoed(conn) -> None:
+    """Invariant 10: Underdogs facing spreads >= +14 discard rushing in trailing script."""
+    purdue = seed_canonical_team(conn, 2509, "Purdue", "PUR")
+    notre_dame = seed_canonical_team(conn, 87, "Notre Dame", "ND")
+    _seed_conference(conn, purdue, "Big Ten")
+    _seed_conference(conn, notre_dame, "FBS Independents")
+    _seed_poll(conn, notre_dame, 3)
+    seed_canonical_game(
+        conn,
+        "cfbd:nd_pur",
+        purdue,
+        notre_dame,
+        football_date="2026-09-26",
+        kickoff="2026-09-26T18:00:00+00:00",
+        week=4,
+    )
+    # Purdue +28.5 (Home +28.5, ND -28.5)
+    _insert_spread(conn, "cfbd:nd_pur", 28.5, n_books=12)
+    conn.commit()
+
+    inputs = default_team_props_inputs(
+        expected_pass_attempts=24.0,
+        expected_rushing_attempts=35.0,
+        yards_before_contact=2.5,
+        yards_after_contact=2.5,
+        data_quality_score=100.0,
+    )
+    board = build_over_confidence_board(
+        conn,
+        "2026-09-26",
+        inputs_by_team={purdue: inputs, notre_dame: inputs},
+        min_prob=0.50,
+    )
+    picks = [row.pick for row in board]
+    # Purdue rush must NOT appear on the board under Invariant 10
+    assert "PUR rush" not in picks
+    # Combined game rushing must NOT appear because spread is >= 14
+    assert all(row.market != "game_rushing_yards" for row in board)
+
+
+def test_rush_gate_uses_latest_pre_kickoff_spread_not_book_count(conn) -> None:
+    """A stale narrower line with more books must not hide a current +14 spread."""
+    purdue = seed_canonical_team(conn, 2509, "Purdue", "PUR")
+    notre_dame = seed_canonical_team(conn, 87, "Notre Dame", "ND")
+    _seed_conference(conn, purdue, "Big Ten")
+    _seed_conference(conn, notre_dame, "FBS Independents")
+    _seed_poll(conn, notre_dame, 3)
+    kickoff = "2026-09-26T18:00:00+00:00"
+    seed_canonical_game(
+        conn,
+        "cfbd:nd_pur",
+        purdue,
+        notre_dame,
+        football_date="2026-09-26",
+        kickoff=kickoff,
+        week=4,
+    )
+    _insert_spread(conn, "cfbd:nd_pur", 7.5, n_books=20, as_of="2026-09-26T10:00:00+00:00")
+    _insert_spread(conn, "cfbd:nd_pur", 14.5, n_books=4, as_of="2026-09-26T16:00:00+00:00")
+    _insert_spread(conn, "cfbd:nd_pur", 3.0, n_books=30, as_of="2026-09-26T22:00:00+00:00")
+    conn.commit()
+
+    assert _home_spread(
+        conn,
+        "cfbd:nd_pur",
+        as_of_utc="2026-10-26T00:00:00+00:00",
+        kickoff_utc=kickoff,
+    ) == 14.5
+
+    inputs = default_team_props_inputs(
+        expected_pass_attempts=24.0,
+        expected_rushing_attempts=35.0,
+        yards_before_contact=2.5,
+        yards_after_contact=2.5,
+        data_quality_score=100.0,
+    )
+    board = build_over_confidence_board(
+        conn,
+        "2026-09-26",
+        inputs_by_team={purdue: inputs, notre_dame: inputs},
+        min_prob=0.50,
+    )
+    assert "PUR rush" not in [row.pick for row in board]
+    assert all(row.market != "game_rushing_yards" for row in board)
+
