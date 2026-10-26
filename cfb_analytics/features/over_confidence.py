@@ -332,9 +332,11 @@ def _sit_qb_receiving(
 
     2026-09-19 and 2026-09-26 settlement audits:
     - Favorite team rush cashes when dominating trench.
-    - Underdog rush (Invariant 10) fails when spread >= +14 (e.g. SDSU 48 vs 155.5 line,
-      Purdue 40 vs 52.5 line, Tulsa 65 vs 110 line) unless opponent rush defense is porous (allowed >= 190.0).
-    - Combined game rushing fails when spread >= 14 (OU/UGA 194 vs 310.5 line, SDSU/TOL 172 vs 295.5 line).
+    - Underdog rush (Invariant 10) fails when spread >= +14 (SDSU 48 vs 155.5,
+      Purdue 40 vs 52.5, Tulsa 65 vs 110) unless the opponent allows >= 190 rush
+      yards per game.
+    - Combined game rushing fails when spread >= 14 (OU/UGA 194 vs 310.5,
+      SDSU/TOL 172 vs 295.5).
     - Dog receiving and blowout game yards die when trailer is emptied.
     """
     if market == "team_receiving_yards":
@@ -342,10 +344,13 @@ def _sit_qb_receiving(
             return True
         if team_spread is not None and team_spread >= DOG_REC_BLOWOUT:
             return True
-    if market == "team_rushing_yards":
-        if team_spread is not None and team_spread >= DOG_RUSH_TRAILING_SPREAD:
-            if opp_allowed is None or opp_allowed < 190.0:
-                return True
+    if (
+        market == "team_rushing_yards"
+        and team_spread is not None
+        and team_spread >= DOG_RUSH_TRAILING_SPREAD
+        and (opp_allowed is None or opp_allowed < 190.0)
+    ):
+        return True
     if market == "game_receiving_yards":
         return home_spread is not None and abs(home_spread) >= abs(SIT_QB_SPREAD)
     if market == "game_rushing_yards":
