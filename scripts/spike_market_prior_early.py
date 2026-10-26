@@ -11,7 +11,6 @@ Stdlib-friendly; raw JSON under artifacts/; scorecard under docs/scorecards/.
 from __future__ import annotations
 
 import json
-import math
 import sqlite3
 import sys
 import time
@@ -20,8 +19,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from statistics import median
 
-ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from cfb_analytics.backtest.calibration import calibrate_sigma, margin_to_prob
 from cfb_analytics.backtest.harness import GamePrediction, run_walk_forward
@@ -31,11 +29,15 @@ from cfb_analytics.backtest.moneyline import (
     _load_market_home_probs,
     _member_probs,
 )
-from cfb_analytics.models.ensemble import pool_probabilities
 from cfb_analytics.features.open_market_prior import (
     OPEN_MARKET_PRIOR_MAX_WEEK as PROD_MAX_WEEK,
+)
+from cfb_analytics.features.open_market_prior import (
     OPEN_MARKET_PRIOR_WEIGHT as PROD_WEIGHT,
 )
+from cfb_analytics.models.ensemble import pool_probabilities
+
+ROOT = Path(__file__).resolve().parents[1]
 
 SEASONS = (2023, 2024, 2025)
 # Production defaults (shipped): weeks≤2 replace weight=1.0
@@ -247,9 +249,6 @@ def evaluate(
         if open_margin_alpha > 0:
             m = _margin_shrink(pred.predicted_margin, sp, open_margin_alpha)
             # Rebuild ens with shrunk ridge margin; keep elo member.
-            week_sigma = (
-                sigma * EARLY_SEASON_RIDGE_SIGMA_SCALE if pred.week <= 4 else sigma
-            )
             # Temporary: swap margin via member rebuild
             from dataclasses import replace
 

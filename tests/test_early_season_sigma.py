@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pytest
 
+from cfb_analytics.backtest.calibration import margin_to_prob
 from cfb_analytics.backtest.harness import GamePrediction
 from cfb_analytics.backtest.moneyline import (
     EARLY_SEASON_MAX_WEEK,
@@ -12,7 +13,6 @@ from cfb_analytics.backtest.moneyline import (
     _ridge_prob,
     ridge_sigma_for_week,
 )
-from cfb_analytics.backtest.calibration import margin_to_prob
 
 
 def _pred(week: int, margin: float = 14.0) -> GamePrediction:

@@ -8,16 +8,13 @@ docs/scorecards/ once a candidate is accepted or rejected.
 from __future__ import annotations
 
 import json
-import math
 import sqlite3
 import sys
 import time
-from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from cfb_analytics.backtest.calibration import calibrate_sigma, margin_to_prob
 from cfb_analytics.backtest.harness import GamePrediction, run_walk_forward
@@ -27,7 +24,9 @@ from cfb_analytics.backtest.moneyline import (
     _member_probs,
 )
 from cfb_analytics.models.ensemble import pool_probabilities
-from cfb_analytics.models.shrinkage import ShrinkageCoefficients, DEFAULT_COEFFICIENTS
+from cfb_analytics.models.shrinkage import DEFAULT_COEFFICIENTS, ShrinkageCoefficients
+
+ROOT = Path(__file__).resolve().parents[1]
 
 SEASONS = (2023, 2024, 2025)
 WEIGHTS = {"ridge": 0.15, "internal_elo": 0.80, "logit": 0.05}
@@ -89,7 +88,6 @@ def evaluate(
     mkt_late: list[tuple[float, bool]] = []
 
     week1_n = 0
-    by_week_gap: dict[str, list[float]] = defaultdict(list)
 
     for p in predictions:
         p_mkt = market.get(p.game_id)

@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import math
-
 import pytest
 
 from cfb_analytics.backtest.prob_calibrate import (
@@ -98,7 +96,7 @@ class TestNoFutureLabelsInFit:
             prior + later, method="temperature", min_fit_n=50, fold="week"
         )
         # First 100 rows: identity (no prior yet for week 1).
-        for raw, cal, used in out[:100]:
+        for _raw, _cal, used in out[:100]:
             assert used.method == "identity"
         # Week 2 uses a fit from week 1 only.
         raw, cal, used = out[100]
@@ -120,12 +118,16 @@ class TestNoFutureLabelsInFit:
 
     def test_season_fold_excludes_same_season(self):
         rows = (
-            [TimedProb(2023, w, 0.9, False, key=f"a{w}-{i}") for w in range(1, 5) for i in range(30)]
+            [
+                TimedProb(2023, w, 0.9, False, key=f"a{w}-{i}")
+                for w in range(1, 5)
+                for i in range(30)
+            ]
             + [TimedProb(2024, 1, 0.9, True, key="b")]
         )
         out = walk_forward_calibrate(rows, method="temperature", min_fit_n=50, fold="season")
         # All 2023 rows share identity (no prior season).
-        for raw, cal, used in out[:-1]:
+        for _raw, _cal, used in out[:-1]:
             assert used.method == "identity"
         raw, cal, used = out[-1]
         assert used.method == "temperature"

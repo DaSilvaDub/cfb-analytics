@@ -327,7 +327,7 @@ def rebuild_market_for_season(
     from cfb_analytics.features.build_market import build_market_for_slate
 
     dates = football_dates_for_season(conn, year)
-    totals = {
+    totals: dict[str, Any] = {
         "year": year,
         "slates": 0,
         "games": 0,
@@ -369,7 +369,8 @@ def probe_lines_coverage(
     for week in week_range:
         for game in client.fetch_lines(year, week=week, season_type=season_type):
             games += 1
-            lines = game.get("lines") if isinstance(game.get("lines"), list) else []
+            raw_lines = game.get("lines")
+            lines = raw_lines if isinstance(raw_lines, list) else []
             has_ml = False
             has_spread_open = False
             has_total_open = False

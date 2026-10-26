@@ -70,6 +70,11 @@ from cfb_analytics.backtest.calibration import calibrate_sigma, margin_to_prob
 from cfb_analytics.backtest.elo_baseline import elo_win_probability
 from cfb_analytics.backtest.ensemble_fit import fit_ensemble_weights
 from cfb_analytics.backtest.harness import GamePrediction, run_walk_forward
+from cfb_analytics.backtest.market_blend_fit import (
+    BlendRow,
+    score_fixed_weight,
+    walk_forward_market_blend,
+)
 from cfb_analytics.backtest.metrics import (
     BucketResult,
     Prediction,
@@ -85,15 +90,6 @@ from cfb_analytics.backtest.prob_calibrate import (
     TimedProb,
     walk_forward_calibrate,
 )
-from cfb_analytics.backtest.market_blend_fit import (
-    BlendRow,
-    score_fixed_weight,
-    walk_forward_market_blend,
-)
-from cfb_analytics.models.market_blend import (
-    DEFAULT_MARKET_WEIGHT_FLOOR,
-    market_weight_floor_from_settings,
-)
 from cfb_analytics.features.open_market_prior import (
     OPEN_MARKET_BLEND_MAX_WEEK,
     OPEN_MARKET_BLEND_WEIGHT,
@@ -107,6 +103,10 @@ from cfb_analytics.models.elo import DEFAULT_K as DEFAULT_ELO_K
 from cfb_analytics.models.elo import HFA_ELO_POINTS
 from cfb_analytics.models.ensemble import pool_probabilities
 from cfb_analytics.models.logistic import DEFAULT_L2_LAMBDA as DEFAULT_LOGIT_L2_LAMBDA
+from cfb_analytics.models.market_blend import (
+    DEFAULT_MARKET_WEIGHT_FLOOR,
+    market_weight_floor_from_settings,
+)
 from cfb_analytics.models.ridge import DEFAULT_MIN_GAMES, DEFAULT_RIDGE_LAMBDA
 from cfb_analytics.models.shrinkage import DEFAULT_COEFFICIENTS, ShrinkageCoefficients
 

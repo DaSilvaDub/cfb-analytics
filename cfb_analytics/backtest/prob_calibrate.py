@@ -11,8 +11,9 @@ Identity (T=1 / a=1,b=0) is used until ``min_fit_n`` prior labeled games exist.
 from __future__ import annotations
 
 import math
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Literal, Sequence
+from typing import Literal
 
 from cfb_analytics.models.logistic import fit_logistic, logit, sigmoid
 

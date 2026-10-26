@@ -11,7 +11,6 @@ from cfb_analytics.backtest.market_blend_fit import (
     score_fixed_weight,
     walk_forward_market_blend,
 )
-from cfb_analytics.backtest.metrics import log_loss
 from cfb_analytics.backtest.moneyline import _build_same_game_set
 from cfb_analytics.models.market_blend import (
     blend_with_market,

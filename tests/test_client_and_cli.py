@@ -107,6 +107,7 @@ class TestCliParser:
             "backfill-passing",
             "backfill-elo",
             "backfill-pbp",
+            "backfill-lines",
             "fit-ratings",
             "fit-elo",
             "backtest",

@@ -21,8 +21,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from statistics import mean
 
-ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from cfb_analytics.backtest.calibration import calibrate_sigma
 from cfb_analytics.backtest.harness import GamePrediction, run_walk_forward
@@ -38,6 +37,8 @@ from cfb_analytics.features.open_market_prior import (
     load_open_home_spreads,
 )
 from cfb_analytics.models.elo import HFA_ELO_POINTS, expected_score
+
+ROOT = Path(__file__).resolve().parents[1]
 
 SEASONS = (2023, 2024, 2025)
 WEIGHTS = {"ridge": 0.15 / 0.95, "internal_elo": 0.80 / 0.95}

@@ -8,7 +8,6 @@ never a same-game feature. Stdlib-friendly; writes artifacts JSON.
 from __future__ import annotations
 
 import json
-import math
 import sqlite3
 import sys
 import time
@@ -17,8 +16,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from statistics import mean
 
-ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from cfb_analytics.backtest.calibration import calibrate_sigma
 from cfb_analytics.backtest.harness import GamePrediction, run_walk_forward
@@ -35,6 +33,8 @@ from cfb_analytics.features.open_market_prior import (
     OPEN_MARKET_PRIOR_WEIGHT,
     load_open_home_spreads,
 )
+
+ROOT = Path(__file__).resolve().parents[1]
 
 SEASONS = (2023, 2024, 2025)
 # Production mix without logit for speed (matches prior spikes).
@@ -199,7 +199,7 @@ def evaluate(
     packed = {k: pack(v) for k, v in buckets.items()}
     packed = {k: v for k, v in packed.items() if v is not None}
     n_all = packed.get("all", {}).get("n") or 1
-    for k, v in packed.items():
+    for _k, v in packed.items():
         # share of total absolute positive gap mass (only positive gaps)
         v["gap_mass"] = round(v["n"] / n_all * max(v["gap"], 0.0), 6)
         v["n_share"] = round(v["n"] / n_all, 4)

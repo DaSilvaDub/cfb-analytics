@@ -1,4 +1,8 @@
-"""Acceptance tests A1–A5 for historical CFBD lines dual-stamp ingest."""
+"""Acceptance tests for historical CFBD lines dual-stamp ingest.
+
+A1–A3 and A5–A6 are fixtures. A7 checks ``promotion.json`` stays shadow.
+A4 (live 2024 join rate) needs CFBD_API_KEY and is not run here.
+"""
 
 from __future__ import annotations
 
@@ -405,3 +409,11 @@ class TestA6MoneylineWiring:
         probs, skipped = _market_probs(preds, home)
         assert skipped == 0
         assert len(probs) == 1
+
+
+class TestA7PromotionStaysShadow:
+    def test_promotion_json_status_is_shadow(self):
+        from cfb_analytics.config import is_shadow_mode, promotion
+
+        assert promotion()["status"] == "shadow"
+        assert is_shadow_mode() is True
