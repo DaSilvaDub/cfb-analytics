@@ -185,6 +185,33 @@ class TestFitElo:
         assert result.teams["a"].rating > 1600  # nine straight blowout wins
 
 
+
+    def test_allow_prior_only_emits_active_seeds_below_min_games(self):
+        """Opt-in week-1 path: seeded preseason ratings stay predictable
+        even before min_games of this season have been played."""
+        result = fit_elo(
+            [],
+            min_games=5,
+            initial_ratings={"a": 1600.0, "b": 1400.0},
+            allow_prior_only=True,
+            hfa=0.0,
+        )
+        assert result.status == "active"
+        assert result.n_games == 0
+        assert result.teams["a"].rating == 1600.0
+        assert result.teams["a"].games == 0
+        assert result.probability("a", "b") > 0.5
+
+    def test_allow_prior_only_false_keeps_insufficient_history_without_games(self):
+        result = fit_elo(
+            [],
+            min_games=5,
+            initial_ratings={"a": 1600.0, "b": 1400.0},
+            allow_prior_only=False,
+        )
+        assert result.status == "insufficient_history"
+        assert result.teams == {}
+
 class TestEloRatingsProbability:
     def test_returns_none_when_not_active(self):
         result = EloRatings(status="insufficient_history", n_games=1, k=DEFAULT_K, hfa=60.0)
