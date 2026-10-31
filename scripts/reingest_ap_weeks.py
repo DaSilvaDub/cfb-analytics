@@ -1,10 +1,9 @@
 """Print the commands that re-ingest AP poll weeks 5-9.
 
 This is a dry run. It does not open the database, does not call CFBD, and
-does not write ``team_polls``. Daniel runs the printed commands himself,
-after the canonical ``cfbd:`` name resolver in this commit is what
-``backfill-rankings`` will execute. It was not run while this change was
-written.
+does not write ``team_polls``. Daniel runs the printed commands himself
+after PR #20's canonical ``cfbd:`` name resolver is what
+``backfill-rankings`` will execute. Those commands were not run here.
 """
 
 from __future__ import annotations

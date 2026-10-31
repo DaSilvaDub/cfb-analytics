@@ -8,7 +8,6 @@ from typing import Any
 
 from cfb_analytics.errors import SchemaError
 from cfb_analytics.ingest import store
-from cfb_analytics.ingest.canonical_names import canonical_team_name_index
 from cfb_analytics.ingest.cfbd_fundamentals import _name_key
 from cfb_analytics.sources.cfbd import CFBDClient, parse_rankings
 from cfb_analytics.utils import utc_now_iso
@@ -69,7 +68,7 @@ def ingest_rankings(
 ) -> RankingsSummary:
     payload = client.fetch_rankings(year, week=week, season_type=season_type)
     as_of = utc_now_iso()
-    resolver = canonical_team_name_index(conn)
+    resolver = _team_name_index(conn)
     written = 0
     unresolved = 0
     weeks: set[int] = set()
