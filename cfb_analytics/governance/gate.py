@@ -13,6 +13,7 @@ UNPROMOTED - shadow output, not decision-grade.
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Mapping, Sequence
 from typing import Any
 
@@ -34,6 +35,21 @@ from cfb_analytics.reasoning.models import (
 )
 from cfb_analytics.reasoning.negative_gate import NegativeFavoriteGate
 
+logger = logging.getLogger(__name__)
+
+
+def _fail_closed_candidate_id(candidate: Any) -> str:
+    """Best-effort id when evaluation crashes before a wager is built."""
+    cid = getattr(candidate, "candidate_id", None)
+    if cid:
+        return str(cid)
+    game_id = getattr(candidate, "game_id", None)
+    market = getattr(candidate, "market_type", None) or getattr(candidate, "market", None)
+    side = getattr(candidate, "side", None)
+    if game_id and market and side:
+        return f"{game_id}:{market}:{side}"
+    return "unknown"
+
 
 class GovernanceGate:
     """Central orchestrator for Grok rule gating, negative favorite enforcement,
@@ -52,6 +68,33 @@ class GovernanceGate:
         self.parlay_min_confidence = parlay_min_confidence
 
     def evaluate_candidate(
+        self,
+        candidate: Any,
+        reasoning_card: ReasoningCard | None = None,
+        context: SituationalContext | None = None,
+    ) -> GovernanceVerdict:
+        """Evaluate one candidate. An exception is not an approval.
+
+        The lifecycle either returns the rule verdict or fails closed: the
+        error is logged and the candidate is vetoed. It is never recorded as
+        PASS or APPROVE, because those actions mean the evaluation finished.
+        """
+        try:
+            return self._evaluate_candidate(candidate, reasoning_card, context)
+        except Exception as exc:
+            candidate_id = _fail_closed_candidate_id(candidate)
+            logger.exception(
+                "Governance evaluation failed closed for %s: %s", candidate_id, exc
+            )
+            return GovernanceVerdict(
+                candidate_id=candidate_id,
+                action=GovernanceAction.VETO,
+                parlay_eligible=False,
+                notes=f"Governance evaluation failed closed: {type(exc).__name__}: {exc}",
+                disclaimer=SHADOW_MODE_DISCLAIMER,
+            )
+
+    def _evaluate_candidate(
         self,
         candidate: Any,
         reasoning_card: ReasoningCard | None = None,

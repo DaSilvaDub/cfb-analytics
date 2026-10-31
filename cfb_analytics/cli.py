@@ -641,8 +641,8 @@ def _cmd_board(args: argparse.Namespace) -> int:
                             rush_vol_mult=1.0,
                             scoring_mult=1.0,
                         ),
-                        qb_home_confirmed=True,
-                        qb_away_confirmed=True,
+                        qb_home_confirmed=False,
+                        qb_away_confirmed=False,
                         trench_attrition_home=0.0,
                         trench_attrition_away=0.0,
                         talent_composite_home=650.0,
@@ -748,11 +748,7 @@ def _cmd_mispriced(args: argparse.Namespace) -> int:
     """Mispriced line scanner: spreads, totals, and team props vs model."""
     from cfb_analytics.features.mispriced import build_mispriced_board
     from cfb_analytics.governance.gate import GovernanceGate
-    from cfb_analytics.governance.models import (
-        SHADOW_MODE_DISCLAIMER,
-        GovernanceAction,
-        GovernanceVerdict,
-    )
+    from cfb_analytics.governance.models import SHADOW_MODE_DISCLAIMER
     from cfb_analytics.reasoning.context import load_slate_situational_contexts
     from cfb_analytics.reasoning.engine import MultiFactorReasoningEngine
     from cfb_analytics.scanner.engine import MispricedScanner
@@ -864,14 +860,7 @@ def _cmd_mispriced(args: argparse.Namespace) -> int:
             opp_key = f"{opp.game_id}:{opp.market_type}:{opp.side}"
             opp_card = reasoning_cards.get(opp_key)
             ctx = contexts.get(opp.game_id)
-            try:
-                verdict = gate.evaluate_candidate(opp, reasoning_card=opp_card, context=ctx)
-            except Exception:
-                verdict = GovernanceVerdict(
-                    candidate_id=opp_key,
-                    action=GovernanceAction.APPROVE,
-                    disclaimer=SHADOW_MODE_DISCLAIMER,
-                )
+            verdict = gate.evaluate_candidate(opp, reasoning_card=opp_card, context=ctx)
             verdicts[opp_key] = verdict
 
         if getattr(args, "json", False):

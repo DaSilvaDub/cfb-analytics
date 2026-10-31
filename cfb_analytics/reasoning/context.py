@@ -7,6 +7,7 @@ genuine SituationalContext dossiers for games and full slates.
 
 from __future__ import annotations
 
+import logging
 import sqlite3
 
 from cfb_analytics.features.over_confidence import format_kickoff_et
@@ -31,6 +32,15 @@ from cfb_analytics.reasoning.weather import (
     calculate_haversine_distance_miles,
     calculate_weather_multipliers,
     evaluate_travel_profile,
+)
+from cfb_analytics.utils import to_utc_iso
+
+logger = logging.getLogger(__name__)
+
+# Designations that mean the quarterback is not confirmed available.
+# Unchanged from the previous injury check; only the default flipped.
+_QB_UNCONFIRMED_DESIGNATIONS = frozenset(
+    {"out", "out for season", "doubtful", "questionable"}
 )
 
 
@@ -165,6 +175,30 @@ def _load_tape_profile(
     return analyze_tape(tape_games, team_id=team_id, team_name=team_name)
 
 
+def _fresh_qb_row(
+    rows: list[sqlite3.Row],
+    kickoff_utc: str,
+) -> sqlite3.Row | None:
+    """Latest QB availability row stamped strictly before kickoff.
+
+    A row at or after kickoff is not a pre-game report. No new staleness
+    window is applied: "fresh" is this latest pre-kickoff row.
+    """
+    kickoff = to_utc_iso(kickoff_utc)
+    if kickoff is None:
+        return None
+    latest: sqlite3.Row | None = None
+    latest_stamp: str | None = None
+    for row in rows:
+        stamp = to_utc_iso(row["as_of_utc"])
+        if stamp is None or stamp >= kickoff:
+            continue
+        if latest_stamp is None or stamp > latest_stamp:
+            latest = row
+            latest_stamp = stamp
+    return latest
+
+
 def _load_qb_status(
     conn: sqlite3.Connection,
     team_id: str,
@@ -172,37 +206,47 @@ def _load_qb_status(
     kickoff_utc: str,
     game_id: str,
 ) -> tuple[bool, str | None, float]:
-    """Determine QB confirmed status, starter name, and attempt share."""
+    """QB is confirmed only by a usage starter and a fresh injury row.
+
+    No starter, no pre-kickoff availability row, or a starter-lookup error is
+    unknown, not confirmed. The usage bar (attempt share >= 0.70 and at least
+    one game) is unchanged.
+    """
     qb_name = None
     qb_share = 1.0
-    qb_confirmed = True
+    starter_ok = False
 
     try:
         starter = presumptive_starter_as_of(conn, team_id, season, kickoff_utc)
-        if starter:
-            qb_name = starter.name
-            qb_share = starter.attempt_share
-            qb_confirmed = bool(starter.attempt_share >= 0.70 and starter.games >= 1)
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.exception(
+            "QB starter lookup failed closed for team %s game %s: %s",
+            team_id,
+            game_id,
+            exc,
+        )
+        starter = None
+    if starter is not None:
+        qb_name = starter.name
+        qb_share = starter.attempt_share
+        starter_ok = bool(starter.attempt_share >= 0.70 and starter.games >= 1)
 
-    # Check availability table for injury designations
+    fresh_confirms = False
     try:
         rows = conn.execute(
-            """SELECT designation FROM availability
+            """SELECT designation, as_of_utc FROM availability
                WHERE game_id = ? AND team_id = ? AND (position = 'QB' OR position_group = 'QB')
                ORDER BY as_of_utc DESC""",
             (game_id, team_id),
         ).fetchall()
-        for r in rows:
-            desig = (r["designation"] or "").strip().lower()
-            if desig in ("out", "out for season", "doubtful", "questionable"):
-                qb_confirmed = False
-                break
+        fresh = _fresh_qb_row(list(rows), kickoff_utc)
+        if fresh is not None:
+            desig = (fresh["designation"] or "").strip().lower()
+            fresh_confirms = bool(desig) and desig not in _QB_UNCONFIRMED_DESIGNATIONS
     except sqlite3.OperationalError:
-        pass
+        fresh_confirms = False
 
-    return qb_confirmed, qb_name, qb_share
+    return starter_ok and fresh_confirms, qb_name, qb_share
 
 
 def _load_trench_attrition(
@@ -387,8 +431,8 @@ def load_situational_context_for_game(
             weather=calculate_weather_multipliers(
                 temp_c=20.0, wind_kph=0.0, gust_kph=0.0, precip_mm=0.0, is_dome=False
             ),
-            qb_home_confirmed=True,
-            qb_away_confirmed=True,
+            qb_home_confirmed=False,
+            qb_away_confirmed=False,
             trench_attrition_home=0.0,
             trench_attrition_away=0.0,
             talent_composite_home=650.0,
