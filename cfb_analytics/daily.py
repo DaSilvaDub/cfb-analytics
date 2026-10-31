@@ -532,6 +532,46 @@ def _run_candidate_scoring(
         report.outcomes.append(SourceOutcome("scoring", "failed", str(exc)[:200]))
 
 
+def _freeze_over_boards(
+    conn: sqlite3.Connection,
+    report: DailyReport,
+    slates: list[str],
+    now: datetime,
+) -> None:
+    """Publish the OVER board once, before kickoff, and leave that snapshot.
+
+    Selection is ``build_over_confidence_board`` unchanged. This only stores
+    the rows. A game already frozen pre-kickoff is not rewritten. A publish
+    stamped at or after kickoff is rejected and named on the outcome.
+    """
+    try:
+        from cfb_analytics.features.over_confidence import (
+            build_over_confidence_board,
+            persist_over_board,
+        )
+        from cfb_analytics.utils import to_utc_iso
+
+        published = to_utc_iso(now) or utc_now_iso()
+        written = 0
+        details: list[str] = []
+        for slate in slates:
+            rows = build_over_confidence_board(conn, slate)
+            rejected: list[str] = []
+            inserted = persist_over_board(
+                conn, slate, rows, as_of_utc=published, rejected=rejected
+            )
+            written += inserted
+            detail = f"{slate} new_rows={inserted}"
+            if rejected:
+                detail += " post-kickoff rejected=" + ",".join(rejected)
+            details.append(detail)
+        report.outcomes.append(
+            SourceOutcome("over_board", "ok", "; ".join(details), rows=written)
+        )
+    except (CfbAnalyticsError, sqlite3.Error) as exc:
+        report.outcomes.append(SourceOutcome("over_board", "failed", str(exc)[:200]))
+
+
 def _run_slate_reports(conn: sqlite3.Connection, report: DailyReport, slates: list[str]) -> None:
     """Write the combined slate report for every slate in the window.
 
@@ -666,6 +706,7 @@ def run_daily(
             report.movement_rows += summary.movement_rows
             report.games += summary.games
 
+        _freeze_over_boards(conn, report, report.slates, moment)
         _run_slate_reports(conn, report, report.slates)
 
         if with_scoring:

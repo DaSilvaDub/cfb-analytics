@@ -112,6 +112,7 @@ def test_snapshot_is_source_of_truth_for_settle(conn) -> None:
                 "flags": ("inferred_mark",),
             },
         ],
+        as_of_utc="2026-09-19T16:00:00+00:00",
     )
     insert_team_game_boxes(
         conn,

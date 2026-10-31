@@ -613,45 +613,81 @@ class OverBoardSettlement:
         return "\n".join(lines)
 
 
+def _published_before_kickoff(published_utc: str, kickoff_utc: str) -> bool:
+    """True only when the publish stamp is strictly before kickoff.
+
+    Both sides are normalised to UTC. An unparseable stamp is not before
+    kickoff: a snapshot that cannot be proved pre-game is not a freeze, and a
+    new write that cannot be proved pre-game is rejected.
+    """
+    published = to_utc_iso(published_utc)
+    kickoff = to_utc_iso(kickoff_utc)
+    if published is None or kickoff is None:
+        return False
+    return published < kickoff
+
+
 def persist_over_board(
     conn: sqlite3.Connection,
     slate_date: str,
     rows: Sequence[OverConfidencePick | dict[str, Any]],
     *,
     as_of_utc: str | None = None,
+    rejected: list[str] | None = None,
 ) -> int:
     """Freeze the published board. Settlement grades this snapshot only.
 
-    Games that have already kicked off are never replaced. An empty rebuild
-    does not delete a previously published slate.
+    A game whose snapshot was written strictly before kickoff is never
+    overwritten or deleted by a later run. A write stamped at or after that
+    game's kickoff is rejected and not stored. An empty rebuild does not
+    delete a previously published slate.
+
+    ``rejected`` collects game ids whose rows were refused because the publish
+    stamp is not strictly before kickoff. Which picks the caller selected is
+    not changed here; this function only decides what may be stored.
     """
-    published_utc = as_of_utc or utc_now_iso()
+    if as_of_utc is None:
+        published_utc = utc_now_iso()
+    else:
+        normalized = to_utc_iso(as_of_utc)
+        if normalized is None:
+            if rejected is not None:
+                for row in rows:
+                    game_id = (
+                        row.game_id if isinstance(row, OverConfidencePick) else str(row["game_id"])
+                    )
+                    if game_id not in rejected:
+                        rejected.append(game_id)
+            return 0
+        published_utc = normalized
     frozen = {
         str(row["game_id"])
         for row in conn.execute(
-            """SELECT DISTINCT game_id FROM over_board_snapshots
-               WHERE slate_date = ? AND kickoff_utc <= ?""",
-            (slate_date, published_utc),
+            """SELECT game_id, kickoff_utc, published_utc FROM over_board_snapshots
+               WHERE slate_date = ?""",
+            (slate_date,),
         )
+        if _published_before_kickoff(str(row["published_utc"]), str(row["kickoff_utc"]))
     }
-    payload = [
-        _snapshot_row(slate_date, row, published_utc)
-        for row in rows
-        if (row.game_id if isinstance(row, OverConfidencePick) else str(row["game_id"]))
-        not in frozen
-    ]
+    payload: list[dict[str, Any]] = []
+    seen_rejected: set[str] = set()
+    for row in rows:
+        game_id = row.game_id if isinstance(row, OverConfidencePick) else str(row["game_id"])
+        kickoff_utc = (
+            row.kickoff_utc if isinstance(row, OverConfidencePick) else str(row["kickoff_utc"])
+        )
+        if game_id in frozen:
+            continue
+        if not _published_before_kickoff(published_utc, kickoff_utc):
+            if game_id not in seen_rejected:
+                seen_rejected.add(game_id)
+                if rejected is not None:
+                    rejected.append(game_id)
+            continue
+        payload.append(_snapshot_row(slate_date, row, published_utc))
     if not payload:
         return 0
-    unfrozen = {
-        str(row["game_id"])
-        for row in conn.execute(
-            """SELECT DISTINCT game_id FROM over_board_snapshots
-               WHERE slate_date = ? AND kickoff_utc > ?""",
-            (slate_date, published_utc),
-        )
-    }
-    replace_ids = unfrozen | {str(row["game_id"]) for row in payload}
-    for game_id in replace_ids:
+    for game_id in {str(row["game_id"]) for row in payload}:
         conn.execute(
             "DELETE FROM over_board_snapshots WHERE slate_date = ? AND game_id = ?",
             (slate_date, game_id),
