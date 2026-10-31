@@ -78,7 +78,7 @@ def test_exception_yields_no_pass_and_is_not_approved(caplog: pytest.LogCaptureF
 
 
 def test_mispriced_cli_exception_does_not_approve(capsys, cli_db, monkeypatch, caplog) -> None:
-    """The CLI used to convert a raised evaluation into APPROVE."""
+    """mispriced emits the gate's fail-closed VETO. The command has no handler of its own."""
     game_id = _seed_game_and_consensus(cli_db, "2026-09-05")
     for side, prob in (("OVER", 0.5), ("UNDER", 0.5)):
         cli_db.execute(
@@ -97,7 +97,7 @@ def test_mispriced_cli_exception_does_not_approve(capsys, cli_db, monkeypatch, c
         raise RuntimeError("gate exploded")
 
     monkeypatch.setattr(
-        "cfb_analytics.governance.gate.GovernanceGate.evaluate_candidate", boom
+        "cfb_analytics.governance.gate.GovernanceGate._evaluate_candidate", boom
     )
     capsys.readouterr()
     with caplog.at_level(logging.ERROR):

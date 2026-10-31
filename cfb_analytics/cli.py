@@ -10,15 +10,12 @@ from __future__ import annotations
 
 import argparse
 import json
-import logging
 import os
 import sys
 from typing import Any
 
 from cfb_analytics import config, db, paths
 from cfb_analytics.errors import CfbAnalyticsError, SchemaError
-
-logger = logging.getLogger(__name__)
 
 
 def _cmd_init_db(args: argparse.Namespace) -> int:
@@ -751,11 +748,7 @@ def _cmd_mispriced(args: argparse.Namespace) -> int:
     """Mispriced line scanner: spreads, totals, and team props vs model."""
     from cfb_analytics.features.mispriced import build_mispriced_board
     from cfb_analytics.governance.gate import GovernanceGate
-    from cfb_analytics.governance.models import (
-        SHADOW_MODE_DISCLAIMER,
-        GovernanceAction,
-        GovernanceVerdict,
-    )
+    from cfb_analytics.governance.models import SHADOW_MODE_DISCLAIMER
     from cfb_analytics.reasoning.context import load_slate_situational_contexts
     from cfb_analytics.reasoning.engine import MultiFactorReasoningEngine
     from cfb_analytics.scanner.engine import MispricedScanner
@@ -867,22 +860,7 @@ def _cmd_mispriced(args: argparse.Namespace) -> int:
             opp_key = f"{opp.game_id}:{opp.market_type}:{opp.side}"
             opp_card = reasoning_cards.get(opp_key)
             ctx = contexts.get(opp.game_id)
-            try:
-                verdict = gate.evaluate_candidate(opp, reasoning_card=opp_card, context=ctx)
-            except Exception as exc:
-                # The gate already fails closed. This remains so a caller-side
-                # failure cannot endorse the candidate (the previous path
-                # returned APPROVE).
-                logger.exception(
-                    "Governance evaluation failed closed for %s: %s", opp_key, exc
-                )
-                verdict = GovernanceVerdict(
-                    candidate_id=opp_key,
-                    action=GovernanceAction.VETO,
-                    parlay_eligible=False,
-                    notes=f"Governance evaluation failed closed: {type(exc).__name__}: {exc}",
-                    disclaimer=SHADOW_MODE_DISCLAIMER,
-                )
+            verdict = gate.evaluate_candidate(opp, reasoning_card=opp_card, context=ctx)
             verdicts[opp_key] = verdict
 
         if getattr(args, "json", False):
