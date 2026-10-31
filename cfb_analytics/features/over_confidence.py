@@ -617,14 +617,21 @@ def _published_before_kickoff(published_utc: str, kickoff_utc: str) -> bool:
     """True only when the publish stamp is strictly before kickoff.
 
     Both sides are normalised to UTC. An unparseable stamp is not before
-    kickoff: a snapshot that cannot be proved pre-game is not a freeze, and a
-    new write that cannot be proved pre-game is rejected.
+    kickoff, so a write that cannot be proved pre-game is rejected.
     """
     published = to_utc_iso(published_utc)
     kickoff = to_utc_iso(kickoff_utc)
     if published is None or kickoff is None:
         return False
     return published < kickoff
+
+
+def _row_game_id(row: OverConfidencePick | dict[str, Any]) -> str:
+    return row.game_id if isinstance(row, OverConfidencePick) else str(row["game_id"])
+
+
+def _row_kickoff(row: OverConfidencePick | dict[str, Any]) -> str:
+    return row.kickoff_utc if isinstance(row, OverConfidencePick) else str(row["kickoff_utc"])
 
 
 def persist_over_board(
@@ -635,16 +642,17 @@ def persist_over_board(
     as_of_utc: str | None = None,
     rejected: list[str] | None = None,
 ) -> int:
-    """Freeze the published board. Settlement grades this snapshot only.
+    """Publish the OVER board. Settlement grades this snapshot only.
 
-    A game whose snapshot was written strictly before kickoff is never
-    overwritten or deleted by a later run. A write stamped at or after that
-    game's kickoff is rejected and not stored. An empty rebuild does not
-    delete a previously published slate.
+    Until kickoff the slate stays rewritable: rows whose kickoff is still
+    after the publish stamp are replaced, the same way a later pre-game run
+    on master replaced them. A write stamped at or after a game's kickoff is
+    rejected, named in ``rejected``, and neither inserted nor used to delete
+    the existing rows. An empty rebuild does not delete a previously
+    published slate.
 
-    ``rejected`` collects game ids whose rows were refused because the publish
-    stamp is not strictly before kickoff. Which picks the caller selected is
-    not changed here; this function only decides what may be stored.
+    Which picks the caller selected is not changed here; this function only
+    decides what may be stored.
     """
     if as_of_utc is None:
         published_utc = utc_now_iso()
@@ -653,31 +661,16 @@ def persist_over_board(
         if normalized is None:
             if rejected is not None:
                 for row in rows:
-                    game_id = (
-                        row.game_id if isinstance(row, OverConfidencePick) else str(row["game_id"])
-                    )
+                    game_id = _row_game_id(row)
                     if game_id not in rejected:
                         rejected.append(game_id)
             return 0
         published_utc = normalized
-    frozen = {
-        str(row["game_id"])
-        for row in conn.execute(
-            """SELECT game_id, kickoff_utc, published_utc FROM over_board_snapshots
-               WHERE slate_date = ?""",
-            (slate_date,),
-        )
-        if _published_before_kickoff(str(row["published_utc"]), str(row["kickoff_utc"]))
-    }
     payload: list[dict[str, Any]] = []
     seen_rejected: set[str] = set()
     for row in rows:
-        game_id = row.game_id if isinstance(row, OverConfidencePick) else str(row["game_id"])
-        kickoff_utc = (
-            row.kickoff_utc if isinstance(row, OverConfidencePick) else str(row["kickoff_utc"])
-        )
-        if game_id in frozen:
-            continue
+        game_id = _row_game_id(row)
+        kickoff_utc = _row_kickoff(row)
         if not _published_before_kickoff(published_utc, kickoff_utc):
             if game_id not in seen_rejected:
                 seen_rejected.add(game_id)
@@ -687,7 +680,19 @@ def persist_over_board(
         payload.append(_snapshot_row(slate_date, row, published_utc))
     if not payload:
         return 0
-    for game_id in {str(row["game_id"]) for row in payload}:
+    # Replace every stored game that has not kicked off yet, including games
+    # absent from this payload, then insert the new pre-kickoff rows.
+    unfrozen = {
+        str(row["game_id"])
+        for row in conn.execute(
+            """SELECT game_id, kickoff_utc FROM over_board_snapshots
+               WHERE slate_date = ?""",
+            (slate_date,),
+        )
+        if _published_before_kickoff(published_utc, str(row["kickoff_utc"]))
+    }
+    replace_ids = unfrozen | {str(row["game_id"]) for row in payload}
+    for game_id in replace_ids:
         conn.execute(
             "DELETE FROM over_board_snapshots WHERE slate_date = ? AND game_id = ?",
             (slate_date, game_id),

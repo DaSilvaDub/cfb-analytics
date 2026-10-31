@@ -538,11 +538,12 @@ def _freeze_over_boards(
     slates: list[str],
     now: datetime,
 ) -> None:
-    """Publish the OVER board once, before kickoff, and leave that snapshot.
+    """Publish the OVER board for each slate in the window.
 
     Selection is ``build_over_confidence_board`` unchanged. This only stores
-    the rows. A game already frozen pre-kickoff is not rewritten. A publish
-    stamped at or after kickoff is rejected and named on the outcome.
+    the rows. A later run before kickoff replaces that snapshot. A publish
+    stamped at or after kickoff is rejected and named on the outcome, and
+    does not delete the last pre-kickoff rows.
     """
     try:
         from cfb_analytics.features.over_confidence import (
