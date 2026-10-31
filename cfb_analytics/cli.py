@@ -1398,7 +1398,7 @@ def _cmd_live(args: argparse.Namespace) -> int:
 
 def _cmd_daily(args: argparse.Namespace) -> int:
     """The scheduled job: ingest what is credentialed, then rebuild the market."""
-    from cfb_analytics.daily import run_daily
+    from cfb_analytics.daily import daily_exit_code, run_daily
 
     paths.ensure_dirs()
     with db.open_db() as conn:
@@ -1423,9 +1423,10 @@ def _cmd_daily(args: argparse.Namespace) -> int:
             fence = "```"
             handle.write(f"## Daily ingest\n\n{fence}\n{text}\n{fence}\n")
 
-    # Exit non-zero only when EVERY source failed. A skipped source is an
-    # expected state, not a red build every morning.
-    return 0 if report.ok else 1
+    # A skipped source is an expected state, not a red build every morning.
+    # A failed mandatory CFBD source (lines, scores, team boxes, Elo), including
+    # HTTP 429, is a red build even when another leg succeeded.
+    return daily_exit_code(report)
 
 
 def build_parser() -> argparse.ArgumentParser:

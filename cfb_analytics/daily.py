@@ -3,8 +3,10 @@
 Designed for an unattended cloud runner, which drives three rules:
 
 1. **Degrade, don't abort.** A source without a credential, or one that has
-   expired, is reported and skipped. One dead source must not cost the run the
-   data the other sources would have produced.
+   expired, is reported and skipped. One dead *optional* source must not cost
+   the run the data the other sources would have produced. A failed mandatory
+   CFBD source (lines, final scores, team boxes, Elo), including HTTP 429,
+   fails the run even when another leg succeeded.
 2. **Say what did not happen.** A silent partial run is worse than a failed
    one, so every skip is named in the summary with the reason and the fix.
 3. **Only ingest slates inside the operating window.** Measured 2026-09-01:
@@ -53,6 +55,12 @@ class ResearchGameTotal:
     actionable: Literal[False] = field(default=False, init=False)
 
 
+# Recorded outcome names. "cfbd" is the lines/odds leg. Rankings is not in
+# this set: a rankings-only failure stays a degraded run. These four are what
+# a healthy daily publish has to have landed.
+MANDATORY_CFBD_SOURCES = frozenset({"cfbd", "game_scores", "team_boxes", "elo"})
+
+
 @dataclass
 class DailyReport:
     started_utc: str
@@ -67,16 +75,31 @@ class DailyReport:
     research_game_totals: dict[str, ResearchGameTotal] = field(default_factory=dict)
     bootstrapped: bool = False
 
+    def mandatory_failures(self) -> list[SourceOutcome]:
+        """Mandatory CFBD legs that failed. Skips are not failures."""
+        return [
+            outcome
+            for outcome in self.outcomes
+            if outcome.status == "failed" and outcome.name in MANDATORY_CFBD_SOURCES
+        ]
+
     @property
     def ok(self) -> bool:
-        """False only when something actively broke and nothing succeeded.
+        """False when a mandatory CFBD source failed, or when nothing succeeded.
 
         A *skipped* source is an expected state -- a credential that was never
         configured -- so an all-skipped run is green. Turning a known-missing
         key into a red build every morning trains people to ignore the light,
-        which costs more than it catches. A *failed* source with no successes
-        is red, because something broke that was expected to work.
+        which costs more than it catches.
+
+        A failed lines, game-scores, team-box, or Elo leg is red even when
+        another leg succeeded. On 2026-10-31 those four (and rankings) logged
+        HTTP 429 while player passing, internal ratings, weather, and the
+        slate report were OK, and ``ok`` stayed true because any success
+        counted. That green run then published the partial store.
         """
+        if self.mandatory_failures():
+            return False
         statuses = {outcome.status for outcome in self.outcomes}
         return "ok" in statuses or "failed" not in statuses
 
@@ -110,6 +133,20 @@ class DailyReport:
         if config.is_shadow_mode():
             lines.append(f"\n  {config.SHADOW_STAMP}")
         return "\n".join(lines)
+
+
+def daily_exit_code(report: DailyReport) -> int:
+    """Exit status for ``cfb-analytics daily``.
+
+    Each failed mandatory CFBD source is also printed as a GitHub Actions
+    ``::error::`` annotation. The annotation is what makes the failure visible
+    in the job log; the non-zero status is what fails the step, so the publish
+    step (gated on that step succeeding) does not force-push a partial store.
+    """
+    for outcome in report.mandatory_failures():
+        detail = " ".join(outcome.detail.split())
+        print(f"::error::mandatory CFBD source {outcome.name} failed: {detail}")
+    return 0 if report.ok else 1
 
 
 def slates_in_window(conn: sqlite3.Connection, *, now: datetime | None = None) -> list[str]:
@@ -245,7 +282,13 @@ def _run_cfbd_rankings(
         report.outcomes.append(SourceOutcome("rankings", "failed", str(exc)[:200]))
 
 
-def _run_cfbd_elo(conn: sqlite3.Connection, report: DailyReport, season: int) -> None:
+def _run_cfbd_elo(
+    conn: sqlite3.Connection,
+    report: DailyReport,
+    season: int,
+    *,
+    now: datetime | None = None,
+) -> None:
     """Weekly CFBD Elo for the current season so conference top-two is not AP-only."""
     if not config.has_cfbd_key():
         report.outcomes.append(
@@ -256,7 +299,9 @@ def _run_cfbd_elo(conn: sqlite3.Connection, report: DailyReport, season: int) ->
         from cfb_analytics.ingest.cfbd_fundamentals import backfill_elo
         from cfb_analytics.sources.cfbd import CFBDClient
 
-        summary = backfill_elo(conn, CFBDClient(), start_year=season, end_year=season)
+        summary = backfill_elo(
+            conn, CFBDClient(), start_year=season, end_year=season, now=now
+        )
         report.outcomes.append(SourceOutcome("elo", "ok", summary.as_text(), rows=summary.ratings))
     except CfbAnalyticsError as exc:
         report.outcomes.append(SourceOutcome("elo", "failed", str(exc)[:200]))
@@ -631,7 +676,7 @@ def run_daily(
 
     _run_cfbd_lines(conn, report, year)
     _run_cfbd_rankings(conn, report, year, now=moment)
-    _run_cfbd_elo(conn, report, year)
+    _run_cfbd_elo(conn, report, year, now=moment)
     _run_refresh_scores(conn, report, year)
 
     slates = slates_in_window(conn, now=moment)

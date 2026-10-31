@@ -24,6 +24,7 @@ from cfb_analytics.sources.cfbd import (
     parse_team,
     parse_transfer_player,
 )
+from cfb_analytics.utils import FOOTBALL_TZ, football_date
 
 
 @dataclass(frozen=True)
@@ -144,6 +145,38 @@ def _cutoffs(conn: sqlite3.Connection, season: int) -> tuple[dict[int, str], str
         + timedelta(days=1)
     ).isoformat()
     return weekly, season_final
+
+
+def elo_weeks_due(
+    conn: sqlite3.Connection,
+    season: int,
+    weekly_cutoffs: dict[int, str],
+    *,
+    now: datetime | None = None,
+) -> dict[int, str]:
+    """Weeks to request: those at or before the current Eastern slate week.
+
+    ``weekly_cutoffs`` still supplies each week's as-of stamp (latest kickoff
+    that week, plus one day). This does not recompute that stamp. A week whose
+    games are all still after ``now`` on the US Eastern calendar is omitted, so
+    a daily Elo refresh does not walk the rest of the season.
+    """
+    moment = now or datetime.now(FOOTBALL_TZ)
+    if moment.tzinfo is None:
+        moment = moment.replace(tzinfo=FOOTBALL_TZ)
+    today = football_date(moment.astimezone(FOOTBALL_TZ).isoformat())
+    row = conn.execute(
+        """SELECT MAX(week) AS week FROM games
+           WHERE source = 'cfbd' AND season = ? AND season_type = 'regular'
+             AND week IS NOT NULL
+             AND football_date IS NOT NULL
+             AND football_date <= ?""",
+        (season, today),
+    ).fetchone()
+    if row is None or row["week"] is None:
+        return {}
+    current = int(row["week"])
+    return {week: as_of for week, as_of in weekly_cutoffs.items() if week <= current}
 
 
 def _check_season(rows: Iterable[dict[str, Any]], year: int, endpoint: str) -> None:
@@ -325,6 +358,7 @@ def backfill_elo(
     start_year: int,
     end_year: int,
     season_type: str = "regular",
+    now: datetime | None = None,
 ) -> EloBackfillSummary:
     """Backfill ONLY weekly Elo ratings.
 
@@ -334,6 +368,10 @@ def backfill_elo(
     inserted correctly the first time), so re-fetching those four other
     endpoints again per season, just to pick up the Elo fix, would waste API
     calls and time for data that is already correct in the store.
+
+    Weeks whose games are still in the future on the US Eastern calendar are
+    not requested. The as-of stamp for a week that is requested is unchanged
+    (latest kickoff that week, plus one day).
     """
     if start_year > end_year:
         raise SchemaError("start_year must be less than or equal to end_year")
@@ -347,8 +385,9 @@ def backfill_elo(
             team_rows = _fetch(run, f"teams/fbs:{year}", partial(client.fetch_fbs_teams, year))
             endpoints += 1
             resolver = _team_resolver(team_rows)
+            due = elo_weeks_due(conn, year, weekly_cutoffs, now=now)
 
-            for week, as_of_utc in sorted(weekly_cutoffs.items()):
+            for week, as_of_utc in sorted(due.items()):
                 written, skipped = _backfill_elo_week(
                     conn, client, run, resolver,
                     year=year, week=week, as_of_utc=as_of_utc, season_type=season_type,

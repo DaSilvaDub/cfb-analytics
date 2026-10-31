@@ -101,6 +101,7 @@ jobs:
           python -m cfb_analytics.cli backfill-elo             --start-year "${{ github.event.inputs.backfill_elo_from }}" --end-year "$YEAR_NOW"
 
       - name: Daily ingest
+        id: daily
         env:
           CFBD_API_KEY: ${{ secrets.CFBD_API_KEY }}
           OUTLIER_SESSION_JSON: ${{ secrets.OUTLIER_SESSION_JSON }}
@@ -135,7 +136,12 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Publish database
-        if: always()
+        # Only a daily step that exited 0 may replace the data branch. A
+        # mandatory CFBD failure (lines, scores, team boxes, Elo), including
+        # HTTP 429, exits non-zero; publishing anyway would force-push that
+        # partial store and present it as healthy. The empty-database guard
+        # below still refuses a zero-table file when this step does run.
+        if: steps.daily.outcome == 'success'
         run: |
           if [ ! -f data/cfb.sqlite3 ]; then
             echo "no database to publish"; exit 0
