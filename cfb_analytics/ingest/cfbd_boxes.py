@@ -59,9 +59,9 @@ def _stat_float(value: Any) -> float | None:
 
 
 def _team_name_index(conn: sqlite3.Connection) -> dict[str, str]:
-    from cfb_analytics.ingest.cfbd_rankings import _team_name_index as rankings_index
+    from cfb_analytics.ingest.canonical_names import canonical_team_name_index
 
-    return rankings_index(conn)
+    return canonical_team_name_index(conn)
 
 
 @dataclass(frozen=True)
