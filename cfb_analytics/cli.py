@@ -10,12 +10,15 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import os
 import sys
 from typing import Any
 
 from cfb_analytics import config, db, paths
 from cfb_analytics.errors import CfbAnalyticsError, SchemaError
+
+logger = logging.getLogger(__name__)
 
 
 def _cmd_init_db(args: argparse.Namespace) -> int:
@@ -641,8 +644,8 @@ def _cmd_board(args: argparse.Namespace) -> int:
                             rush_vol_mult=1.0,
                             scoring_mult=1.0,
                         ),
-                        qb_home_confirmed=True,
-                        qb_away_confirmed=True,
+                        qb_home_confirmed=False,
+                        qb_away_confirmed=False,
                         trench_attrition_home=0.0,
                         trench_attrition_away=0.0,
                         talent_composite_home=650.0,
@@ -866,10 +869,18 @@ def _cmd_mispriced(args: argparse.Namespace) -> int:
             ctx = contexts.get(opp.game_id)
             try:
                 verdict = gate.evaluate_candidate(opp, reasoning_card=opp_card, context=ctx)
-            except Exception:
+            except Exception as exc:
+                # The gate already fails closed. This remains so a caller-side
+                # failure cannot endorse the candidate (the previous path
+                # returned APPROVE).
+                logger.exception(
+                    "Governance evaluation failed closed for %s: %s", opp_key, exc
+                )
                 verdict = GovernanceVerdict(
                     candidate_id=opp_key,
-                    action=GovernanceAction.APPROVE,
+                    action=GovernanceAction.VETO,
+                    parlay_eligible=False,
+                    notes=f"Governance evaluation failed closed: {type(exc).__name__}: {exc}",
                     disclaimer=SHADOW_MODE_DISCLAIMER,
                 )
             verdicts[opp_key] = verdict
