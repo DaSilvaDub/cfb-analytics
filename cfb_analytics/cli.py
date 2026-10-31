@@ -465,19 +465,21 @@ def _cmd_over_board(args: argparse.Namespace) -> int:
     if not paths.database_path().exists():
         print("No database yet. Run: cfb-analytics init-db")
         return 1
+    rejected: list[str] = []
     with db.open_db() as conn:
         rows = build_over_confidence_board(
             conn,
             args.date,
             min_prob=args.min_prob,
         )
-        persist_over_board(conn, args.date, rows)
+        persist_over_board(conn, args.date, rows, rejected=rejected)
         conn.commit()
     if args.json:
         payload = {
             "date": args.date,
             "stamp": config.SHADOW_STAMP if config.is_shadow_mode() else None,
             "min_prob": args.min_prob,
+            "snapshot_rejected_game_ids": rejected,
             "picks": [
                 {
                     "rank": row.rank,
@@ -503,6 +505,12 @@ def _cmd_over_board(args: argparse.Namespace) -> int:
         print(json.dumps(payload, indent=2))
         return 0
     print(render_over_confidence_board(args.date, rows, min_prob=args.min_prob))
+    if rejected:
+        print(
+            "post-kickoff snapshot rejected for "
+            + ", ".join(rejected)
+            + "; a pre-kickoff freeze was not rewritten"
+        )
     return 0
 
 
