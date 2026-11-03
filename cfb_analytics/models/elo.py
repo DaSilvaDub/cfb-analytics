@@ -199,6 +199,7 @@ def fit_elo(
     k: float = DEFAULT_K,
     hfa: float = HFA_ELO_POINTS,
     min_games: int = DEFAULT_MIN_GAMES,
+    allow_prior_only: bool = False,
 ) -> EloRatings:
     """Process ``games`` in chronological order, updating ratings one game
     at a time.
@@ -207,6 +208,11 @@ def fit_elo(
     (typically the plan's preseason blend -- see
     ``features/elo_internal.py``); a team absent from it starts at
     ``DEFAULT_INITIAL_RATING``, the generic Elo baseline.
+
+    ``allow_prior_only``: when True and ``initial_ratings`` is non-empty,
+    a fit with fewer than ``min_games`` still returns ``status='active'``
+    from the seeds alone (week-1 / cold-start). Default False preserves
+    the historical insufficient_history gate.
 
     Every game must carry a parseable ``kickoff_utc`` -- unlike ridge,
     there is no "unweighted" fallback for a missing date here: the whole
@@ -242,6 +248,22 @@ def fit_elo(
     dated_games.sort(key=lambda row: row[0])
     n_games = len(dated_games)
     if n_games < min_games:
+        # Early-season path: when the caller seeded every team from a
+        # leakage-safe preseason prior (features/elo_internal.py), emit an
+        # active prior-only book instead of waiting for min_games of THIS
+        # season. Opt-in so default callers keep the old insufficient_history
+        # contract (week-1 blackout until enough in-season games exist).
+        if allow_prior_only and initial_ratings:
+            return EloRatings(
+                status="active",
+                n_games=n_games,
+                k=k,
+                hfa=hfa,
+                teams={
+                    team: TeamEloState(rating=float(rating), games=0)
+                    for team, rating in initial_ratings.items()
+                },
+            )
         return EloRatings(status="insufficient_history", n_games=n_games, k=k, hfa=hfa)
 
     ratings: dict[str, float] = dict(initial_ratings or {})

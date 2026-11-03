@@ -101,3 +101,15 @@ def is_shadow_mode() -> bool:
 
 
 SHADOW_STAMP = "UNPROMOTED - shadow output, not decision-grade"
+
+
+def market_weight_floor() -> float:
+    """Live/backtest shared floor from ``settings.blend.market_weight_floor``.
+
+    Defaults to 0.75 when the key is absent. Model share is capped at
+    ``1 - floor`` until pure-model OOS evidence justifies lowering it.
+    """
+    from cfb_analytics.models.market_blend import market_weight_floor_from_settings
+
+    return market_weight_floor_from_settings(settings())
+
