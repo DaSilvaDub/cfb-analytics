@@ -452,15 +452,22 @@ def _load_model_margins(
     Returns {game_id: home_margin} where positive = home favored.
     """
     from cfb_analytics.models.futures import (
+        POINTS_TO_ELO_SCALE,
         project_game_win_probability,
     )
 
     # Try Elo ratings first
     elo_ratings = _load_latest_elo(conn)
-    if not elo_ratings:
-        elo_ratings = _load_latest_ridge(conn)
+    if elo_ratings:
+        # The futures projection consumes scoring-point ratings, whereas
+        # internal Elo is stored in Elo units. Use its existing scale.
+        point_ratings = {
+            team_id: rating / POINTS_TO_ELO_SCALE for team_id, rating in elo_ratings.items()
+        }
+    else:
+        point_ratings = _load_latest_ridge(conn)
 
-    if not elo_ratings:
+    if not point_ratings:
         return {}
 
     games = conn.execute(
@@ -472,15 +479,15 @@ def _load_model_margins(
 
     margins: dict[str, float] = {}
     for g in games:
-        home_r = elo_ratings.get(g["home_team_id"])
-        away_r = elo_ratings.get(g["away_team_id"])
+        home_r = point_ratings.get(g["home_team_id"])
+        away_r = point_ratings.get(g["away_team_id"])
         if home_r is None or away_r is None:
             continue
 
         is_neutral = bool(g["neutral_site"]) if g["neutral_site"] is not None else False
         # project_game_win_probability returns (spread, prob)
         # spread is from team perspective, negative = favorite
-        spread, prob = project_game_win_probability(
+        spread, _ = project_game_win_probability(
             home_r,
             away_r,
             is_home=True,

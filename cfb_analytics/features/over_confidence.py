@@ -86,8 +86,9 @@ _LINE_CAPS = {
 
 
 SIT_QB_SPREAD = -20.0
-BLOWOUT_GAME_YARDS = 28.0  # combined rush/rec overs die when one side is emptied
+BLOWOUT_GAME_YARDS = 14.0  # combined rush overs die when spread >= 14
 DOG_REC_BLOWOUT = 28.0
+DOG_RUSH_TRAILING_SPREAD = 14.0  # Invariant 10: underdogs trailing by 14+ discard rushing volume
 PROB_CAP = 0.84
 HIGH_TIER = 0.70
 MEDIUM_TIER = 0.60
@@ -200,17 +201,39 @@ def apply_sample_haircut(inputs: TeamPropsInputs) -> TeamPropsInputs:
     return replace(
         inputs,
         yards_per_completion=round(inputs.yards_per_completion * 0.94, 2),
-        yards_before_contact=round(inputs.yards_before_contact * 0.94, 2),
-        yards_after_contact=round(inputs.yards_after_contact * 0.94, 2),
+        yards_before_contact=round(inputs.yards_before_contact * 0.85, 2),
+        yards_after_contact=round(inputs.yards_after_contact * 0.85, 2),
     )
 
 
-def _home_spread(conn: sqlite3.Connection, game_id: str) -> float | None:
+def _home_spread(
+    conn: sqlite3.Connection,
+    game_id: str,
+    *,
+    as_of_utc: str,
+    kickoff_utc: str,
+) -> float | None:
+    """Home line from the newest capture strictly before kickoff.
+
+    Book count breaks ties inside that capture only. An older line with more
+    books, or a post-kickoff close, must not decide the sit-QB or +14 gates.
+    """
     row = conn.execute(
         """SELECT line FROM market_consensus
-           WHERE game_id = ? AND market = 'SPREAD' AND side = 'HOME' AND n_books >= 3
-           ORDER BY n_books DESC, as_of_utc DESC LIMIT 1""",
-        (game_id,),
+           WHERE game_id = ? AND market = 'SPREAD' AND side = 'HOME'
+             AND n_books >= 3
+             AND as_of_utc <= ?
+             AND as_of_utc < ?
+             AND as_of_utc = (
+                 SELECT MAX(m.as_of_utc) FROM market_consensus m
+                 WHERE m.game_id = ? AND m.market = 'SPREAD' AND m.side = 'HOME'
+                   AND m.n_books >= 3
+                   AND m.as_of_utc <= ?
+                   AND m.as_of_utc < ?
+             )
+           ORDER BY n_books DESC
+           LIMIT 1""",
+        (game_id, as_of_utc, kickoff_utc, game_id, as_of_utc, kickoff_utc),
     ).fetchone()
     if row is None or row["line"] is None:
         return None
@@ -320,17 +343,36 @@ def _rush_yards_allowed_proxy(
     return max(80.0, min(250.0, 155.0 * (rate / 0.42)))
 
 
-def _sit_qb_receiving(market: str, team_spread: float | None, home_spread: float | None) -> bool:
-    """Drop blowout receiving and huge-spread combined yardage overs.
+def _sit_qb_receiving(
+    market: str,
+    team_spread: float | None,
+    home_spread: float | None,
+    *,
+    opp_allowed: float | None = None,
+) -> bool:
+    """Drop blowout receiving, trailing dog rushing, and huge-spread combined yardage overs.
 
-    2026-09-19 settlement: favorite team rush cashed; dog rec and blowout
-    *game* rush/rec missed when the trailer was emptied (UTEP 57 rush, Kent 63 rec).
+    2026-09-19 and 2026-09-26 settlement audits:
+    - Favorite team rush cashes when dominating trench.
+    - Underdog rush (Invariant 10) fails when spread >= +14 (SDSU 48 vs 155.5,
+      Purdue 40 vs 52.5, Tulsa 65 vs 110) unless the opponent allows >= 190 rush
+      yards per game.
+    - Combined game rushing fails when spread >= 14 (OU/UGA 194 vs 310.5,
+      SDSU/TOL 172 vs 295.5).
+    - Dog receiving and blowout game yards die when trailer is emptied.
     """
     if market == "team_receiving_yards":
         if team_spread is not None and team_spread <= SIT_QB_SPREAD:
             return True
         if team_spread is not None and team_spread >= DOG_REC_BLOWOUT:
             return True
+    if (
+        market == "team_rushing_yards"
+        and team_spread is not None
+        and team_spread >= DOG_RUSH_TRAILING_SPREAD
+        and (opp_allowed is None or opp_allowed < 190.0)
+    ):
+        return True
     if market == "game_receiving_yards":
         return home_spread is not None and abs(home_spread) >= abs(SIT_QB_SPREAD)
     if market == "game_rushing_yards":
@@ -366,7 +408,9 @@ def build_over_confidence_board(
     raw: list[OverConfidencePick] = []
     for game in slate:
         cutoff = game.kickoff_utc
-        home_spread = _home_spread(conn, game.game_id)
+        home_spread = _home_spread(
+            conn, game.game_id, as_of_utc=as_of, kickoff_utc=cutoff
+        )
         away_spread = None if home_spread is None else -home_spread
         home_id = apply_sample_haircut(_inputs_for(loaded, game, game.home_team_id))
         away_id_in = apply_sample_haircut(_inputs_for(loaded, game, game.away_team_id))
@@ -458,7 +502,7 @@ def build_over_confidence_board(
             ),
         )
         for market, pick, team_id, projected, identity, opp_allowed, team_spread in candidates:
-            if _sit_qb_receiving(market, team_spread, home_spread):
+            if _sit_qb_receiving(market, team_spread, home_spread, opp_allowed=opp_allowed):
                 continue
             line_cutoff = cutoff if as_of >= cutoff else as_of
             posted, n_books = _posted_line(
