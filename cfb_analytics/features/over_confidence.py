@@ -613,42 +613,83 @@ class OverBoardSettlement:
         return "\n".join(lines)
 
 
+def _published_before_kickoff(published_utc: str, kickoff_utc: str) -> bool:
+    """True only when the publish stamp is strictly before kickoff.
+
+    Both sides are normalised to UTC. An unparseable stamp is not before
+    kickoff, so a write that cannot be proved pre-game is rejected.
+    """
+    published = to_utc_iso(published_utc)
+    kickoff = to_utc_iso(kickoff_utc)
+    if published is None or kickoff is None:
+        return False
+    return published < kickoff
+
+
+def _row_game_id(row: OverConfidencePick | dict[str, Any]) -> str:
+    return row.game_id if isinstance(row, OverConfidencePick) else str(row["game_id"])
+
+
+def _row_kickoff(row: OverConfidencePick | dict[str, Any]) -> str:
+    return row.kickoff_utc if isinstance(row, OverConfidencePick) else str(row["kickoff_utc"])
+
+
 def persist_over_board(
     conn: sqlite3.Connection,
     slate_date: str,
     rows: Sequence[OverConfidencePick | dict[str, Any]],
     *,
     as_of_utc: str | None = None,
+    rejected: list[str] | None = None,
 ) -> int:
-    """Freeze the published board. Settlement grades this snapshot only.
+    """Publish the OVER board. Settlement grades this snapshot only.
 
-    Games that have already kicked off are never replaced. An empty rebuild
-    does not delete a previously published slate.
+    Until kickoff the slate stays rewritable: rows whose kickoff is still
+    after the publish stamp are replaced, the same way a later pre-game run
+    on master replaced them. A write stamped at or after a game's kickoff is
+    rejected, named in ``rejected``, and neither inserted nor used to delete
+    the existing rows. An empty rebuild does not delete a previously
+    published slate.
+
+    Which picks the caller selected is not changed here; this function only
+    decides what may be stored.
     """
-    published_utc = as_of_utc or utc_now_iso()
-    frozen = {
-        str(row["game_id"])
-        for row in conn.execute(
-            """SELECT DISTINCT game_id FROM over_board_snapshots
-               WHERE slate_date = ? AND kickoff_utc <= ?""",
-            (slate_date, published_utc),
-        )
-    }
-    payload = [
-        _snapshot_row(slate_date, row, published_utc)
-        for row in rows
-        if (row.game_id if isinstance(row, OverConfidencePick) else str(row["game_id"]))
-        not in frozen
-    ]
+    if as_of_utc is None:
+        published_utc = utc_now_iso()
+    else:
+        normalized = to_utc_iso(as_of_utc)
+        if normalized is None:
+            if rejected is not None:
+                for row in rows:
+                    game_id = _row_game_id(row)
+                    if game_id not in rejected:
+                        rejected.append(game_id)
+            return 0
+        published_utc = normalized
+    payload: list[dict[str, Any]] = []
+    seen_rejected: set[str] = set()
+    for row in rows:
+        game_id = _row_game_id(row)
+        kickoff_utc = _row_kickoff(row)
+        if not _published_before_kickoff(published_utc, kickoff_utc):
+            if game_id not in seen_rejected:
+                seen_rejected.add(game_id)
+                if rejected is not None:
+                    rejected.append(game_id)
+            continue
+        payload.append(_snapshot_row(slate_date, row, published_utc))
     if not payload:
         return 0
+    # Replace every stored game that has not kicked off yet, including games
+    # absent from this payload, then insert the new pre-kickoff rows.
     unfrozen = {
         str(row["game_id"])
         for row in conn.execute(
-            """SELECT DISTINCT game_id FROM over_board_snapshots
-               WHERE slate_date = ? AND kickoff_utc > ?""",
-            (slate_date, published_utc),
+            """SELECT game_id, kickoff_utc FROM over_board_snapshots
+               WHERE slate_date = ?""",
+            (slate_date,),
         )
+        if _published_before_kickoff(published_utc, str(row["kickoff_utc"]))
     }
     replace_ids = unfrozen | {str(row["game_id"]) for row in payload}
     for game_id in replace_ids:
