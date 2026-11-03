@@ -7,11 +7,13 @@ import pytest
 
 from cfb_analytics import config
 from cfb_analytics.errors import AuthRequiredError, MissingCredentialError, SourceError
-from cfb_analytics.sources.http import HttpClient
+from cfb_analytics.sources.http import MAX_RETRY_AFTER_SECONDS, HttpClient
 
 
 def _client(tmp_path, **kwargs):
-    return HttpClient(name="test", cache_root=tmp_path / "cache", _sleep=lambda _: None, **kwargs)
+    params = {"name": "test", "cache_root": tmp_path / "cache", "_sleep": lambda _: None}
+    params.update(kwargs)
+    return HttpClient(**params)
 
 
 def _seed_cache(client, url, payload, fetched_at=None):
@@ -128,6 +130,99 @@ class TestLiveMode:
         with pytest.raises(SourceError) as excinfo:
             client.get_json("https://x/y")
         assert secret not in str(excinfo.value)
+
+    def test_429_retries_are_bounded_and_honor_retry_after(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("CFB_HTTP_MODE", "live")
+        sleeps: list[float] = []
+        client = _client(tmp_path, max_retries=3, _sleep=sleeps.append)
+        attempts: list[int] = []
+
+        def limited(req, timeout=None):
+            attempts.append(1)
+            raise urllib.error.HTTPError(
+                req.full_url, 429, "rate", {"Retry-After": "30"}, None
+            )
+
+        monkeypatch.setattr("urllib.request.urlopen", limited)
+        with pytest.raises(SourceError, match="HTTP 429"):
+            client.get_json("https://x/y")
+        assert len(attempts) == 3
+        assert sleeps == [30.0, 30.0]
+
+    def test_429_retry_after_is_capped(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("CFB_HTTP_MODE", "live")
+        sleeps: list[float] = []
+        client = _client(tmp_path, max_retries=3, _sleep=sleeps.append)
+
+        def limited(req, timeout=None):
+            raise urllib.error.HTTPError(
+                req.full_url, 429, "rate", {"Retry-After": "3600"}, None
+            )
+
+        monkeypatch.setattr("urllib.request.urlopen", limited)
+        with pytest.raises(SourceError, match="HTTP 429"):
+            client.get_json("https://x/y")
+        assert sleeps == [MAX_RETRY_AFTER_SECONDS, MAX_RETRY_AFTER_SECONDS]
+        assert all(delay <= MAX_RETRY_AFTER_SECONDS for delay in sleeps)
+
+    def test_429_succeeds_after_one_retry_after_wait(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("CFB_HTTP_MODE", "live")
+        sleeps: list[float] = []
+        client = _client(tmp_path, max_retries=3, _sleep=sleeps.append)
+        attempts: list[int] = []
+
+        class FakeResponse:
+            def read(self):
+                return b'{"ok": true}'
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                return False
+
+        def flaky(req, timeout=None):
+            attempts.append(1)
+            if len(attempts) == 1:
+                raise urllib.error.HTTPError(
+                    req.full_url, 429, "rate", {"Retry-After": "12"}, None
+                )
+            return FakeResponse()
+
+        monkeypatch.setattr("urllib.request.urlopen", flaky)
+        assert client.get_json("https://x/y") == {"ok": True}
+        assert attempts == [1, 1]
+        assert sleeps == [12.0]
+
+    def test_429_without_retry_after_uses_the_short_backoff(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("CFB_HTTP_MODE", "live")
+        sleeps: list[float] = []
+        client = _client(tmp_path, max_retries=3, _sleep=sleeps.append)
+        attempts: list[int] = []
+
+        def limited(req, timeout=None):
+            attempts.append(1)
+            raise urllib.error.HTTPError(req.full_url, 429, "rate", {}, None)
+
+        monkeypatch.setattr("urllib.request.urlopen", limited)
+        with pytest.raises(SourceError, match="HTTP 429"):
+            client.get_json("https://x/y")
+        assert len(attempts) == 3
+        assert len(sleeps) == 2
+        assert all(0 <= delay <= 8.0 for delay in sleeps)
+
+    def test_retry_after_http_date_is_seconds_from_now(self):
+        from datetime import UTC, datetime, timedelta
+        from email.utils import format_datetime
+
+        from cfb_analytics.sources.http import retry_after_seconds
+
+        moment = datetime(2026, 10, 31, 12, 0, tzinfo=UTC)
+        stamp = format_datetime(moment + timedelta(seconds=45), usegmt=True)
+        exc = urllib.error.HTTPError(
+            "https://x/y", 429, "rate", {"Retry-After": stamp}, None
+        )
+        assert retry_after_seconds(exc, now=moment) == pytest.approx(45.0)
 
 
 class TestConfig:
