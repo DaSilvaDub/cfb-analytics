@@ -803,7 +803,9 @@ class TestSituationalContextLoader:
         assert ctx.weather is not None
         assert ctx.tape_home is not None
         assert ctx.tape_away is not None
-        assert ctx.qb_home_confirmed is True
+        # No starter and no pre-kickoff injury row: unknown, not confirmed.
+        assert ctx.qb_home_confirmed is False
+        assert ctx.qb_away_confirmed is False
         assert ctx.market_spread_home == -14.0
         assert ctx.market_ml_home_american == -150
 
