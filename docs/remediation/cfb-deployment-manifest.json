@@ -1,0 +1,44 @@
+[
+  {
+    "relative": "scripts/publish_guard.ps1",
+    "destination": "C:\\Users\\dasil\\Dev\\GitHub\\cfb-analytics\\scripts\\publish_guard.ps1",
+    "original_sha256": null,
+    "replacement_sha256": "B6D1692951D85426BFC3630EF749336481AE73CE99A280B565F9A154CE8AA657"
+  },
+  {
+    "relative": "scripts/run_daily_pipeline.ps1",
+    "destination": "C:\\Users\\dasil\\Dev\\GitHub\\cfb-analytics\\scripts\\run_daily_pipeline.ps1",
+    "original_sha256": "B41D9957F23186686C225CA372C0789461839EFE8A3C0F3A52B6F10C9E47009C",
+    "replacement_sha256": "2C41331A18307E7A3497BB0D41E817EE3A7203ED6200EE54645865F2D02EBD3F"
+  },
+  {
+    "relative": "scripts/run_next_day_pipeline.ps1",
+    "destination": "C:\\Users\\dasil\\Dev\\GitHub\\cfb-analytics\\scripts\\run_next_day_pipeline.ps1",
+    "original_sha256": "C95DF9F8D93B945EDD3C4F2B79AAFB39115AE211A3FBF1A8E82F542DCC3E7FBE",
+    "replacement_sha256": "FAD7320B65B0D48C65637CA3D671AD3A0B27D23E8ECF1E1078EC7FA8B0F49248"
+  },
+  {
+    "relative": "scripts/sync_to_drive.ps1",
+    "destination": "C:\\Users\\dasil\\Dev\\GitHub\\cfb-analytics\\scripts\\sync_to_drive.ps1",
+    "original_sha256": "96403C6C88AD6AA6D66563EDD38ECA9470956E308F987C5F2D34E30FD035102B",
+    "replacement_sha256": "9F736C1DD4F53161A54284FBA7F8C3804BF4DA99B47BF95EA42D91CD3236E983"
+  },
+  {
+    "relative": "scripts/refresh_cfb_pack.ps1",
+    "destination": "C:\\Users\\dasil\\Dev\\GitHub\\cfb-analytics\\scripts\\refresh_cfb_pack.ps1",
+    "original_sha256": "9F4F6BA9E3176726609F2408A0AAA03E9160403BB92E9578AB88610B6448078E",
+    "replacement_sha256": "10626B34E57C2A4D402D492D12FAD40932EB0F0C91D6586990FA4D2AD8D5E8F0"
+  },
+  {
+    "relative": "scripts/run_nightly_audit.ps1",
+    "destination": "C:\\Users\\dasil\\Dev\\GitHub\\cfb-analytics\\scripts\\run_nightly_audit.ps1",
+    "original_sha256": "177B9CFD8317DBB9D80E68C74D2CE16A24AE41F8500B0FA8181303D7B873AC5D",
+    "replacement_sha256": "C9C18F59B87983B4B5959664BAAD704BD07FED233CB8A1267308C1C47610EA0C"
+  },
+  {
+    "relative": "docs/remediation/publication_hold.json",
+    "destination": "C:\\Users\\dasil\\Dev\\GitHub\\cfb-analytics\\docs\\remediation\\publication_hold.json",
+    "original_sha256": null,
+    "replacement_sha256": "88CEE66E68A972F08FAB7BACB6045A81396C924E401C1CF784548A320E16F011"
+  }
+]
