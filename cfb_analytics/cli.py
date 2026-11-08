@@ -1049,6 +1049,28 @@ def _cmd_settle(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_settle_recent(args: argparse.Namespace) -> int:
+    """Settle slates that already have final scores. Nothing to settle is success."""
+    from cfb_analytics.backtest.settle import settle_completed_slates
+    from cfb_analytics.features.over_confidence import settle_over_board
+
+    paths.ensure_dirs()
+    if not paths.database_path().exists():
+        print("nothing to settle")
+        return 0
+    with db.open_db() as conn:
+        settlements = settle_completed_slates(conn)
+        if not settlements:
+            print("nothing to settle")
+            return 0
+        for settlement in settlements:
+            print(settlement.as_text())
+            print()
+            print(settle_over_board(conn, settlement.slate_date).as_text())
+            print()
+    return 0
+
+
 def _cmd_futures(args: argparse.Namespace) -> int:
     """Emit season futures projection summary or JSON."""
     import math
@@ -1800,6 +1822,12 @@ def build_parser() -> argparse.ArgumentParser:
         "--json", action="store_true", default=False, help="emit output as structured JSON"
     )
     settle.set_defaults(func=_cmd_settle)
+
+    settle_recent = sub.add_parser(
+        "settle-recent",
+        help="settle recent completed slates; exits 0 when there is nothing to settle",
+    )
+    settle_recent.set_defaults(func=_cmd_settle_recent)
 
     from cfb_analytics.models.futures import NILTier, QBContinuity, QBTier
 

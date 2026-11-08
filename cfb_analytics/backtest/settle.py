@@ -12,10 +12,11 @@ import math
 import sqlite3
 from collections import defaultdict
 from dataclasses import asdict, dataclass, field
+from datetime import datetime, timedelta
 from typing import Any
 
 from cfb_analytics import config
-from cfb_analytics.utils import utc_now_iso
+from cfb_analytics.utils import FOOTBALL_TZ, football_date, utc_now_iso
 
 
 @dataclass(frozen=True)
@@ -55,6 +56,7 @@ class SlateSettlement:
     ml_fav_correct: int
     ml_fav_total: int
     ml_fav_win_pct: float
+    ml_pushes: int
     brier_score: float | None
     ece: float | None
     log_loss: float | None
@@ -83,6 +85,10 @@ class SlateSettlement:
             lines.append(f"  [{config.SHADOW_STAMP}]")
 
         lines.append("")
+        if self.ml_pushes:
+            lines.append(
+                f"Moneyline pushes (ties, excluded from record and Brier): {self.ml_pushes}"
+            )
         if self.ml_fav_total > 0:
             lines += [
                 "--- Moneyline Consensus Favorite Accuracy ---",
@@ -249,6 +255,7 @@ def settle_slate(
 
     fav_correct = 0
     fav_total = 0
+    ml_pushes = 0
     upsets: list[MLUpset] = []
     bucket_counts: dict[str, dict[str, Any]] = {
         "80%+": {"correct": 0, "total": 0, "conf_sum": 0.0},
@@ -278,6 +285,11 @@ def settle_slate(
 
         h_win = h_score > a_score
         a_win = a_score > h_score
+        if h_score == a_score:
+            # A tie is a push. It is not a favorite loss and not a home loss
+            # for Brier: both of those treated 24-24 as y=0.
+            ml_pushes += 1
+            continue
         home_prob_obs.append((h_prob, 1 if h_win else 0))
 
         if h_prob >= a_prob:
@@ -465,6 +477,7 @@ def settle_slate(
         ml_fav_correct=fav_correct,
         ml_fav_total=fav_total,
         ml_fav_win_pct=fav_win_pct,
+        ml_pushes=ml_pushes,
         brier_score=brier,
         ece=ece,
         log_loss=log_loss,
@@ -477,3 +490,32 @@ def settle_slate(
         team_props_evaluated=tp_total,
         clv_summary=clv_summary,
     )
+
+
+def completed_slate_dates(
+    conn: sqlite3.Connection, *, now: datetime | None = None, lookback_days: int = 8
+) -> list[str]:
+    """Eastern slate dates in the lookback that have at least one final score."""
+    moment = now or datetime.now(FOOTBALL_TZ)
+    if moment.tzinfo is None:
+        moment = moment.replace(tzinfo=FOOTBALL_TZ)
+    today = football_date(moment.astimezone(FOOTBALL_TZ).isoformat())
+    start = (moment.astimezone(FOOTBALL_TZ).date() - timedelta(days=lookback_days)).isoformat()
+    rows = conn.execute(
+        """SELECT DISTINCT football_date FROM games
+           WHERE completed = 1 AND football_date IS NOT NULL
+             AND football_date >= ? AND football_date <= ?
+           ORDER BY football_date""",
+        (start, today),
+    ).fetchall()
+    return [str(row["football_date"]) for row in rows]
+
+
+def settle_completed_slates(
+    conn: sqlite3.Connection, *, now: datetime | None = None, lookback_days: int = 8
+) -> list[SlateSettlement]:
+    """Settle each recent slate that has a final score. Empty means nothing to settle."""
+    return [
+        settle_slate(conn, slate)
+        for slate in completed_slate_dates(conn, now=now, lookback_days=lookback_days)
+    ]
