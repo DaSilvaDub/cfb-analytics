@@ -955,6 +955,13 @@ MIGRATION_017 = """
 ALTER TABLE games ADD COLUMN kickoff_tbd INTEGER NOT NULL DEFAULT 0;
 """
 
+MIGRATION_018 = """
+-- Rows the sit-QB and blowout gates cannot check, or whose mark was inferred,
+-- stay in the snapshot but are not playable.
+ALTER TABLE over_board_snapshots ADD COLUMN publish_status TEXT NOT NULL DEFAULT 'playable';
+ALTER TABLE over_board_snapshots ADD COLUMN hold_reason TEXT;
+"""
+
 
 MIGRATIONS: tuple[tuple[int, str, str, Callable[[sqlite3.Connection], None] | None], ...] = (
     (1, "outlier_ingestion_core", MIGRATION_001, None),
@@ -974,6 +981,7 @@ MIGRATIONS: tuple[tuple[int, str, str, Callable[[sqlite3.Connection], None] | No
     (15, "team_polls", MIGRATION_015, None),
     (16, "over_board_snapshots_and_team_boxes", MIGRATION_016, None),
     (17, "games_kickoff_tbd", MIGRATION_017, None),
+    (18, "over_board_hold_status", MIGRATION_018, None),
 )
 
 

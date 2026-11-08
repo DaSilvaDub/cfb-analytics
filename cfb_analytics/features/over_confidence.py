@@ -11,7 +11,7 @@ from __future__ import annotations
 import json
 import math
 import sqlite3
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
 from datetime import datetime
 from typing import Any
@@ -52,6 +52,14 @@ class OverConfidencePick:
     flags: tuple[str, ...]
     family: str
     kickoff_utc: str
+    publish_status: str = "playable"
+    hold_reason: str | None = None
+
+
+PUBLISH_PLAYABLE = "playable"
+PUBLISH_HELD = "held"
+HOLD_NO_SPREAD = "no_spread_consensus"
+HOLD_INFERRED = "inferred_mark"
 
 
 def format_kickoff_et(kickoff_utc: str) -> str:
@@ -521,6 +529,12 @@ def build_over_confidence_board(
                 flags.append("inferred_mark")
             elif n_books < 8:
                 flags.append("thin_books")
+            if home_spread is None:
+                publish_status, hold_reason = PUBLISH_HELD, HOLD_NO_SPREAD
+            elif posted is None:
+                publish_status, hold_reason = PUBLISH_HELD, HOLD_INFERRED
+            else:
+                publish_status, hold_reason = PUBLISH_PLAYABLE, None
             if home_spread is not None and abs(home_spread) >= abs(SIT_QB_SPREAD):
                 flags.append("blowout_script")
             inputs = loaded.get(team_id) if team_id else None
@@ -547,6 +561,8 @@ def build_over_confidence_board(
                     flags=tuple(flags),
                     family=classify_family(market, team_spread),
                     kickoff_utc=game.kickoff_utc,
+                    publish_status=publish_status,
+                    hold_reason=hold_reason,
                 )
             )
     raw.sort(key=lambda row: (-row.over_prob, row.game_label, row.market, row.pick))
@@ -613,6 +629,7 @@ class OverBoardSettlement:
     inferred_n: int = 0
     posted_cash: int = 0
     posted_n: int = 0
+    held: int = 0
     by_tier: dict[str, tuple[int, int]] | None = None
     by_family: dict[str, tuple[int, int]] | None = None
     source: str = "missing"
@@ -625,6 +642,8 @@ class OverBoardSettlement:
             f"  graded : {self.evaluated}  cash {self.cash}  miss {self.miss}  push {self.push}  "
             f"no-box {self.skipped}",
         ]
+        if self.held:
+            lines.append(f"  held (not playable) : {self.held}")
         if self.source == "missing":
             lines.append(
                 "  no published snapshot; run over-board before settle (never live-rebuild)"
@@ -685,6 +704,31 @@ def _row_game_id(row: OverConfidencePick | dict[str, Any]) -> str:
 
 def _row_kickoff(row: OverConfidencePick | dict[str, Any]) -> str:
     return row.kickoff_utc if isinstance(row, OverConfidencePick) else str(row["kickoff_utc"])
+
+
+def hold_breakdown(rows: Sequence[OverConfidencePick]) -> dict[str, Any]:
+    """How many snapshot rows are held, and why.
+
+    ``playable`` rows are the only ones that may be treated as a published bet.
+    """
+    reasons: dict[str, int] = {}
+    held = 0
+    for row in rows:
+        if row.publish_status != PUBLISH_HELD:
+            continue
+        held += 1
+        key = row.hold_reason or "unspecified"
+        reasons[key] = reasons.get(key, 0) + 1
+    return {"held": held, "playable": len(rows) - held, "reasons": reasons}
+
+
+def format_hold_breakdown(breakdown: Mapping[str, Any]) -> str:
+    reasons = breakdown.get("reasons") or {}
+    held = int(breakdown.get("held") or 0)
+    if not reasons:
+        return f"held={held}"
+    parts = " ".join(f"{key}={reasons[key]}" for key in sorted(reasons))
+    return f"held={held} {parts}; held rows are not playable"
 
 
 def persist_over_board(
@@ -759,10 +803,11 @@ def persist_over_board(
         """INSERT INTO over_board_snapshots
            (slate_date, rank, game_id, market, pick, team_id, side, line, projected,
             over_prob, confidence, tier, family, kickoff_utc, kickoff_et, game_label,
-            flags, inclusion_reasons, published_utc)
+            flags, inclusion_reasons, published_utc, publish_status, hold_reason)
            VALUES (:slate_date, :rank, :game_id, :market, :pick, :team_id, :side, :line,
                    :projected, :over_prob, :confidence, :tier, :family, :kickoff_utc,
-                   :kickoff_et, :game_label, :flags, :inclusion_reasons, :published_utc)""",
+                   :kickoff_et, :game_label, :flags, :inclusion_reasons, :published_utc,
+                   :publish_status, :hold_reason)""",
         payload,
     )
     return cursor.rowcount if cursor.rowcount and cursor.rowcount > 0 else 0
@@ -792,6 +837,8 @@ def _snapshot_row(
             "flags": json.dumps(list(row.flags)),
             "inclusion_reasons": json.dumps(list(row.inclusion_reasons)),
             "published_utc": published_utc,
+            "publish_status": row.publish_status,
+            "hold_reason": row.hold_reason,
         }
     flags = row.get("flags") or ()
     reasons = row.get("inclusion_reasons") or ()
@@ -815,6 +862,8 @@ def _snapshot_row(
         "flags": json.dumps(list(flags)),
         "inclusion_reasons": json.dumps(list(reasons)),
         "published_utc": published_utc,
+        "publish_status": str(row.get("publish_status") or PUBLISH_PLAYABLE),
+        "hold_reason": row.get("hold_reason"),
     }
 
 
@@ -822,7 +871,7 @@ def load_published_board(conn: sqlite3.Connection, slate_date: str) -> list[Over
     rows = conn.execute(
         """SELECT rank, game_id, game_label, kickoff_et, market, pick, team_id, side,
                   line, projected, over_prob, confidence, tier, inclusion_reasons, flags,
-                  family, kickoff_utc
+                  family, kickoff_utc, publish_status, hold_reason
            FROM over_board_snapshots
            WHERE slate_date = ?
            ORDER BY rank""",
@@ -847,6 +896,8 @@ def load_published_board(conn: sqlite3.Connection, slate_date: str) -> list[Over
             flags=tuple(json.loads(row["flags"])),
             family=str(row["family"]),
             kickoff_utc=str(row["kickoff_utc"]),
+            publish_status=str(row["publish_status"] or PUBLISH_PLAYABLE),
+            hold_reason=None if row["hold_reason"] is None else str(row["hold_reason"]),
         )
         for row in rows
     ]
@@ -907,6 +958,9 @@ def settle_over_board(conn: sqlite3.Connection, slate_date: str) -> OverBoardSet
     tiers: dict[str, list[int]] = {"HIGH": [0, 0], "MEDIUM": [0, 0], "LEAN": [0, 0]}
     families: dict[str, list[int]] = {}
     for pick in board:
+        if pick.publish_status == PUBLISH_HELD:
+            result.held += 1
+            continue
         actual = _actual_for_pick(conn, pick)
         if actual is None:
             result.skipped += 1
