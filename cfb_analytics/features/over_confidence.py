@@ -657,6 +657,15 @@ class OverBoardSettlement:
         return "\n".join(lines)
 
 
+def _game_kickoff_tbd(conn: sqlite3.Connection, game_id: str) -> bool:
+    """True when the stored kickoff is a CFBD startTimeTBD placeholder."""
+    row = conn.execute(
+        "SELECT kickoff_tbd FROM games WHERE game_id = ?",
+        (game_id,),
+    ).fetchone()
+    return row is not None and int(row["kickoff_tbd"] or 0) == 1
+
+
 def _published_before_kickoff(published_utc: str, kickoff_utc: str) -> bool:
     """True only when the publish stamp is strictly before kickoff.
 
@@ -715,7 +724,10 @@ def persist_over_board(
     for row in rows:
         game_id = _row_game_id(row)
         kickoff_utc = _row_kickoff(row)
-        if not _published_before_kickoff(published_utc, kickoff_utc):
+        if not (
+            _game_kickoff_tbd(conn, game_id)
+            or _published_before_kickoff(published_utc, kickoff_utc)
+        ):
             if game_id not in seen_rejected:
                 seen_rejected.add(game_id)
                 if rejected is not None:
@@ -733,7 +745,9 @@ def persist_over_board(
                WHERE slate_date = ?""",
             (slate_date,),
         )
-        if _published_before_kickoff(published_utc, str(row["kickoff_utc"]))
+        if _game_kickoff_tbd(conn, str(row["game_id"])) or _published_before_kickoff(
+            published_utc, str(row["kickoff_utc"])
+        )
     }
     replace_ids = unfrozen | {str(row["game_id"]) for row in payload}
     for game_id in replace_ids:

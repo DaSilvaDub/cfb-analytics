@@ -376,6 +376,8 @@ def parse_game(row: dict[str, Any]) -> dict[str, Any]:
     if kickoff is None:
         raise SchemaError("CFBD game had an unparseable startDate")
     completed = _as_bool(row.get("completed"), "completed")
+    raw_tbd = row.get("startTimeTBD")
+    kickoff_tbd = _as_bool(raw_tbd, "startTimeTBD") if raw_tbd is not None else False
     home_points = (
         _as_int(row["homePoints"], "homePoints") if row.get("homePoints") is not None else None
     )
@@ -388,6 +390,7 @@ def parse_game(row: dict[str, Any]) -> dict[str, Any]:
         "week": _as_int(row.get("week"), "week"),
         "season_type": _as_str(row.get("seasonType"), "seasonType"),
         "kickoff_utc": kickoff,
+        "kickoff_tbd": 1 if kickoff_tbd else 0,
         "football_date": football_date(kickoff),
         "neutral_site": 1 if _as_bool(row.get("neutralSite"), "neutralSite") else 0,
         "conference_game": 1 if _as_bool(row.get("conferenceGame"), "conferenceGame") else 0,

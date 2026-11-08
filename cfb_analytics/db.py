@@ -948,6 +948,13 @@ CREATE TABLE IF NOT EXISTS team_game_box (
 CREATE INDEX IF NOT EXISTS idx_team_game_box_game ON team_game_box(game_id);
 """
 
+MIGRATION_017 = """
+-- CFBD startTimeTBD. The feed still sends a clock time (often midnight ET)
+-- but that stamp is a placeholder. Freeze and as-of logic must not treat it
+-- as the moment the game starts.
+ALTER TABLE games ADD COLUMN kickoff_tbd INTEGER NOT NULL DEFAULT 0;
+"""
+
 
 MIGRATIONS: tuple[tuple[int, str, str, Callable[[sqlite3.Connection], None] | None], ...] = (
     (1, "outlier_ingestion_core", MIGRATION_001, None),
@@ -966,6 +973,7 @@ MIGRATIONS: tuple[tuple[int, str, str, Callable[[sqlite3.Connection], None] | No
     (14, "recruiting_and_transfer_portal", MIGRATION_014, None),
     (15, "team_polls", MIGRATION_015, None),
     (16, "over_board_snapshots_and_team_boxes", MIGRATION_016, None),
+    (17, "games_kickoff_tbd", MIGRATION_017, None),
 )
 
 
