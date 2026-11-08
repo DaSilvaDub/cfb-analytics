@@ -577,6 +577,7 @@ def _cmd_over_board(args: argparse.Namespace) -> int:
         payload = {
             "date": args.date,
             "stamp": config.SHADOW_STAMP if config.is_shadow_mode() else None,
+            "actionable": config.published_output_is_actionable(),
             "min_prob": args.min_prob,
             "snapshot_rejected_game_ids": rejected,
             "picks": [

@@ -585,7 +585,7 @@ def render_over_confidence_board(
 ) -> str:
     stamp = f"   [{config.SHADOW_STAMP}]" if config.is_shadow_mode() else ""
     lines = [
-        f"OVER CONFIDENCE BOARD - {slate_date}{stamp}",
+        f"OVER CONFIDENCE BOARD - {slate_date}{stamp}{config.non_actionable_suffix()}",
         "Team rushing, game rushing, team receiving, game receiving. OVER only.",
         f"Slate: AP Top 25 games + each conference's top two. min P(Over)={min_prob:.0%}.",
         "",
@@ -802,12 +802,13 @@ def persist_over_board(
     cursor = conn.executemany(
         """INSERT INTO over_board_snapshots
            (slate_date, rank, game_id, market, pick, team_id, side, line, projected,
-            over_prob, confidence, tier, family, kickoff_utc, kickoff_et, game_label,
-            flags, inclusion_reasons, published_utc, publish_status, hold_reason)
+            over_prob, confidence, tier, family,             kickoff_utc, kickoff_et, game_label,
+            flags, inclusion_reasons, published_utc, publish_status, hold_reason,
+            actionable)
            VALUES (:slate_date, :rank, :game_id, :market, :pick, :team_id, :side, :line,
                    :projected, :over_prob, :confidence, :tier, :family, :kickoff_utc,
                    :kickoff_et, :game_label, :flags, :inclusion_reasons, :published_utc,
-                   :publish_status, :hold_reason)""",
+                   :publish_status, :hold_reason, :actionable)""",
         payload,
     )
     return cursor.rowcount if cursor.rowcount and cursor.rowcount > 0 else 0
@@ -839,6 +840,7 @@ def _snapshot_row(
             "published_utc": published_utc,
             "publish_status": row.publish_status,
             "hold_reason": row.hold_reason,
+            "actionable": 0 if not config.published_output_is_actionable() else 1,
         }
     flags = row.get("flags") or ()
     reasons = row.get("inclusion_reasons") or ()
@@ -864,6 +866,7 @@ def _snapshot_row(
         "published_utc": published_utc,
         "publish_status": str(row.get("publish_status") or PUBLISH_PLAYABLE),
         "hold_reason": row.get("hold_reason"),
+        "actionable": 0 if not config.published_output_is_actionable() else 1,
     }
 
 
