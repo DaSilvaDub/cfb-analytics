@@ -58,7 +58,9 @@ class ResearchGameTotal:
 # Recorded outcome names. "cfbd" is the lines/odds leg. Rankings is not in
 # this set: a rankings-only failure stays a degraded run. These four are what
 # a healthy daily publish has to have landed.
-MANDATORY_CFBD_SOURCES = frozenset({"cfbd", "game_scores", "team_boxes", "elo"})
+MANDATORY_CFBD_SOURCES = frozenset(
+    {"cfbd", "game_scores", "team_boxes", "elo", "team_advanced"}
+)
 
 
 @dataclass
@@ -692,6 +694,39 @@ def _run_research_game_totals(
         report.outcomes.append(SourceOutcome("game_totals", "failed", str(exc)[:200]))
 
 
+def _run_team_advanced_guard(
+    conn: sqlite3.Connection, report: DailyReport, season: int
+) -> None:
+    """Fail the job when this season has no EPA / success-rate snapshot.
+
+    2026 had zero ``team_season_advanced`` rows while the nightly job stayed
+    green, so team-prop inputs stayed on the league-average baseline.
+    """
+    count = int(
+        conn.execute(
+            "SELECT COUNT(*) AS n FROM team_season_advanced WHERE season = ?",
+            (season,),
+        ).fetchone()["n"]
+    )
+    if count == 0:
+        report.outcomes.append(
+            SourceOutcome(
+                "team_advanced",
+                "failed",
+                f"season {season} has 0 team_season_advanced rows",
+            )
+        )
+        return
+    report.outcomes.append(
+        SourceOutcome(
+            "team_advanced",
+            "ok",
+            f"{count} team_season_advanced rows for {season}",
+            rows=count,
+        )
+    )
+
+
 def run_daily(
     conn: sqlite3.Connection,
     *,
@@ -732,6 +767,7 @@ def run_daily(
         _run_player_passing(conn, report, year)
 
     _run_team_boxes(conn, report, year)
+    _run_team_advanced_guard(conn, report, year)
 
     if with_internal_ratings:
         _run_internal_ratings(conn, report, year)

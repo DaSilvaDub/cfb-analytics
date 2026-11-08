@@ -222,6 +222,11 @@ class TestDailyDegradation:
 
     def test_all_sources_skipped_still_reports_ok(self, seeded, monkeypatch):
         """A known-missing credential must not turn into a red build daily."""
+        store.insert_team_advanced(seeded, [{
+            "season": 2026, "week": 1, "team_id": "h", "side": "off",
+            "as_of_utc": "2026-09-01T00:00:00+00:00",
+            "provenance_mode": "reconstructed", "garbage_excluded": 1,
+        }])
         monkeypatch.setattr(daily.config, "has_cfbd_key", lambda: False)
         report = daily.run_daily(
             seeded, with_outlier=False, now=datetime(2026, 9, 4, 12, tzinfo=FOOTBALL_TZ))

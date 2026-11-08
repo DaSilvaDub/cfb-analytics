@@ -81,6 +81,15 @@ class TestLatest:
     def test_returns_none_when_everything_is_post_kickoff(self, reader):
         assert reader.latest([row("2026-09-07T00:00:00+00:00")], what="odds") is None
 
+    def test_same_timestamp_keeps_the_latest_ingest_then_snapshot_id(self, reader):
+        stamp = "2026-09-05T22:00:00+00:00"
+        rows = [
+            row(stamp, ingested_utc="2026-11-01T00:00:00+00:00", snapshot_id="b", tag="older"),
+            row(stamp, ingested_utc="2026-11-05T00:00:00+00:00", snapshot_id="a", tag="newer"),
+            row(stamp, ingested_utc="2026-11-05T00:00:00+00:00", snapshot_id="c", tag="newer-id"),
+        ]
+        assert reader.latest(rows, what="odds")["tag"] == "newer-id"
+
 
 class TestPreseasonSeasonCheck:
     """The classic leak: a season-FINAL rating joined onto a mid-season game
