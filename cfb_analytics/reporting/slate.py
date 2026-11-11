@@ -254,7 +254,7 @@ def render_slate_report(report: SlateReport) -> str:
     stamp = f"   [{config.SHADOW_STAMP}]" if config.is_shadow_mode() else ""
     counts = report.counts()
     lines = [
-        f"SLATE REPORT - {report.slate_date}{stamp}",
+        f"SLATE REPORT - {report.slate_date}{stamp}{config.non_actionable_suffix()}",
         f"games on slate: {report.games}   "
         + "   ".join(f"{FAMILY_TITLES[f].lower()}: {counts[f]}" for f in FAMILIES),
         "Current capture only, one primary line per game (most books, then most balanced).",
@@ -357,6 +357,7 @@ def slate_report_json(report: SlateReport) -> dict[str, Any]:
     return {
         "date": report.slate_date,
         "stamp": config.SHADOW_STAMP if config.is_shadow_mode() else None,
+        "actionable": config.published_output_is_actionable(),
         "games": report.games,
         "counts": report.counts(),
         "moneylines": [game_row(r) for r in report.rows.get("ML", [])],
