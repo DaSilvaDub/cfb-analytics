@@ -125,6 +125,13 @@ jobs:
           fi
           python -m cfb_analytics.cli daily $ARGS
 
+      - name: Settle completed slates
+        # Scores and team boxes are written by the Daily ingest step above.
+        # A window with no final scores prints "nothing to settle" and exits 0,
+        # so an empty night does not fail the job.
+        if: steps.daily.outcome == 'success'
+        run: python -m cfb_analytics.cli settle-recent
+
       - name: Coverage report
         if: always()
         run: |

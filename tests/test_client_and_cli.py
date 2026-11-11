@@ -115,6 +115,7 @@ class TestCliParser:
             "futures",
             "live",
             "settle",
+            "settle-recent",
             "mispriced",
         }
 
