@@ -134,6 +134,7 @@ class DailyReport:
             )
         if config.is_shadow_mode():
             lines.append(f"\n  {config.SHADOW_STAMP}")
+            lines.append(f"  {config.NON_ACTIONABLE_LABEL}")
         return "\n".join(lines)
 
 

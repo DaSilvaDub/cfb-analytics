@@ -962,6 +962,12 @@ ALTER TABLE over_board_snapshots ADD COLUMN publish_status TEXT NOT NULL DEFAULT
 ALTER TABLE over_board_snapshots ADD COLUMN hold_reason TEXT;
 """
 
+MIGRATION_019 = """
+-- Shadow mode (promotion.json status) is stored on each frozen OVER row.
+-- 0 means the row was published while the output was non-actionable.
+ALTER TABLE over_board_snapshots ADD COLUMN actionable INTEGER NOT NULL DEFAULT 0;
+"""
+
 
 MIGRATIONS: tuple[tuple[int, str, str, Callable[[sqlite3.Connection], None] | None], ...] = (
     (1, "outlier_ingestion_core", MIGRATION_001, None),
@@ -982,6 +988,7 @@ MIGRATIONS: tuple[tuple[int, str, str, Callable[[sqlite3.Connection], None] | No
     (16, "over_board_snapshots_and_team_boxes", MIGRATION_016, None),
     (17, "games_kickoff_tbd", MIGRATION_017, None),
     (18, "over_board_hold_status", MIGRATION_018, None),
+    (19, "over_board_shadow_actionable", MIGRATION_019, None),
 )
 
 
