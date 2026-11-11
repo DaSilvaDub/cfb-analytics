@@ -1544,8 +1544,8 @@ def _cmd_daily(args: argparse.Namespace) -> int:
             handle.write(f"## Daily ingest\n\n{fence}\n{text}\n{fence}\n")
 
     # A skipped source is an expected state, not a red build every morning.
-    # A failed mandatory CFBD source (lines, scores, team boxes, Elo), including
-    # HTTP 429, is a red build even when another leg succeeded.
+    # A failed lines, scores, team-box, Elo, rankings, OVER-board, or
+    # slate-report stage, including HTTP 429, is red even when another leg succeeded.
     return daily_exit_code(report)
 
 
