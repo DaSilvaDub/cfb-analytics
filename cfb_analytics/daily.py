@@ -4,9 +4,9 @@ Designed for an unattended cloud runner, which drives three rules:
 
 1. **Degrade, don't abort.** A source without a credential, or one that has
    expired, is reported and skipped. One dead *optional* source must not cost
-   the run the data the other sources would have produced. A failed mandatory
-   CFBD source (lines, final scores, team boxes, Elo), including HTTP 429,
-   fails the run even when another leg succeeded.
+   the run the data the other sources would have produced. A failed lines,
+   scores, team-box, Elo, rankings, OVER-board, or slate-report stage,
+   including HTTP 429, fails the run even when another leg succeeded.
 2. **Say what did not happen.** A silent partial run is worse than a failed
    one, so every skip is named in the summary with the reason and the fix.
 3. **Only ingest slates inside the operating window.** Measured 2026-09-01:
@@ -55,12 +55,13 @@ class ResearchGameTotal:
     actionable: Literal[False] = field(default=False, init=False)
 
 
-# Recorded outcome names. "cfbd" is the lines/odds leg. Rankings is not in
-# this set: a rankings-only failure stays a degraded run. These four are what
-# a healthy daily publish has to have landed.
+# Recorded outcome names. "cfbd" is the lines/odds leg. A failure here fails
+# the run even when another leg succeeded.
 MANDATORY_CFBD_SOURCES = frozenset(
     {"cfbd", "game_scores", "team_boxes", "elo", "team_advanced"}
 )
+# These publishes fail the run even when an ingest leg succeeded.
+REQUIRED_PUBLISH_STAGES = frozenset({"rankings", "over_board", "slate_report"})
 
 
 @dataclass
@@ -78,27 +79,25 @@ class DailyReport:
     bootstrapped: bool = False
 
     def mandatory_failures(self) -> list[SourceOutcome]:
-        """Mandatory CFBD legs that failed. Skips are not failures."""
+        """Required stages that failed. Skips are not failures."""
+        required = MANDATORY_CFBD_SOURCES | REQUIRED_PUBLISH_STAGES
         return [
             outcome
             for outcome in self.outcomes
-            if outcome.status == "failed" and outcome.name in MANDATORY_CFBD_SOURCES
+            if outcome.status == "failed" and outcome.name in required
         ]
 
     @property
     def ok(self) -> bool:
-        """False when a mandatory CFBD source failed, or when nothing succeeded.
+        """False when a required stage failed, or when nothing succeeded.
 
         A *skipped* source is an expected state -- a credential that was never
         configured -- so an all-skipped run is green. Turning a known-missing
         key into a red build every morning trains people to ignore the light,
         which costs more than it catches.
 
-        A failed lines, game-scores, team-box, or Elo leg is red even when
-        another leg succeeded. On 2026-10-31 those four (and rankings) logged
-        HTTP 429 while player passing, internal ratings, weather, and the
-        slate report were OK, and ``ok`` stayed true because any success
-        counted. That green run then published the partial store.
+        Lines, game scores, team boxes, Elo, rankings, the OVER board, and the
+        slate report are red even when another leg succeeded.
         """
         if self.mandatory_failures():
             return False
@@ -141,7 +140,7 @@ class DailyReport:
 def daily_exit_code(report: DailyReport) -> int:
     """Exit status for ``cfb-analytics daily``.
 
-    Each failed mandatory CFBD source is also printed as a GitHub Actions
+    Each failed required stage is also printed as a GitHub Actions
     ``::error::`` annotation. The annotation is what makes the failure visible
     in the job log; the non-zero status is what fails the step, so the publish
     step (gated on that step succeeding) does not force-push a partial store.
