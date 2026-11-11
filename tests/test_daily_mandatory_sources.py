@@ -179,22 +179,8 @@ def test_oct31_mix_of_429s_and_successes_exits_nonzero(capsys):
 
     assert report.ok is False
     assert code == 1
-    for name in ("cfbd", "elo", "game_scores", "team_boxes"):
+    for name in ("cfbd", "elo", "game_scores", "team_boxes", "rankings"):
         assert f"::error::mandatory CFBD source {name} failed" in captured.out
-    assert "mandatory CFBD source rankings failed" not in captured.out
-
-
-def test_rankings_429_alone_does_not_fail_the_run(conn, monkeypatch, capsys):
-    report = _run(conn, monkeypatch, failing="rankings")
-    code = daily.daily_exit_code(report)
-    captured = capsys.readouterr()
-
-    rankings = next(outcome for outcome in report.outcomes if outcome.name == "rankings")
-    assert rankings.status == "failed"
-    assert "429" in rankings.detail
-    assert report.ok is True
-    assert code == 0
-    assert "::error::" not in captured.out
 
 
 def test_missing_cfbd_key_still_exits_zero(conn, monkeypatch, capsys):
