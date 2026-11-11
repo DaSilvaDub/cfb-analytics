@@ -647,6 +647,8 @@ def _freeze_over_boards(
     try:
         from cfb_analytics.features.over_confidence import (
             build_over_confidence_board,
+            format_hold_breakdown,
+            hold_breakdown,
             persist_over_board,
         )
         from cfb_analytics.utils import to_utc_iso
@@ -661,7 +663,7 @@ def _freeze_over_boards(
                 conn, slate, rows, as_of_utc=published, rejected=rejected
             )
             written += inserted
-            detail = f"{slate} new_rows={inserted}"
+            detail = f"{slate} new_rows={inserted} {format_hold_breakdown(hold_breakdown(rows))}"
             if rejected:
                 detail += " post-kickoff rejected=" + ",".join(rejected)
             details.append(detail)
