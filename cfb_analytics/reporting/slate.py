@@ -208,6 +208,10 @@ def build_slate_report(
     except Exception as exc:  # the OVER board has its own inputs; it must not sink the report
         yardage, source = [], "unavailable"
         notes.append(f"OVER board unavailable: {str(exc)[:160]}")
+    else:
+        from cfb_analytics.features.over_confidence import format_hold_breakdown, hold_breakdown
+
+        notes.append("OVER board " + format_hold_breakdown(hold_breakdown(yardage)))
 
     return SlateReport(
         slate_date=slate_date,
@@ -250,7 +254,7 @@ def render_slate_report(report: SlateReport) -> str:
     stamp = f"   [{config.SHADOW_STAMP}]" if config.is_shadow_mode() else ""
     counts = report.counts()
     lines = [
-        f"SLATE REPORT - {report.slate_date}{stamp}",
+        f"SLATE REPORT - {report.slate_date}{stamp}{config.non_actionable_suffix()}",
         f"games on slate: {report.games}   "
         + "   ".join(f"{FAMILY_TITLES[f].lower()}: {counts[f]}" for f in FAMILIES),
         "Current capture only, one primary line per game (most books, then most balanced).",
@@ -301,7 +305,9 @@ def render_slate_report(report: SlateReport) -> str:
             f"{_fmt_lean(row, _team_labels(row))}"
         )
 
+    hold_note = next((note for note in report.notes if note.startswith("OVER board held=")), "")
     lines += ["", f"== {FAMILY_TITLES['YARDAGE']} ({report.yardage_source}) ==",
+              hold_note or "OVER board held=0",
               f"{'rk':>3} {'tier':<6} {'P(Over)':>8} {'market':<22} {'pick':<34} "
               f"{'mark':>6} {'proj':>6} {'kickoff':<11} game"]
     if not report.yardage:
@@ -351,6 +357,7 @@ def slate_report_json(report: SlateReport) -> dict[str, Any]:
     return {
         "date": report.slate_date,
         "stamp": config.SHADOW_STAMP if config.is_shadow_mode() else None,
+        "actionable": config.published_output_is_actionable(),
         "games": report.games,
         "counts": report.counts(),
         "moneylines": [game_row(r) for r in report.rows.get("ML", [])],
@@ -358,6 +365,10 @@ def slate_report_json(report: SlateReport) -> dict[str, Any]:
         "game_totals": [game_row(r) for r in report.rows.get("TOTAL", [])],
         "yardage_overs": {
             "source": report.yardage_source,
+            "hold": next(
+                (note for note in report.notes if note.startswith("OVER board held=")),
+                "OVER board held=0",
+            ),
             "picks": [
                 {
                     "rank": p.rank,
@@ -370,6 +381,8 @@ def slate_report_json(report: SlateReport) -> dict[str, Any]:
                     "kickoff_et": p.kickoff_et,
                     "game": p.game_label,
                     "game_id": p.game_id,
+                    "publish_status": p.publish_status,
+                    "hold_reason": p.hold_reason,
                 }
                 for p in report.yardage
             ],

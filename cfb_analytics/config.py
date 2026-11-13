@@ -101,6 +101,23 @@ def is_shadow_mode() -> bool:
 
 
 SHADOW_STAMP = "UNPROMOTED - shadow output, not decision-grade"
+NON_ACTIONABLE_LABEL = "NON-ACTIONABLE"
+
+
+def published_output_is_actionable() -> bool:
+    """False while ``promotion.json`` status is shadow.
+
+    The nightly board and slate are labeled with this, not by wiring the
+    governance gate into the publisher.
+    """
+    return not is_shadow_mode()
+
+
+def non_actionable_suffix() -> str:
+    """Header suffix while promotion status is shadow. Empty once promoted."""
+    if published_output_is_actionable():
+        return ""
+    return f" {NON_ACTIONABLE_LABEL}"
 
 
 def market_weight_floor() -> float:

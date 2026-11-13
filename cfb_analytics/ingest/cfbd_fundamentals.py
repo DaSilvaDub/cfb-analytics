@@ -123,7 +123,8 @@ def _cutoffs(conn: sqlite3.Connection, season: int) -> tuple[dict[int, str], str
     rows = conn.execute(
         """SELECT week, kickoff_utc FROM games
            WHERE source = 'cfbd' AND season = ? AND season_type = 'regular'
-             AND week IS NOT NULL""",
+             AND week IS NOT NULL
+             AND COALESCE(kickoff_tbd, 0) = 0""",
         (season,),
     ).fetchall()
     if not rows:
@@ -137,7 +138,8 @@ def _cutoffs(conn: sqlite3.Connection, season: int) -> tuple[dict[int, str], str
         week: (max(stamps) + timedelta(days=1)).isoformat() for week, stamps in by_week.items()
     }
     all_games = conn.execute(
-        "SELECT kickoff_utc FROM games WHERE source = 'cfbd' AND season = ?",
+        """SELECT kickoff_utc FROM games
+           WHERE source = 'cfbd' AND season = ? AND COALESCE(kickoff_tbd, 0) = 0""",
         (season,),
     ).fetchall()
     season_final = (

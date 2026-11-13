@@ -22,7 +22,7 @@ import json
 import sqlite3
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 from cfb_analytics import config, paths
 from cfb_analytics.errors import CfbAnalyticsError
@@ -133,6 +133,7 @@ class DailyReport:
             )
         if config.is_shadow_mode():
             lines.append(f"\n  {config.SHADOW_STAMP}")
+            lines.append(f"  {config.NON_ACTIONABLE_LABEL}")
         return "\n".join(lines)
 
 
@@ -308,8 +309,44 @@ def _run_cfbd_elo(
         report.outcomes.append(SourceOutcome("elo", "failed", str(exc)[:200]))
 
 
-def _run_refresh_scores(conn: sqlite3.Connection, report: DailyReport, season: int) -> None:
-    """Refresh final scores and completion status for games played this season."""
+def _schedule_weeks_to_refresh(games: list[dict[str, Any]], today: str) -> set[int]:
+    """Current Eastern week and the next stored week.
+
+    Games whose football_date is still ahead of ``today`` are not current.
+    When nothing has started, the earliest stored week is current.
+    """
+    dated = [
+        game
+        for game in games
+        if game.get("week") is not None and game.get("football_date")
+    ]
+    weeks = sorted({int(game["week"]) for game in dated})
+    started = [int(game["week"]) for game in dated if str(game["football_date"]) <= today]
+    if started:
+        current = max(started)
+    elif weeks:
+        current = weeks[0]
+    else:
+        return set()
+    later = [week for week in weeks if week > current]
+    selected = {current}
+    if later:
+        selected.add(later[0])
+    return selected
+
+
+def _run_refresh_scores(
+    conn: sqlite3.Connection,
+    report: DailyReport,
+    season: int,
+    *,
+    now: datetime | None = None,
+) -> None:
+    """Refresh final scores, and kickoffs for the current and next week.
+
+    The schedule used to be written once. Later CFBD kickoff changes, including
+    a startTimeTBD placeholder replaced by a real clock time, never landed.
+    """
     if not config.has_cfbd_key():
         return
     try:
@@ -318,12 +355,20 @@ def _run_refresh_scores(conn: sqlite3.Connection, report: DailyReport, season: i
 
         client = CFBDClient()
         raw_games = client.fetch_games(season, refresh=True)
+        moment = now or datetime.now(FOOTBALL_TZ)
+        today = football_date(moment.astimezone(FOOTBALL_TZ).isoformat())
+        parsed_games = [parse_game(raw) for raw in raw_games]
         completed_count = 0
-        for raw in raw_games:
+        for raw, parsed in zip(raw_games, parsed_games, strict=True):
             if raw.get("completed"):
-                parsed = parse_game(raw)
                 store.upsert_cfbd_game(conn, parsed)
                 completed_count += 1
+        weeks = _schedule_weeks_to_refresh(parsed_games, today)
+        refreshed = 0
+        for parsed in parsed_games:
+            if parsed.get("week") in weeks:
+                store.upsert_cfbd_game(conn, parsed)
+                refreshed += 1
         if completed_count > 0:
             report.outcomes.append(
                 SourceOutcome(
@@ -333,6 +378,14 @@ def _run_refresh_scores(conn: sqlite3.Connection, report: DailyReport, season: i
                     rows=completed_count,
                 )
             )
+        report.outcomes.append(
+            SourceOutcome(
+                "schedule",
+                "ok",
+                f"refreshed {refreshed} games in weeks {sorted(weeks)}",
+                rows=refreshed,
+            )
+        )
     except CfbAnalyticsError as exc:
         report.outcomes.append(SourceOutcome("game_scores", "failed", str(exc)[:200]))
 
@@ -594,6 +647,8 @@ def _freeze_over_boards(
     try:
         from cfb_analytics.features.over_confidence import (
             build_over_confidence_board,
+            format_hold_breakdown,
+            hold_breakdown,
             persist_over_board,
         )
         from cfb_analytics.utils import to_utc_iso
@@ -608,7 +663,7 @@ def _freeze_over_boards(
                 conn, slate, rows, as_of_utc=published, rejected=rejected
             )
             written += inserted
-            detail = f"{slate} new_rows={inserted}"
+            detail = f"{slate} new_rows={inserted} {format_hold_breakdown(hold_breakdown(rows))}"
             if rejected:
                 detail += " post-kickoff rejected=" + ",".join(rejected)
             details.append(detail)
@@ -752,7 +807,7 @@ def run_daily(
     _run_cfbd_lines(conn, report, year)
     _run_cfbd_rankings(conn, report, year, now=moment)
     _run_cfbd_elo(conn, report, year, now=moment)
-    _run_refresh_scores(conn, report, year)
+    _run_refresh_scores(conn, report, year, now=moment)
 
     slates = slates_in_window(conn, now=moment)
     if with_outlier and slates:

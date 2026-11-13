@@ -172,7 +172,9 @@ def upsert_cfbd_game(conn: sqlite3.Connection, game: dict[str, Any]) -> None:
         "has_conference_game": 1 if "conference_game" in game else 0,
         "has_status": 1 if "status" in game or "completed" in game else 0,
         "has_completed": 1 if "completed" in game else 0,
+        "has_kickoff_tbd": 1 if "kickoff_tbd" in game else 0,
         **game,
+        "kickoff_tbd": 1 if game.get("kickoff_tbd") else 0,
         "status": status,
         "venue_id": game.get("venue_id") or resolve_venue_id_by_name(conn, game.get("venue_name")),
         "ingested_utc": now,
@@ -181,17 +183,19 @@ def upsert_cfbd_game(conn: sqlite3.Connection, game: dict[str, Any]) -> None:
         """INSERT INTO games (game_id, season, week, season_type, kickoff_utc, football_date,
                               neutral_site, conference_game, home_team_id, away_team_id,
                               venue_name, venue_id, status, home_points, away_points, completed,
-                              source, ingested_utc)
+                              source, ingested_utc, kickoff_tbd)
            VALUES (:game_id, :season, :week, :season_type, :kickoff_utc, :football_date,
                    :neutral_site, :conference_game, :home_team_id, :away_team_id,
                    :venue_name, :venue_id, :status, :home_points, :away_points, :completed,
-                   :source, :ingested_utc)
+                   :source, :ingested_utc, :kickoff_tbd)
            ON CONFLICT(game_id) DO UPDATE SET
              season = excluded.season,
              week = CASE WHEN :has_week = 1 THEN excluded.week ELSE games.week END,
              season_type = CASE WHEN :has_season_type = 1
                                 THEN excluded.season_type ELSE games.season_type END,
              kickoff_utc = excluded.kickoff_utc,
+             kickoff_tbd = CASE WHEN :has_kickoff_tbd = 1
+                                THEN excluded.kickoff_tbd ELSE games.kickoff_tbd END,
              football_date = COALESCE(excluded.football_date, games.football_date),
              neutral_site = CASE WHEN :has_neutral_site = 1
                                  THEN excluded.neutral_site ELSE games.neutral_site END,
