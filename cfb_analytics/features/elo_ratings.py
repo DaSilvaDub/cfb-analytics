@@ -41,9 +41,10 @@ def elo_rating_as_of(
     """
     reader = AsOfReader(game_id=reader_game_id, kickoff_utc=as_of_utc, season=season)
     rows = conn.execute(
-        """SELECT rating, as_of_utc FROM team_ratings
+        """SELECT rating, as_of_utc, ingested_utc, snapshot_id FROM team_ratings
            WHERE team_id = ? AND season = ? AND source = 'elo_cfbd'
-             AND snapshot_scope = 'weekly' AND rating IS NOT NULL""",
+             AND snapshot_scope = 'weekly' AND rating IS NOT NULL
+           ORDER BY ingested_utc DESC, snapshot_id DESC""",
         (team_id, season),
     ).fetchall()
     latest = reader.latest(

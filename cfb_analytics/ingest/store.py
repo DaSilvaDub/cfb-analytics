@@ -344,8 +344,42 @@ def _insert_snapshots(
     return cursor.rowcount if cursor.rowcount and cursor.rowcount > 0 else 0
 
 
+def _rating_replace_key(row: dict[str, Any]) -> tuple[Any, ...]:
+    """One stored rating per team, season, week, source, and scope.
+
+    ``week`` is NULL for a season-final row. Hashing the rating into
+    ``snapshot_id`` and using ``INSERT OR IGNORE`` used to append a new row
+    on every re-fetch.
+    """
+    return (
+        row.get("team_id"),
+        row.get("season"),
+        row.get("week"),
+        row.get("source"),
+        row.get("snapshot_scope"),
+    )
+
+
+def _delete_replaced_ratings(conn: sqlite3.Connection, rows: Iterable[dict[str, Any]]) -> None:
+    for team_id, season, week, source, scope in {_rating_replace_key(row) for row in rows}:
+        if week is None:
+            conn.execute(
+                """DELETE FROM team_ratings
+                   WHERE team_id = ? AND season = ? AND week IS NULL
+                     AND source = ? AND snapshot_scope = ?""",
+                (team_id, season, source, scope),
+            )
+        else:
+            conn.execute(
+                """DELETE FROM team_ratings
+                   WHERE team_id = ? AND season = ? AND week = ?
+                     AND source = ? AND snapshot_scope = ?""",
+                (team_id, season, week, source, scope),
+            )
+
+
 def insert_team_ratings(conn: sqlite3.Connection, rows: Iterable[dict[str, Any]]) -> int:
-    """Insert rows into ``team_ratings``.
+    """Insert rows into ``team_ratings``, replacing the prior row for the same key.
 
     ``season_type`` MUST be in this column list: the table's CHECK constraint
     requires it to be non-NULL (and ``period`` to embed it) for any
@@ -354,7 +388,17 @@ def insert_team_ratings(conn: sqlite3.Connection, rows: Iterable[dict[str, Any]]
     CHECK's other branch requires -- both branches are satisfied by the same
     column list. Omitting this column previously made every weekly row (Elo)
     fail the CHECK and vanish silently under ``INSERT OR IGNORE``.
+
+    The replace key is (team, season, week, source, snapshot_scope). A second
+    fetch of the same week overwrites the stored rating instead of appending.
     """
+    pending = list(rows)
+    # Last row in the batch wins when one fetch repeats a key.
+    by_key: dict[tuple[Any, ...], dict[str, Any]] = {}
+    for row in pending:
+        by_key[_rating_replace_key(row)] = row
+    replaced = list(by_key.values())
+    _delete_replaced_ratings(conn, replaced)
     columns = (
         "snapshot_id",
         "season",
@@ -375,7 +419,7 @@ def insert_team_ratings(conn: sqlite3.Connection, rows: Iterable[dict[str, Any]]
         "sos",
         "second_order_wins",
     )
-    return _insert_snapshots(conn, "team_ratings", columns, rows)
+    return _insert_snapshots(conn, "team_ratings", columns, replaced)
 
 
 def insert_team_advanced(conn: sqlite3.Connection, rows: Iterable[dict[str, Any]]) -> int:

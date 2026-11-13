@@ -114,7 +114,17 @@ class AsOfReader:
         kept = self.admissible(rows, what=what, as_of_field=as_of_field)
         if not kept:
             return None
-        return max(kept, key=lambda row: _parse(row[as_of_field], field=what))
+        # Same as_of_utc used to follow iteration order. Latest ingest wins,
+        # then snapshot id, so a re-fetch is stable even before duplicates
+        # are removed.
+        return max(
+            kept,
+            key=lambda row: (
+                _parse(row[as_of_field], field=what),
+                str(row.get("ingested_utc") or ""),
+                str(row.get("snapshot_id") or ""),
+            ),
+        )
 
     def staleness_minutes(self, as_of: Any) -> float:
         """Minutes between a row's timestamp and kickoff. Larger = staler."""

@@ -92,10 +92,16 @@ def load_latest_elo(
     ratings = conn.execute(
         """SELECT team_id, rating FROM team_ratings
            WHERE source = 'elo_cfbd' AND season = ? AND snapshot_scope = 'weekly'
-             AND as_of_utc = ? AND rating IS NOT NULL""",
+             AND as_of_utc = ? AND rating IS NOT NULL
+           ORDER BY ingested_utc DESC, snapshot_id DESC""",
         (season, row["as_of"]),
     ).fetchall()
-    return {str(item["team_id"]): float(item["rating"]) for item in ratings}
+    chosen: dict[str, float] = {}
+    for item in ratings:
+        team_id = str(item["team_id"])
+        if team_id not in chosen:
+            chosen[team_id] = float(item["rating"])
+    return chosen
 
 
 def conference_top_teams(
