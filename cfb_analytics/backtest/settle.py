@@ -225,13 +225,14 @@ def settle_slate(
         SELECT g.game_id, ht.alias as home, at.alias as away,
                g.home_points, g.away_points,
                c.side, c.consensus_price, c.prob_shin, c.prob_multiplicative,
-               c.n_books
+               c.n_books, c.as_of_utc
         FROM market_consensus c
         JOIN games g ON g.game_id = c.game_id
         JOIN teams ht ON ht.team_id = g.home_team_id
         JOIN teams at ON at.team_id = g.away_team_id
         WHERE g.football_date = ? AND c.market = 'ML'
-        ORDER BY g.game_id, c.n_books DESC
+          AND c.as_of_utc < g.kickoff_utc
+        ORDER BY g.game_id, c.as_of_utc DESC
     """
     games_ml: dict[str, dict[str, Any]] = {}
     for row in conn.execute(ml_query, (slate_date,)).fetchall():
@@ -247,7 +248,7 @@ def settle_slate(
             }
         side = row["side"]
         existing = games_ml[gid]["home_ml"] if side == "HOME" else games_ml[gid]["away_ml"]
-        if existing is None or (row["n_books"] or 0) > (existing["n_books"] or 0):
+        if existing is None or (row["as_of_utc"] or "") > (existing["as_of_utc"] or ""):
             if side == "HOME":
                 games_ml[gid]["home_ml"] = row
             else:
@@ -363,41 +364,42 @@ def settle_slate(
     # 2. Game Totals Evaluation
     total_query = """
         SELECT g.game_id, g.home_points, g.away_points,
-               c.side, c.line, c.n_books
+               c.side, c.line, c.as_of_utc
         FROM market_consensus c
         JOIN games g ON g.game_id = c.game_id
         WHERE g.football_date = ? AND c.market = 'TOTAL'
+          AND c.as_of_utc < g.kickoff_utc
+        ORDER BY g.game_id, c.as_of_utc DESC
     """
     totals_by_game: dict[str, dict[str, Any]] = defaultdict(
-        lambda: {"lines": defaultdict(dict), "home_score": None, "away_score": None}
+        lambda: {"sides": {}, "home_score": None, "away_score": None}
     )
     for row in conn.execute(total_query, (slate_date,)):
         gid = row["game_id"]
         entry = totals_by_game[gid]
         entry["home_score"] = row["home_points"]
         entry["away_score"] = row["away_points"]
-        entry["lines"][row["line"]][row["side"]] = row
+        side = row["side"]
+        existing = entry["sides"].get(side)
+        if existing is None or (row["as_of_utc"] or "") > (existing["as_of_utc"] or ""):
+            entry["sides"][side] = row
 
     overs = unders = pushes = 0
     for _gid, data in totals_by_game.items():
         if data["home_score"] is None or data["away_score"] is None:
             continue
-        best_line = None
-        max_books = -1
-        for line, sides in data["lines"].items():
-            if "OVER" in sides and "UNDER" in sides:
-                b_count = (sides["OVER"]["n_books"] or 0) + (sides["UNDER"]["n_books"] or 0)
-                if b_count > max_books:
-                    max_books = b_count
-                    best_line = line
-        if best_line is not None:
-            actual = data["home_score"] + data["away_score"]
-            if actual > best_line:
-                overs += 1
-            elif actual < best_line:
-                unders += 1
-            else:
-                pushes += 1
+        over = data["sides"].get("OVER")
+        under = data["sides"].get("UNDER")
+        if over is None or under is None or over["line"] != under["line"]:
+            continue
+        actual = data["home_score"] + data["away_score"]
+        line = over["line"]
+        if actual > line:
+            overs += 1
+        elif actual < line:
+            unders += 1
+        else:
+            pushes += 1
 
     # 3. Team Props Evaluation
     tp_query = """
