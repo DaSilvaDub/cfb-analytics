@@ -135,7 +135,9 @@ class GovernanceGate:
                 disclaimer=SHADOW_MODE_DISCLAIMER,
             )
 
-        if getattr(candidate, "edge_pct", 0.05) <= 0.0 or getattr(candidate, "ev", 0.05) <= 0.0:
+        edge_pct = getattr(candidate, "edge_pct", None)
+        ev = getattr(candidate, "ev", None)
+        if edge_pct is None or edge_pct <= 0.0 or (ev is not None and ev <= 0.0):
             return GovernanceVerdict(
                 candidate_id=cw.candidate_id,
                 action=GovernanceAction.PASS,
@@ -145,7 +147,11 @@ class GovernanceGate:
                 adjusted_confidence=min(original_confidence, 4.0),
                 parlay_eligible=False,
                 target_market_override=None,
-                notes="Non-positive edge or EV.",
+                notes=(
+                    "Missing edge: rejected as missing data."
+                    if edge_pct is None
+                    else "Non-positive edge or EV."
+                ),
                 disclaimer=SHADOW_MODE_DISCLAIMER,
             )
 
@@ -170,7 +176,11 @@ class GovernanceGate:
         # 3. Dynamic Negative Favorite Gate Evaluation
         if context is not None and not is_neg_vetoed:
             is_fav = (cw.market_type == "SPREAD" and cw.line < 0) or (
-                cw.market_type == "ML" and (cw.odds_american < 0 or cw.fair_prob > 0.50)
+                cw.market_type == "ML"
+                and (
+                    cw.odds_american < 0
+                    or (cw.fair_prob is not None and cw.fair_prob > 0.50)
+                )
             )
             if is_fav:
                 neg_res = self.negative_gate.evaluate(

@@ -20,6 +20,7 @@ from cfb_analytics.governance.models import GovernanceAction
 from cfb_analytics.governance.rules import CandidateWager
 from cfb_analytics.ingest import store
 from cfb_analytics.reasoning.context import _load_qb_status, load_situational_context_for_game
+from cfb_analytics.reasoning.models import ReasoningCard
 from tests.conftest import seed_canonical_game, seed_canonical_team
 from tests.test_cli_reporting import _seed_game_and_consensus
 
@@ -264,3 +265,80 @@ def test_starter_lookup_error_stays_unconfirmed(conn, monkeypatch, caplog) -> No
     assert confirmed is False
     assert name is None
     assert any("passing table unreadable" in rec.message for rec in caplog.records)
+
+
+class _BareMoneyline:
+    """Moneyline candidate that carries neither edge_pct nor ev."""
+
+    candidate_id = "cfbd:9:ML:HOME"
+    game_id = "cfbd:9"
+    market_type = "ML"
+    market = "ML"
+    side = "HOME"
+    line = 0.0
+    odds_american = -150
+    confidence = 8.0
+
+
+def _ml_wager(**overrides: float) -> CandidateWager:
+    return CandidateWager(
+        candidate_id="cfbd:9:ML:HOME",
+        game_id="cfbd:9",
+        market_type="ML",
+        market="ML",
+        side="HOME",
+        line=0.0,
+        odds_american=-150,
+        confidence=8.0,
+        **overrides,
+    )
+
+
+def _reasoning_card() -> ReasoningCard:
+    return ReasoningCard(
+        game_id="cfbd:9",
+        market="ML",
+        side="HOME",
+        recommended_play="HOME ML",
+        confidence=8.0,
+        tier="STRONG",
+        tape_summary="",
+        position_qb_summary="",
+        weather_venue_summary="",
+        injuries_trench_summary="",
+        program_continuity_summary="",
+        mathematical_edge_summary="",
+    )
+
+
+def test_moneyline_missing_edge_and_ev_is_not_approved() -> None:
+    """No edge_pct and no ev is missing data, not a fabricated +5% edge.
+
+    The same moneyline with an explicit 0.0 edge is a non-positive edge (PASS).
+    """
+    bare = GovernanceGate().evaluate_candidate(_BareMoneyline())
+    defaulted = GovernanceGate().evaluate_candidate(_ml_wager())
+    explicit_zero = GovernanceGate().evaluate_candidate(_ml_wager(edge_pct=0.0))
+
+    for verdict in (bare, defaulted):
+        assert verdict.action == GovernanceAction.PASS
+        assert verdict.is_approved is False
+        assert verdict.parlay_eligible is False
+        assert "missing" in verdict.notes.lower()
+
+    assert explicit_zero.action == GovernanceAction.PASS
+    assert explicit_zero.is_approved is False
+    assert "non-positive" in explicit_zero.notes.lower()
+
+
+def test_reasoning_card_does_not_fabricate_edge_or_fair_prob() -> None:
+    """A reasoning card with no edge must not be stamped edge_pct=0.05 / fair_prob=0.50."""
+    card = _reasoning_card()
+    wager = CandidateWager.from_reasoning_card(card)
+    assert wager.edge_pct is None
+    assert wager.fair_prob is None
+
+    verdict = GovernanceGate().evaluate_candidate(card)
+    assert verdict.action == GovernanceAction.PASS
+    assert verdict.is_approved is False
+    assert verdict.parlay_eligible is False
