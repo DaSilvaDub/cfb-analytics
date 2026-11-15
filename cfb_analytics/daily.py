@@ -5,8 +5,8 @@ Designed for an unattended cloud runner, which drives three rules:
 1. **Degrade, don't abort.** A source without a credential, or one that has
    expired, is reported and skipped. One dead *optional* source must not cost
    the run the data the other sources would have produced. A failed lines,
-   scores, team-box, Elo, rankings, OVER-board, or slate-report stage,
-   including HTTP 429, fails the run even when another leg succeeded.
+   scores, team-box, Elo, advanced-stats, rankings, OVER-board, or slate-report
+   stage, including HTTP 429, fails the run even when another leg succeeded.
 2. **Say what did not happen.** A silent partial run is worse than a failed
    one, so every skip is named in the summary with the reason and the fix.
 3. **Only ingest slates inside the operating window.** Measured 2026-09-01:
@@ -58,7 +58,7 @@ class ResearchGameTotal:
 # Recorded outcome names. "cfbd" is the lines/odds leg. A failure here fails
 # the run even when another leg succeeded.
 MANDATORY_CFBD_SOURCES = frozenset(
-    {"cfbd", "game_scores", "team_boxes", "elo", "team_advanced"}
+    {"cfbd", "game_scores", "team_boxes", "elo", "advanced", "team_advanced"}
 )
 # These publishes fail the run even when an ingest leg succeeded.
 REQUIRED_PUBLISH_STAGES = frozenset({"rankings", "over_board", "slate_report"})
@@ -96,8 +96,8 @@ class DailyReport:
         key into a red build every morning trains people to ignore the light,
         which costs more than it catches.
 
-        Lines, game scores, team boxes, Elo, rankings, the OVER board, and the
-        slate report are red even when another leg succeeded.
+        Lines, game scores, team boxes, Elo, advanced stats, rankings, the OVER
+        board, and the slate report are red even when another leg succeeded.
         """
         if self.mandatory_failures():
             return False
@@ -748,6 +748,38 @@ def _run_research_game_totals(
         report.outcomes.append(SourceOutcome("game_totals", "failed", str(exc)[:200]))
 
 
+def _run_cfbd_advanced(
+    conn: sqlite3.Connection,
+    report: DailyReport,
+    season: int,
+    *,
+    now: datetime | None = None,
+) -> None:
+    """Weekly CFBD advanced stats for the current season.
+
+    Same shape as the Elo leg: one current-season backfill, skipped without a
+    CFBD key. The zero-row guard below still fails the job when this season
+    has no ``team_season_advanced`` rows after the fetch.
+    """
+    if not config.has_cfbd_key():
+        report.outcomes.append(
+            SourceOutcome("advanced", "skipped", f"no {config.CFBD_ENV_VAR} configured")
+        )
+        return
+    try:
+        from cfb_analytics.ingest.cfbd_fundamentals import backfill_advanced
+        from cfb_analytics.sources.cfbd import CFBDClient
+
+        summary = backfill_advanced(
+            conn, CFBDClient(), start_year=season, end_year=season, now=now
+        )
+        report.outcomes.append(
+            SourceOutcome("advanced", "ok", summary.as_text(), rows=summary.advanced)
+        )
+    except CfbAnalyticsError as exc:
+        report.outcomes.append(SourceOutcome("advanced", "failed", str(exc)[:200]))
+
+
 def _run_team_advanced_guard(
     conn: sqlite3.Connection, report: DailyReport, season: int
 ) -> None:
@@ -821,6 +853,7 @@ def run_daily(
         _run_player_passing(conn, report, year)
 
     _run_team_boxes(conn, report, year)
+    _run_cfbd_advanced(conn, report, year, now=moment)
     _run_team_advanced_guard(conn, report, year)
 
     if with_internal_ratings:

@@ -426,7 +426,44 @@ def insert_team_ratings(conn: sqlite3.Connection, rows: Iterable[dict[str, Any]]
     return _insert_snapshots(conn, "team_ratings", columns, replaced)
 
 
+def _advanced_replace_key(row: dict[str, Any]) -> tuple[Any, ...]:
+    """One stored advanced snapshot per team, season, week, side, and garbage filter.
+
+    ``snapshot_id`` hashes the stat values. ``INSERT OR IGNORE`` used to append
+    a new row on every re-fetch once PPA or success rate moved.
+    """
+    return (
+        row.get("team_id"),
+        row.get("season"),
+        row.get("week"),
+        row.get("side"),
+        row.get("garbage_excluded"),
+    )
+
+
+def _delete_replaced_advanced(conn: sqlite3.Connection, rows: Iterable[dict[str, Any]]) -> None:
+    for team_id, season, week, side, garbage in {_advanced_replace_key(row) for row in rows}:
+        conn.execute(
+            """DELETE FROM team_season_advanced
+               WHERE team_id = ? AND season = ? AND week = ?
+                 AND side = ? AND garbage_excluded = ?""",
+            (team_id, season, week, side, garbage),
+        )
+
+
 def insert_team_advanced(conn: sqlite3.Connection, rows: Iterable[dict[str, Any]]) -> int:
+    """Insert advanced snapshots, replacing the prior row for the same key.
+
+    The replace key is (team, season, week, side, garbage_excluded). A second
+    fetch of the same week overwrites the stored EPA / success-rate snapshot
+    instead of appending one. A different side, week, or garbage filter is a
+    different snapshot and is left in place.
+    """
+    by_key: dict[tuple[Any, ...], dict[str, Any]] = {}
+    for row in rows:
+        by_key[_advanced_replace_key(row)] = row
+    replaced = list(by_key.values())
+    _delete_replaced_advanced(conn, replaced)
     columns = (
         "snapshot_id",
         "season",
@@ -452,7 +489,7 @@ def insert_team_advanced(conn: sqlite3.Connection, rows: Iterable[dict[str, Any]
         "passing_success_rate",
         "rushing_success_rate",
     )
-    return _insert_snapshots(conn, "team_season_advanced", columns, rows)
+    return _insert_snapshots(conn, "team_season_advanced", columns, replaced)
 
 
 def insert_returning_production(conn: sqlite3.Connection, rows: Iterable[dict[str, Any]]) -> int:
