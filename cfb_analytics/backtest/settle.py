@@ -16,7 +16,7 @@ from datetime import datetime, timedelta
 from typing import Any
 
 from cfb_analytics import config
-from cfb_analytics.utils import FOOTBALL_TZ, football_date, utc_now_iso
+from cfb_analytics.utils import FOOTBALL_TZ, american_to_decimal, football_date, utc_now_iso
 
 
 @dataclass(frozen=True)
@@ -67,6 +67,8 @@ class SlateSettlement:
     totals_pushes: int = 0
     team_props_fav_hits: int = 0
     team_props_evaluated: int = 0
+    team_props_pushes: int = 0
+    team_props_units: float = 0.0
     clv_summary: LineMoveSummary | None = None
 
     def as_dict(self) -> dict[str, Any]:
@@ -147,14 +149,17 @@ class SlateSettlement:
                 f"  Pushes: {self.totals_pushes:>3}",
             ]
 
-        if self.team_props_evaluated > 0:
-            tp_pct = self.team_props_fav_hits / self.team_props_evaluated * 100
-            lines += [
-                "",
-                "--- Team Total Props Favored Side ---",
-                f"  Hit Rate: {self.team_props_fav_hits}/{self.team_props_evaluated} "
-                f"({tp_pct:.1f}%)",
-            ]
+        if self.team_props_evaluated > 0 or self.team_props_pushes > 0:
+            lines += ["", "--- Team Total Props Favored Side ---"]
+            if self.team_props_evaluated > 0:
+                tp_pct = self.team_props_fav_hits / self.team_props_evaluated * 100
+                lines.append(
+                    f"  Hit Rate: {self.team_props_fav_hits}/{self.team_props_evaluated} "
+                    f"({tp_pct:.1f}%)"
+                )
+            if self.team_props_pushes:
+                lines.append(f"  Pushes: {self.team_props_pushes} (refund, 0 units)")
+            lines.append(f"  Units: {self.team_props_units:+.2f}")
 
         if self.clv_summary is not None and (
             self.clv_summary.spread_moves_tracked > 0 or self.clv_summary.totals_moves_tracked > 0
@@ -206,6 +211,36 @@ def _compute_calibration_metrics(
             ece += (bin_size / n) * abs(acc - conf)
 
     return brier, ece, log_loss
+
+
+def _side_prob(row: dict[str, Any]) -> float:
+    return float(row["prob_shin"] or row["prob_multiplicative"] or 0.5)
+
+
+def _primary_team_points_bet(pairs: list[dict[str, Any]]) -> dict[str, Any]:
+    """One line per team: widest book coverage, then the price nearest even."""
+
+    def rank(pair: dict[str, Any]) -> tuple[int, float, float]:
+        over, under = pair["OVER"], pair["UNDER"]
+        coverage = min(int(over["n_books"] or 0), int(under["n_books"] or 0))
+        balance = -min(abs(_side_prob(over) - 0.5), abs(_side_prob(under) - 0.5))
+        hold_raw = over["hold"] if over["hold"] is not None else under["hold"]
+        return (coverage, balance, -float(hold_raw or 0.0))
+
+    return max(pairs, key=rank)
+
+
+def _grade_team_points_bet(
+    actual: float, line: float, side: str, price: Any
+) -> tuple[str, float]:
+    """Grade one team-points bet against its own line. An exact landing refunds the stake."""
+    if actual == line:
+        return "push", 0.0
+    won = actual > line if side == "OVER" else actual < line
+    if not won:
+        return "loss", -1.0
+    decimal = american_to_decimal(price)
+    return "win", 0.0 if decimal is None else decimal - 1.0
 
 
 def settle_slate(
@@ -404,7 +439,8 @@ def settle_slate(
     # 3. Team Props Evaluation
     tp_query = """
         SELECT tp.game_id, tp.team_id, tp.line, tp.side,
-               tp.prob_shin, tp.prob_multiplicative,
+               tp.prob_shin, tp.prob_multiplicative, tp.n_books,
+               tp.consensus_price, tp.hold,
                g.home_team_id, g.home_points, g.away_points
         FROM team_prop_consensus tp
         JOIN games g ON g.game_id = tp.game_id
@@ -425,21 +461,32 @@ def settle_slate(
             }
         paired_tp[key][r["side"]] = r
 
+    bets_by_team: dict[tuple[str, str], list[dict[str, Any]]] = defaultdict(list)
+    for (game_id, team_id, _line), pair in paired_tp.items():
+        if not pair["OVER"] or not pair["UNDER"]:
+            continue
+        bets_by_team[(game_id, team_id)].append(pair)
+
     tp_fav_hits = 0
     tp_total = 0
-    for _key, p in paired_tp.items():
-        if not p["OVER"] or not p["UNDER"]:
+    tp_pushes = 0
+    tp_units = 0.0
+    for pairs in bets_by_team.values():
+        bet = _primary_team_points_bet(pairs)
+        actual = (
+            bet["home_points"] if bet["team_id"] == bet["home_team_id"] else bet["away_points"]
+        )
+        if actual is None:
             continue
-        actual = p["home_points"] if p["team_id"] == p["home_team_id"] else p["away_points"]
-        if actual is None or actual == p["line"]:
+        fav_side = "OVER" if _side_prob(bet["OVER"]) >= _side_prob(bet["UNDER"]) else "UNDER"
+        outcome, units = _grade_team_points_bet(
+            float(actual), float(bet["line"]), fav_side, bet[fav_side]["consensus_price"]
+        )
+        tp_units += units
+        if outcome == "push":
+            tp_pushes += 1
             continue
-
-        o_prob = p["OVER"]["prob_shin"] or p["OVER"]["prob_multiplicative"] or 0.5
-        u_prob = p["UNDER"]["prob_shin"] or p["UNDER"]["prob_multiplicative"] or 0.5
-        fav_side = "OVER" if o_prob >= u_prob else "UNDER"
-
-        over_hit = actual > p["line"]
-        if (fav_side == "OVER" and over_hit) or (fav_side == "UNDER" and not over_hit):
+        if outcome == "win":
             tp_fav_hits += 1
         tp_total += 1
 
@@ -490,6 +537,8 @@ def settle_slate(
         totals_pushes=pushes,
         team_props_fav_hits=tp_fav_hits,
         team_props_evaluated=tp_total,
+        team_props_pushes=tp_pushes,
+        team_props_units=tp_units,
         clv_summary=clv_summary,
     )
 
