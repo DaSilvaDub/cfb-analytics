@@ -254,16 +254,43 @@ def _posted_line(
     team_id: str | None,
     market: str,
     *,
-    cutoff_utc: str,
+    as_of_utc: str,
+    kickoff_utc: str,
 ) -> tuple[float | None, int]:
+    """Posted OVER from the newest capture strictly before kickoff.
+
+    Same rule as the spread gate: book count breaks ties inside that capture
+    only. An older line with more books, or a quote at or after kickoff, is
+    not the posted mark. The as-of bound stays inclusive.
+    """
     if team_id is None:
         return None, 0
     row = conn.execute(
         """SELECT line, n_books FROM team_prop_consensus
            WHERE game_id = ? AND team_id = ? AND market = ? AND side = 'OVER'
              AND as_of_utc <= ?
-           ORDER BY n_books DESC, as_of_utc DESC LIMIT 1""",
-        (game_id, team_id, market, cutoff_utc),
+             AND as_of_utc < ?
+             AND as_of_utc = (
+                 SELECT MAX(m.as_of_utc) FROM team_prop_consensus m
+                 WHERE m.game_id = ? AND m.team_id = ? AND m.market = ?
+                   AND m.side = 'OVER'
+                   AND m.as_of_utc <= ?
+                   AND m.as_of_utc < ?
+             )
+           ORDER BY n_books DESC
+           LIMIT 1""",
+        (
+            game_id,
+            team_id,
+            market,
+            as_of_utc,
+            kickoff_utc,
+            game_id,
+            team_id,
+            market,
+            as_of_utc,
+            kickoff_utc,
+        ),
     ).fetchone()
     if row is not None and row["line"] is not None:
         return float(row["line"]), int(row["n_books"] or 0)
@@ -273,6 +300,7 @@ def _posted_line(
                FROM team_prop_odds_snapshots
                WHERE game_id = ? AND team_id = ? AND market = ? AND side = 'OVER'
                  AND captured_utc <= ?
+                 AND captured_utc < ?
            )
            SELECT p.line, COUNT(DISTINCT p.book) AS n_books
            FROM team_prop_odds_snapshots AS p
@@ -282,7 +310,16 @@ def _posted_line(
            HAVING n_books >= 2
            ORDER BY n_books DESC, p.line
            LIMIT 1""",
-        (game_id, team_id, market, cutoff_utc, game_id, team_id, market),
+        (
+            game_id,
+            team_id,
+            market,
+            as_of_utc,
+            kickoff_utc,
+            game_id,
+            team_id,
+            market,
+        ),
     ).fetchone()
     if snap is None or snap["line"] is None:
         return None, 0
@@ -512,9 +549,13 @@ def build_over_confidence_board(
         for market, pick, team_id, projected, identity, opp_allowed, team_spread in candidates:
             if _sit_qb_receiving(market, team_spread, home_spread, opp_allowed=opp_allowed):
                 continue
-            line_cutoff = cutoff if as_of >= cutoff else as_of
             posted, n_books = _posted_line(
-                conn, game.game_id, team_id, market, cutoff_utc=line_cutoff
+                conn,
+                game.game_id,
+                team_id,
+                market,
+                as_of_utc=as_of,
+                kickoff_utc=cutoff,
             )
             line = (
                 posted
