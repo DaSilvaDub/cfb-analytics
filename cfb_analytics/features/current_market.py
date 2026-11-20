@@ -15,6 +15,11 @@ exists to prevent:
 
 Readers (``board``, ``mispriced``, ``slate-report``) go through here so they
 cannot each drift into their own definition of "current".
+
+Current is also pre-kickoff. ``LATEST_CAPTURE_SQL`` ignores a capture at or
+after a real kickoff, matching settle. When ``games.kickoff_tbd`` is set the
+stored clock is not a cutoff: the newest capture is kept and the game stays
+on the slate.
 """
 
 from __future__ import annotations
@@ -26,12 +31,20 @@ from typing import Any
 
 GAME_MARKETS: tuple[str, ...] = ("ML", "SPREAD", "TOTAL")
 
-# Restricts a ``market_consensus c`` query to the newest capture of each
-# (game, market). Shared as SQL so the per-row readers in ``mispriced`` and
-# ``board`` stay single queries.
+# Newest capture of each (game, market) that is strictly before kickoff.
+# Same bound as settle (``c.as_of_utc < g.kickoff_utc``): a row stamped at
+# kickoff is already the close, not the last pre-game number.
+#
+# A TBD kickoff (``games.kickoff_tbd``) is a placeholder clock, not a start
+# time. Those games keep the newest capture of the market so the slate still
+# shows them. Callers must JOIN ``games g`` and alias consensus as ``c``.
 LATEST_CAPTURE_SQL = """c.as_of_utc = (
                SELECT MAX(m.as_of_utc) FROM market_consensus m
                WHERE m.game_id = c.game_id AND m.market = c.market
+                 AND (
+                   COALESCE(g.kickoff_tbd, 0) = 1
+                   OR m.as_of_utc < g.kickoff_utc
+                 )
              )"""
 
 
