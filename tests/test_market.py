@@ -23,11 +23,12 @@ class TestAnchorSelection:
         rows = [
             price("PS3838", "HOME", -200), price("PS3838", "AWAY", 180),
             price("CIRCA", "HOME", -205), price("CIRCA", "AWAY", 185),
+            price("PINNACLE", "HOME", -198), price("PINNACLE", "AWAY", 175),
             price("FANDUEL", "HOME", -260), price("FANDUEL", "AWAY", 210),
         ]
-        result = build(rows, sharp_books=["PS3838", "CIRCA"])
+        result = build(rows, sharp_books=["PS3838", "CIRCA", "PINNACLE"])
         assert result.anchor == "sharp"
-        assert result.n_books == 2, "soft books excluded from the anchor"
+        assert result.n_books == 3, "soft books excluded from the anchor"
         assert market.FLAG_NO_SHARP_ANCHOR not in result.flags
 
     def test_falls_back_to_all_books_when_sharp_books_are_absent(self):
@@ -46,6 +47,7 @@ class TestAnchorSelection:
         rows = [
             price("PS3838", "HOME", -200), price("PS3838", "AWAY", 180),
             price("FANDUEL", "HOME", -260), price("FANDUEL", "AWAY", 210),
+            price("DRAFTKINGS", "HOME", -255), price("DRAFTKINGS", "AWAY", 205),
         ]
         result = build(rows, sharp_books=["PS3838", "CIRCA"], min_sharp_books=2)
         assert result.anchor == "all_books"
@@ -57,6 +59,52 @@ class TestThinMarketGuards:
         result = build(rows, min_books_for_consensus=3)
         assert market.FLAG_THIN_MARKET in result.flags
         assert market.FLAG_SINGLE_BOOK in result.flags
+        assert result.sides == ()
+        assert result.hold is None
+        assert result.anchor == "none"
+
+    def test_two_sided_books_below_the_floor_are_unpriced(self):
+        """min_books is 3. Two books that quote both sides are not a consensus."""
+        rows = [
+            price("A", "HOME", -200), price("A", "AWAY", 170),
+            price("B", "HOME", -210), price("B", "AWAY", 175),
+        ]
+        result = build(rows)
+        assert result.n_books == 2
+        assert result.sides == ()
+        assert result.hold is None
+        assert result.side("HOME") is None
+        assert market.FLAG_THIN_MARKET in result.flags
+
+    def test_one_sided_books_do_not_count_toward_min_books(self):
+        """Two complete books plus a one-sided quote is still below the floor of 3.
+
+        The one-sided book used to make n_books == 3, and the market was priced
+        from the two complete books.
+        """
+        rows = [
+            price("A", "HOME", -200), price("A", "AWAY", 170),
+            price("B", "HOME", -210), price("B", "AWAY", 175),
+            price("C", "AWAY", 900),
+        ]
+        result = build(rows)
+        assert result.n_books == 2
+        assert result.sides == ()
+        assert result.hold is None
+        assert market.FLAG_THIN_MARKET in result.flags
+
+    def test_three_two_sided_books_still_price_with_a_one_sided_quote(self):
+        rows = [
+            price("A", "HOME", -200), price("A", "AWAY", 170),
+            price("B", "HOME", -210), price("B", "AWAY", 175),
+            price("C", "HOME", -205), price("C", "AWAY", 172),
+            price("D", "AWAY", 900),
+        ]
+        result = build(rows)
+        assert result.side("HOME") is not None
+        assert result.side("HOME").vig_free_prob is not None
+        assert result.hold is not None
+        assert result.n_books == 4
 
     def test_one_sided_market_yields_no_probabilities(self):
         """A fair probability needs both sides; one side cannot be devigged."""
@@ -193,6 +241,7 @@ class TestPerBookDevig:
             # Both sides from both books -> a coherent two-sided market.
             price("FANATICS", "HOME", -10000), price("FANATICS", "AWAY", 2800),
             price("MIDNITE", "HOME", -8000), price("MIDNITE", "AWAY", 5000),
+            price("FLIFF", "HOME", -9000), price("FLIFF", "AWAY", 4000),
             # Extra one-sided dog quotes, as the live feed had.
             price("KALSHI", "AWAY", 9251), price("PROPHETX", "AWAY", 10000),
         ]
@@ -206,6 +255,7 @@ class TestPerBookDevig:
         rows = [
             price("A", "HOME", -200), price("A", "AWAY", 170),
             price("B", "HOME", -210), price("B", "AWAY", 175),
+            price("D", "HOME", -205), price("D", "AWAY", 172),
             price("C", "AWAY", 900),  # one-sided outlier
         ]
         result = build(rows)
@@ -219,6 +269,7 @@ class TestPerBookDevig:
         rows = [
             price("A", "HOME", -200), price("A", "AWAY", 170),
             price("B", "HOME", -210), price("B", "AWAY", 175),
+            price("D", "HOME", -205), price("D", "AWAY", 172),
             price("C", "AWAY", 900),
         ]
         result = build(rows)
@@ -234,6 +285,7 @@ class TestPlaceholderPrices:
             price("MIDNITE", "HOME", -100000), price("MIDNITE", "AWAY", 5000),
             price("FANATICS", "HOME", -10000), price("FANATICS", "AWAY", 2800),
             price("FLIFF", "HOME", -8000), price("FLIFF", "AWAY", 4000),
+            price("DK", "HOME", -9000), price("DK", "AWAY", 3500),
         ]
         result = build(rows)
         assert market.FLAG_PLACEHOLDER_DROPPED in result.flags
