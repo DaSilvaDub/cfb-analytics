@@ -495,7 +495,7 @@ class FatRoadDogFatigueRule(BaseGrokRule):
         m_upper = candidate.market.upper()
         s_upper = candidate.side.upper()
 
-        # Check if away team is laying -25.0 or more
+        # Check if away team is laying -25.0 or more. A missing quote is not a -25.
         market_spread = context.market_spread_home
         if market_spread is None:
             if m_upper == "SPREAD" and s_upper == "HOME":
@@ -503,9 +503,7 @@ class FatRoadDogFatigueRule(BaseGrokRule):
             elif m_upper == "SPREAD" and s_upper == "AWAY":
                 market_spread = -candidate.line
             else:
-                market_spread = (
-                    25.0 if (context.travel_fatigue_tax_away >= 1.5 and is_late_kickoff) else 0.0
-                )
+                return self._neutral()
 
         is_heavy_road_fav = market_spread >= 25.0 or (
             m_upper == "SPREAD" and s_upper == "AWAY" and candidate.line <= -25.0
