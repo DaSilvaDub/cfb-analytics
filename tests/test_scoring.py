@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime
 from inspect import signature
 
@@ -648,6 +649,72 @@ class TestDatabaseDataWiring:
         assert inputs.completion_probability == baseline.completion_probability
 
         assert build_team_props_inputs_from_db(conn, "") == baseline
+
+    def test_missing_games_played_does_not_divide_pace_by_snapshot_week(self, conn, caplog):
+        """A missing games-played count must not use the snapshot week as the divisor.
+
+        Week 8, 160 plays, and no passing rows used to divide by 8 and clamp
+        to 50. Two games before the cutoff make pace 160/2. No games at all
+        leaves the FBS baseline and logs a warning.
+        """
+        store.upsert_team(
+            conn, {"team_id": "pace_team", "school": "Pace", "alias": "PACE", "market": "Pace"}
+        )
+        store.upsert_team(
+            conn, {"team_id": "pace_opp", "school": "Opp", "alias": "OPP", "market": "Opp"}
+        )
+        for game_id, kickoff in (
+            ("g-pace-1", "2026-09-05T20:00:00+00:00"),
+            ("g-pace-2", "2026-09-12T20:00:00+00:00"),
+            ("g-pace-future", "2026-09-26T20:00:00+00:00"),
+        ):
+            store.upsert_game(
+                conn,
+                {
+                    "game_id": game_id,
+                    "season": 2026,
+                    "kickoff_utc": kickoff,
+                    "football_date": kickoff[:10],
+                    "day_of_week": 5,
+                    "home_team_id": "pace_team",
+                    "away_team_id": "pace_opp",
+                    "venue_name": "Stadium",
+                    "network": "ESPN",
+                    "status": "final",
+                },
+            )
+        conn.execute(
+            """INSERT INTO team_season_advanced
+               (snapshot_id, season, week, team_id, side, as_of_utc, ingested_utc,
+                garbage_excluded, plays, drives)
+               VALUES ('snap-pace', 2026, 8, 'pace_team', 'off', '2026-09-13T00:00:00+00:00',
+                       '2026-09-13T00:00:00+00:00', 1, 160, 24)"""
+        )
+
+        inputs = build_team_props_inputs_from_db(
+            conn, "pace_team", season=2026, as_of_utc="2026-09-20T00:00:00Z"
+        )
+        assert inputs.pace == 80.0
+        assert inputs.expected_possession_count == 12.0
+
+        store.upsert_team(
+            conn, {"team_id": "no_games", "school": "None", "alias": "NON", "market": "None"}
+        )
+        conn.execute(
+            """INSERT INTO team_season_advanced
+               (snapshot_id, season, week, team_id, side, as_of_utc, ingested_utc,
+                garbage_excluded, plays, drives)
+               VALUES ('snap-none', 2026, 8, 'no_games', 'off', '2026-09-13T00:00:00+00:00',
+                       '2026-09-13T00:00:00+00:00', 1, 160, 24)"""
+        )
+        with caplog.at_level(logging.WARNING, logger="cfb_analytics.scoring"):
+            empty = build_team_props_inputs_from_db(
+                conn, "no_games", season=2026, as_of_utc="2026-09-20T00:00:00Z"
+            )
+        baseline = default_team_props_inputs()
+        assert empty.pace == baseline.pace
+        assert empty.expected_possession_count == baseline.expected_possession_count
+        assert any("games-played" in record.message for record in caplog.records)
 
     def test_build_team_props_inputs_with_opponent_defensive_adjustments(self, conn):
         store.upsert_team(
