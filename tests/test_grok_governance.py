@@ -687,6 +687,30 @@ class TestRuleCFatRoadDogs:
         assert res.action == GovernanceAction.APPROVE
         assert res.parlay_eligible is True
 
+    def test_rule_c_does_not_invent_a_spread_when_none_is_quoted(
+        self, base_context: SituationalContext
+    ) -> None:
+        engine = GrokRuleEngine()
+        ctx = SituationalContext(
+            **{
+                **base_context.__dict__,
+                "kickoff_et": "10:30 p.m.",
+                "travel_fatigue_tax_away": 2.0,
+                "is_late_kickoff": True,
+                "market_spread_home": None,
+            }
+        )
+        away_ml = CandidateWager(
+            candidate_id="cfbd:1003:ML:AWAY",
+            game_id="cfbd:1003",
+            market_type="ML",
+            market="ML",
+            side="AWAY",
+            line=0.0,
+        )
+        res = engine.evaluate_rule_c(away_ml, ctx)
+        assert res.triggered is False
+
 
 class TestRuleDThinDogsTraps:
     """Rule D: Thin underdogs (+1.5 to +6.0) are traps unless 3 exceptions hold."""
