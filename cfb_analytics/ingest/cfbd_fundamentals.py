@@ -214,6 +214,33 @@ def _backfill_elo_week(
     return store.insert_team_ratings(conn, elo), skipped
 
 
+def _backfill_advanced_week(
+    conn: sqlite3.Connection,
+    client: CFBDClient,
+    run: store.RunRecorder,
+    resolver: dict[str, str],
+    *,
+    year: int,
+    week: int,
+    as_of_utc: str,
+) -> tuple[int, int]:
+    """Fetch, parse, and persist one week's advanced stats. Returns (written, filtered)."""
+    endpoint = f"stats/season/advanced:{year}:week:{week}"
+    raw_advanced = _fetch(run, endpoint, partial(client.fetch_advanced, year, week))
+    advanced = [
+        parsed
+        for raw in raw_advanced
+        for parsed in parse_advanced_rows(raw, week=week, as_of_utc=as_of_utc)
+    ]
+    _check_season(advanced, year, endpoint)
+    advanced, skipped = _resolve_rows(
+        advanced, resolver, endpoint=endpoint, allow_unresolved=True
+    )
+    for row in advanced:
+        row["provenance_mode"] = "reconstructed"
+    return store.insert_team_advanced(conn, advanced), skipped
+
+
 def backfill_fundamentals(
     conn: sqlite3.Connection,
     client: CFBDClient,
@@ -298,24 +325,12 @@ def backfill_fundamentals(
                 rating_count += written
                 filtered_elo += skipped_elo
 
-                advanced_endpoint = f"stats/season/advanced:{year}:week:{week}"
-                raw_advanced = _fetch(
-                    run, advanced_endpoint, partial(client.fetch_advanced, year, week)
+                written_advanced, skipped_advanced = _backfill_advanced_week(
+                    conn, client, run, resolver, year=year, week=week, as_of_utc=as_of_utc
                 )
                 endpoints += 1
-                advanced = [
-                    parsed
-                    for raw in raw_advanced
-                    for parsed in parse_advanced_rows(raw, week=week, as_of_utc=as_of_utc)
-                ]
-                _check_season(advanced, year, advanced_endpoint)
-                advanced, skipped_advanced = _resolve_rows(
-                    advanced, resolver, endpoint=advanced_endpoint, allow_unresolved=True
-                )
+                advanced_count += written_advanced
                 filtered_advanced += skipped_advanced
-                for row in advanced:
-                    row["provenance_mode"] = "reconstructed"
-                advanced_count += store.insert_team_advanced(conn, advanced)
             conn.commit()
 
         total = rating_count + advanced_count + returning_count + talent_count
@@ -406,6 +421,80 @@ def backfill_elo(
         seasons=end_year - start_year + 1,
         endpoints=endpoints,
         ratings=rating_count,
+        filtered=filtered,
+    )
+
+
+@dataclass(frozen=True)
+class AdvancedBackfillSummary:
+    seasons: int
+    endpoints: int
+    advanced: int
+    filtered: int
+
+    def as_text(self) -> str:
+        return (
+            f"CFBD advanced-stat backfill wrote {self.advanced} snapshots across "
+            f"{self.seasons} season(s) and {self.endpoints} healthy endpoints. "
+            f"Filtered {self.filtered} non-FBS rows."
+        )
+
+
+def backfill_advanced(
+    conn: sqlite3.Connection,
+    client: CFBDClient,
+    *,
+    start_year: int,
+    end_year: int,
+    now: datetime | None = None,
+) -> AdvancedBackfillSummary:
+    """Backfill weekly advanced stats for seasons that have already started.
+
+    The daily job calls this for the current season. ``backfill_fundamentals``
+    remains the historical loader and still walks every stored week; this
+    entry point uses the same US Eastern week filter as ``backfill_elo``, so
+    a morning run does not request weeks whose games are all still ahead of
+    ``now``. The as-of stamp for a week that is requested is unchanged
+    (latest kickoff that week, plus one day).
+
+    Re-fetching a week replaces the stored snapshot for each team and side.
+    """
+    if start_year > end_year:
+        raise SchemaError("start_year must be less than or equal to end_year")
+
+    advanced_count = filtered = endpoints = 0
+    command = f"backfill-advanced --start-year {start_year} --end-year {end_year}"
+
+    with store.RunRecorder(conn, command) as run:
+        for year in range(start_year, end_year + 1):
+            weekly_cutoffs, _season_final = _cutoffs(conn, year)
+            team_rows = _fetch(run, f"teams/fbs:{year}", partial(client.fetch_fbs_teams, year))
+            endpoints += 1
+            resolver = _team_resolver(team_rows)
+            due = elo_weeks_due(conn, year, weekly_cutoffs, now=now)
+
+            for week, as_of_utc in sorted(due.items()):
+                written, skipped = _backfill_advanced_week(
+                    conn,
+                    client,
+                    run,
+                    resolver,
+                    year=year,
+                    week=week,
+                    as_of_utc=as_of_utc,
+                )
+                endpoints += 1
+                advanced_count += written
+                filtered += skipped
+            conn.commit()
+
+        run.add_rows(advanced_count)
+        conn.commit()
+
+    return AdvancedBackfillSummary(
+        seasons=end_year - start_year + 1,
+        endpoints=endpoints,
+        advanced=advanced_count,
         filtered=filtered,
     )
 

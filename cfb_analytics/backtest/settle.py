@@ -67,6 +67,7 @@ class SlateSettlement:
     totals_pushes: int = 0
     team_props_fav_hits: int = 0
     team_props_evaluated: int = 0
+    team_props_pushes: int = 0
     clv_summary: LineMoveSummary | None = None
 
     def as_dict(self) -> dict[str, Any]:
@@ -147,14 +148,16 @@ class SlateSettlement:
                 f"  Pushes: {self.totals_pushes:>3}",
             ]
 
-        if self.team_props_evaluated > 0:
-            tp_pct = self.team_props_fav_hits / self.team_props_evaluated * 100
-            lines += [
-                "",
-                "--- Team Total Props Favored Side ---",
-                f"  Hit Rate: {self.team_props_fav_hits}/{self.team_props_evaluated} "
-                f"({tp_pct:.1f}%)",
-            ]
+        if self.team_props_evaluated > 0 or self.team_props_pushes > 0:
+            lines += ["", "--- Team Total Props Favored Side ---"]
+            if self.team_props_evaluated > 0:
+                tp_pct = self.team_props_fav_hits / self.team_props_evaluated * 100
+                lines.append(
+                    f"  Hit Rate: {self.team_props_fav_hits}/{self.team_props_evaluated} "
+                    f"({tp_pct:.1f}%)"
+                )
+            if self.team_props_pushes:
+                lines.append(f"  Pushes: {self.team_props_pushes}")
 
         if self.clv_summary is not None and (
             self.clv_summary.spread_moves_tracked > 0 or self.clv_summary.totals_moves_tracked > 0
@@ -208,6 +211,15 @@ def _compute_calibration_metrics(
     return brier, ece, log_loss
 
 
+def _is_newer_capture(candidate: str | None, kept: str | None) -> bool:
+    """True when ``candidate`` is strictly later than the capture already kept.
+
+    Moneyline and game totals keep, per side, the newest ``as_of_utc`` strictly
+    before kickoff. Nothing kept yet is older. An empty stamp sorts first.
+    """
+    return kept is None or (candidate or "") > (kept or "")
+
+
 def settle_slate(
     conn: sqlite3.Connection,
     slate_date: str,
@@ -248,7 +260,8 @@ def settle_slate(
             }
         side = row["side"]
         existing = games_ml[gid]["home_ml"] if side == "HOME" else games_ml[gid]["away_ml"]
-        if existing is None or (row["as_of_utc"] or "") > (existing["as_of_utc"] or ""):
+        kept = None if existing is None else existing["as_of_utc"]
+        if _is_newer_capture(row["as_of_utc"], kept):
             if side == "HOME":
                 games_ml[gid]["home_ml"] = row
             else:
@@ -381,7 +394,8 @@ def settle_slate(
         entry["away_score"] = row["away_points"]
         side = row["side"]
         existing = entry["sides"].get(side)
-        if existing is None or (row["as_of_utc"] or "") > (existing["as_of_utc"] or ""):
+        kept = None if existing is None else existing["as_of_utc"]
+        if _is_newer_capture(row["as_of_utc"], kept):
             entry["sides"][side] = row
 
     overs = unders = pushes = 0
@@ -403,42 +417,55 @@ def settle_slate(
 
     # 3. Team Props Evaluation
     tp_query = """
-        SELECT tp.game_id, tp.team_id, tp.line, tp.side,
+        SELECT tp.game_id, tp.team_id, tp.line, tp.side, tp.as_of_utc,
                tp.prob_shin, tp.prob_multiplicative,
                g.home_team_id, g.home_points, g.away_points
         FROM team_prop_consensus tp
         JOIN games g ON g.game_id = tp.game_id
         WHERE g.football_date = ? AND tp.market = 'team_total_points'
+          AND tp.as_of_utc < g.kickoff_utc
+        ORDER BY tp.game_id, tp.team_id, tp.as_of_utc DESC
     """
-    paired_tp: dict[tuple[str, str, float], dict[str, Any]] = {}
+    paired_tp: dict[tuple[str, str], dict[str, Any]] = {}
     for r in conn.execute(tp_query, (slate_date,)):
-        key = (r["game_id"], r["team_id"], r["line"])
-        if key not in paired_tp:
-            paired_tp[key] = {
+        key = (r["game_id"], r["team_id"])
+        slot = paired_tp.get(key)
+        if slot is None:
+            slot = {
                 "team_id": r["team_id"],
                 "home_team_id": r["home_team_id"],
                 "home_points": r["home_points"],
                 "away_points": r["away_points"],
-                "line": r["line"],
                 "OVER": None,
                 "UNDER": None,
             }
-        paired_tp[key][r["side"]] = r
+            paired_tp[key] = slot
+        side = r["side"]
+        existing = slot[side]
+        kept = None if existing is None else existing["as_of_utc"]
+        if _is_newer_capture(r["as_of_utc"], kept):
+            slot[side] = r
 
     tp_fav_hits = 0
     tp_total = 0
-    for _key, p in paired_tp.items():
-        if not p["OVER"] or not p["UNDER"]:
+    tp_pushes = 0
+    for p in paired_tp.values():
+        over = p["OVER"]
+        under = p["UNDER"]
+        if over is None or under is None or over["line"] != under["line"]:
             continue
         actual = p["home_points"] if p["team_id"] == p["home_team_id"] else p["away_points"]
-        if actual is None or actual == p["line"]:
+        if actual is None:
+            continue
+        if actual == over["line"]:
+            tp_pushes += 1
             continue
 
-        o_prob = p["OVER"]["prob_shin"] or p["OVER"]["prob_multiplicative"] or 0.5
-        u_prob = p["UNDER"]["prob_shin"] or p["UNDER"]["prob_multiplicative"] or 0.5
+        o_prob = over["prob_shin"] or over["prob_multiplicative"] or 0.5
+        u_prob = under["prob_shin"] or under["prob_multiplicative"] or 0.5
         fav_side = "OVER" if o_prob >= u_prob else "UNDER"
 
-        over_hit = actual > p["line"]
+        over_hit = actual > over["line"]
         if (fav_side == "OVER" and over_hit) or (fav_side == "UNDER" and not over_hit):
             tp_fav_hits += 1
         tp_total += 1
@@ -490,6 +517,7 @@ def settle_slate(
         totals_pushes=pushes,
         team_props_fav_hits=tp_fav_hits,
         team_props_evaluated=tp_total,
+        team_props_pushes=tp_pushes,
         clv_summary=clv_summary,
     )
 

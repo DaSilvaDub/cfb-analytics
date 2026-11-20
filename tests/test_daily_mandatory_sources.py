@@ -19,7 +19,7 @@ from cfb_analytics import cli, daily
 from cfb_analytics.errors import SourceError
 from cfb_analytics.ingest import store
 from cfb_analytics.ingest.cfbd_boxes import BoxSummary
-from cfb_analytics.ingest.cfbd_fundamentals import EloBackfillSummary
+from cfb_analytics.ingest.cfbd_fundamentals import AdvancedBackfillSummary, EloBackfillSummary
 from cfb_analytics.ingest.cfbd_lines import LinesIngestSummary
 from cfb_analytics.ingest.cfbd_rankings import RankingsSummary
 from cfb_analytics.utils import FOOTBALL_TZ
@@ -85,6 +85,10 @@ def _ok_elo(*_a, **_k):
     return EloBackfillSummary(seasons=1, endpoints=1, ratings=1, filtered=0)
 
 
+def _ok_advanced(*_a, **_k):
+    return AdvancedBackfillSummary(seasons=1, endpoints=1, advanced=1, filtered=0)
+
+
 def _ok_boxes(*_a, **_k):
     return BoxSummary(games=1, rows=2, unresolved=0)
 
@@ -116,6 +120,10 @@ def _patch_legs(monkeypatch, *, failing: str | None) -> None:
     monkeypatch.setattr(
         "cfb_analytics.ingest.cfbd_fundamentals.backfill_elo",
         _rate_limit if failing == "elo" else _ok_elo,
+    )
+    monkeypatch.setattr(
+        "cfb_analytics.ingest.cfbd_fundamentals.backfill_advanced",
+        _rate_limit if failing == "advanced" else _ok_advanced,
     )
     monkeypatch.setattr(
         "cfb_analytics.ingest.cfbd_boxes.ingest_completed_boxes",
@@ -164,7 +172,7 @@ def test_games_fetch_failure_fails_the_schedule_stage(conn, monkeypatch, capsys)
     assert "::error::mandatory CFBD source game_scores failed" in captured.out
 
 
-@pytest.mark.parametrize("leg", ["cfbd", "game_scores", "team_boxes", "elo"])
+@pytest.mark.parametrize("leg", ["cfbd", "game_scores", "team_boxes", "elo", "advanced"])
 def test_http_429_on_each_mandatory_leg_exits_nonzero(conn, monkeypatch, capsys, leg):
     report = _run(conn, monkeypatch, failing=leg)
     code = daily.daily_exit_code(report)
@@ -205,7 +213,7 @@ def test_oct31_mix_of_429s_and_successes_exits_nonzero(capsys):
         assert f"::error::mandatory CFBD source {name} failed" in captured.out
 
 
-def test_missing_cfbd_key_still_exits_zero(conn, monkeypatch, capsys):
+def test_missing_cfbd_key_skips_required_stages_and_exits_nonzero(conn, monkeypatch, capsys):
     _seed_slate_game(conn)
     monkeypatch.setattr(daily.config, "has_cfbd_key", lambda: False)
     report = daily.run_daily(
@@ -219,9 +227,10 @@ def test_missing_cfbd_key_still_exits_zero(conn, monkeypatch, capsys):
     code = daily.daily_exit_code(report)
     captured = capsys.readouterr()
 
-    assert report.ok is True
-    assert code == 0
-    assert "::error::" not in captured.out
+    assert report.ok is False
+    assert code == 1
+    for name in ("cfbd", "rankings", "elo", "team_boxes"):
+        assert f"::error::required stage {name} skipped" in captured.out
 
 
 def test_cli_daily_returns_nonzero_and_annotates_a_mandatory_429(conn, monkeypatch, capsys):

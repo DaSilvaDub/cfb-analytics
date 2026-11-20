@@ -220,8 +220,8 @@ class TestDailyDegradation:
         assert outlier.status == "skipped"
         assert "24h" in outlier.detail
 
-    def test_all_sources_skipped_still_reports_ok(self, seeded, monkeypatch):
-        """A known-missing credential must not turn into a red build daily."""
+    def test_skipped_required_stages_beside_a_publish_are_not_green(self, seeded, monkeypatch):
+        """Lines, rankings, Elo, and team boxes skipped beside a successful publish are red."""
         store.insert_team_advanced(seeded, [{
             "season": 2026, "week": 1, "team_id": "h", "side": "off",
             "as_of_utc": "2026-09-01T00:00:00+00:00",
@@ -230,7 +230,10 @@ class TestDailyDegradation:
         monkeypatch.setattr(daily.config, "has_cfbd_key", lambda: False)
         report = daily.run_daily(
             seeded, with_outlier=False, now=datetime(2026, 9, 4, 12, tzinfo=FOOTBALL_TZ))
-        assert report.ok is True
+        skipped = {outcome.name for outcome in report.skipped_required()}
+        assert {"cfbd", "rankings", "elo", "team_boxes"} <= skipped
+        assert any(outcome.status == "ok" for outcome in report.outcomes)
+        assert report.ok is False
 
     def test_summary_names_every_source_and_its_state(self, seeded, monkeypatch):
         monkeypatch.setattr(daily.config, "has_cfbd_key", lambda: False)

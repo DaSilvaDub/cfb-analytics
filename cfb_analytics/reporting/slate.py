@@ -203,15 +203,10 @@ def build_slate_report(
         notes.append("no team-production inputs: game-total model column is blank")
     rows = _game_rows(primary, margins=margins, totals=totals)
 
-    try:
-        yardage, source = _yardage(conn, slate_date, min_prob=min_over_prob)
-    except Exception as exc:  # the OVER board has its own inputs; it must not sink the report
-        yardage, source = [], "unavailable"
-        notes.append(f"OVER board unavailable: {str(exc)[:160]}")
-    else:
-        from cfb_analytics.features.over_confidence import format_hold_breakdown, hold_breakdown
+    yardage, source = _yardage(conn, slate_date, min_prob=min_over_prob)
+    from cfb_analytics.features.over_confidence import format_hold_breakdown, hold_breakdown
 
-        notes.append("OVER board " + format_hold_breakdown(hold_breakdown(yardage)))
+    notes.append("OVER board " + format_hold_breakdown(hold_breakdown(yardage)))
 
     return SlateReport(
         slate_date=slate_date,

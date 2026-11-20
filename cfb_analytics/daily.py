@@ -5,8 +5,8 @@ Designed for an unattended cloud runner, which drives three rules:
 1. **Degrade, don't abort.** A source without a credential, or one that has
    expired, is reported and skipped. One dead *optional* source must not cost
    the run the data the other sources would have produced. A failed lines,
-   scores, team-box, Elo, rankings, OVER-board, or slate-report stage,
-   including HTTP 429, fails the run even when another leg succeeded.
+   scores, team-box, Elo, advanced-stats, rankings, OVER-board, or slate-report
+   stage, including HTTP 429, fails the run even when another leg succeeded.
 2. **Say what did not happen.** A silent partial run is worse than a failed
    one, so every skip is named in the summary with the reason and the fix.
 3. **Only ingest slates inside the operating window.** Measured 2026-09-01:
@@ -58,10 +58,14 @@ class ResearchGameTotal:
 # Recorded outcome names. "cfbd" is the lines/odds leg. A failure here fails
 # the run even when another leg succeeded.
 MANDATORY_CFBD_SOURCES = frozenset(
-    {"cfbd", "game_scores", "team_boxes", "elo", "team_advanced"}
+    {"cfbd", "game_scores", "team_boxes", "elo", "advanced", "team_advanced"}
 )
 # These publishes fail the run even when an ingest leg succeeded.
 REQUIRED_PUBLISH_STAGES = frozenset({"rankings", "over_board", "slate_report"})
+# Daniel: unresolved poll names above this count fail the rankings stage.
+# 0 fails the job on any unresolved name, which is what the 51-52 name
+# mornings need. Raise it only if one stray alias should stay green.
+RANKINGS_UNRESOLVED_NAMES_FAIL_ABOVE = 0
 
 
 @dataclass
@@ -87,6 +91,15 @@ class DailyReport:
             if outcome.status == "failed" and outcome.name in required
         ]
 
+    def skipped_required(self) -> list[SourceOutcome]:
+        """Required stages that did not run."""
+        required = MANDATORY_CFBD_SOURCES | REQUIRED_PUBLISH_STAGES
+        return [
+            outcome
+            for outcome in self.outcomes
+            if outcome.status == "skipped" and outcome.name in required
+        ]
+
     @property
     def ok(self) -> bool:
         """False when a required stage failed, or when nothing succeeded.
@@ -96,10 +109,12 @@ class DailyReport:
         key into a red build every morning trains people to ignore the light,
         which costs more than it catches.
 
-        Lines, game scores, team boxes, Elo, rankings, the OVER board, and the
-        slate report are red even when another leg succeeded.
+        Lines, game scores, team boxes, Elo, advanced stats, rankings, the OVER
+        board, and the slate report are red even when another leg succeeded.
         """
         if self.mandatory_failures():
+            return False
+        if self.skipped_required() and any(o.status == "ok" for o in self.outcomes):
             return False
         statuses = {outcome.status for outcome in self.outcomes}
         return "ok" in statuses or "failed" not in statuses
@@ -148,6 +163,10 @@ def daily_exit_code(report: DailyReport) -> int:
     for outcome in report.mandatory_failures():
         detail = " ".join(outcome.detail.split())
         print(f"::error::mandatory CFBD source {outcome.name} failed: {detail}")
+    if not report.ok:
+        for outcome in report.skipped_required():
+            detail = " ".join(outcome.detail.split())
+            print(f"::error::required stage {outcome.name} skipped: {detail}")
     return 0 if report.ok else 1
 
 
@@ -271,14 +290,18 @@ def _run_cfbd_rankings(
         from cfb_analytics.sources.cfbd import CFBDClient
 
         summary = ingest_rankings(conn, CFBDClient(), season, week=week)
+        names = tuple(summary.unresolved_names)
+        detail = (
+            f"{summary.rows} poll ranks, {summary.weeks} week(s), "
+            f"{summary.unresolved} unresolved names"
+        )
+        if names:
+            detail += ": " + ", ".join(names)
+        status = (
+            "failed" if summary.unresolved > RANKINGS_UNRESOLVED_NAMES_FAIL_ABOVE else "ok"
+        )
         report.outcomes.append(
-            SourceOutcome(
-                "rankings",
-                "ok",
-                f"{summary.rows} poll ranks, {summary.weeks} week(s), "
-                f"{summary.unresolved} unresolved names",
-                rows=summary.rows,
-            )
+            SourceOutcome("rankings", status, detail, rows=summary.rows)
         )
     except CfbAnalyticsError as exc:
         report.outcomes.append(SourceOutcome("rankings", "failed", str(exc)[:200]))
@@ -750,6 +773,38 @@ def _run_research_game_totals(
         report.outcomes.append(SourceOutcome("game_totals", "failed", str(exc)[:200]))
 
 
+def _run_cfbd_advanced(
+    conn: sqlite3.Connection,
+    report: DailyReport,
+    season: int,
+    *,
+    now: datetime | None = None,
+) -> None:
+    """Weekly CFBD advanced stats for the current season.
+
+    Same shape as the Elo leg: one current-season backfill, skipped without a
+    CFBD key. The zero-row guard below still fails the job when this season
+    has no ``team_season_advanced`` rows after the fetch.
+    """
+    if not config.has_cfbd_key():
+        report.outcomes.append(
+            SourceOutcome("advanced", "skipped", f"no {config.CFBD_ENV_VAR} configured")
+        )
+        return
+    try:
+        from cfb_analytics.ingest.cfbd_fundamentals import backfill_advanced
+        from cfb_analytics.sources.cfbd import CFBDClient
+
+        summary = backfill_advanced(
+            conn, CFBDClient(), start_year=season, end_year=season, now=now
+        )
+        report.outcomes.append(
+            SourceOutcome("advanced", "ok", summary.as_text(), rows=summary.advanced)
+        )
+    except CfbAnalyticsError as exc:
+        report.outcomes.append(SourceOutcome("advanced", "failed", str(exc)[:200]))
+
+
 def _run_team_advanced_guard(
     conn: sqlite3.Connection, report: DailyReport, season: int
 ) -> None:
@@ -823,6 +878,7 @@ def run_daily(
         _run_player_passing(conn, report, year)
 
     _run_team_boxes(conn, report, year)
+    _run_cfbd_advanced(conn, report, year, now=moment)
     _run_team_advanced_guard(conn, report, year)
 
     if with_internal_ratings:
