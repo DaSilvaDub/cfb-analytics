@@ -968,6 +968,18 @@ MIGRATION_019 = """
 ALTER TABLE over_board_snapshots ADD COLUMN actionable INTEGER NOT NULL DEFAULT 0;
 """
 
+MIGRATION_020 = """
+-- Migration 018 added publish_status NOT NULL DEFAULT 'playable', so a row
+-- whose hold_reason is inferred_mark stayed playable. This UPDATE rewrites
+-- those stored rows to held. Count them before applying:
+--   SELECT COUNT(*) FROM over_board_snapshots
+--   WHERE hold_reason = 'inferred_mark' AND publish_status != 'held';
+UPDATE over_board_snapshots
+SET publish_status = 'held'
+WHERE hold_reason = 'inferred_mark'
+  AND publish_status != 'held';
+"""
+
 
 MIGRATIONS: tuple[tuple[int, str, str, Callable[[sqlite3.Connection], None] | None], ...] = (
     (1, "outlier_ingestion_core", MIGRATION_001, None),
@@ -989,6 +1001,7 @@ MIGRATIONS: tuple[tuple[int, str, str, Callable[[sqlite3.Connection], None] | No
     (17, "games_kickoff_tbd", MIGRATION_017, None),
     (18, "over_board_hold_status", MIGRATION_018, None),
     (19, "over_board_shadow_actionable", MIGRATION_019, None),
+    (20, "hold_inferred_mark_snapshots", MIGRATION_020, None),
 )
 
 
