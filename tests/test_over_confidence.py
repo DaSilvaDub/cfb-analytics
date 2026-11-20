@@ -451,3 +451,101 @@ def test_rush_gate_uses_latest_pre_kickoff_spread_not_book_count(conn) -> None:
     assert "PUR rush" not in [row.pick for row in board]
     assert all(row.market != "game_rushing_yards" for row in board)
 
+
+def _insert_team_rush(
+    conn, game_id: str, team_id: str, line: float, as_of: str, n_books: int
+) -> None:
+    conn.execute(
+        """INSERT INTO team_prop_consensus
+           (game_id, team_id, market, line, side, as_of_utc, n_books,
+            consensus_price, best_price, best_book, hold,
+            prob_multiplicative, prob_shin, prob_power, flags)
+           VALUES (?, ?, 'team_rushing_yards', ?, 'OVER', ?, ?, -110, -105, 'DK', 0.045,
+                   0.52, 0.52, 0.52, '[]')""",
+        (game_id, team_id, line, as_of, n_books),
+    )
+
+
+def _ranked_indiana(conn, *, kickoff: str) -> tuple[str, str]:
+    indiana = seed_canonical_team(conn, 84, "Indiana", "IU")
+    wku = seed_canonical_team(conn, 98, "Western Kentucky", "WKU")
+    _seed_conference(conn, indiana, "Big Ten")
+    _seed_poll(conn, indiana, 4)
+    seed_canonical_game(
+        conn,
+        "cfbd:iu",
+        indiana,
+        wku,
+        football_date="2026-09-19",
+        kickoff=kickoff,
+        week=3,
+    )
+    _insert_spread(conn, "cfbd:iu", -6.5, n_books=8, as_of="2026-09-19T12:00:00+00:00")
+    return indiana, wku
+
+
+def test_posted_line_is_the_newest_capture_strictly_before_kickoff(conn) -> None:
+    """An older wider line, or a quote at kickoff, is not the posted mark."""
+    kickoff = "2026-09-19T20:00:00+00:00"
+    indiana, wku = _ranked_indiana(conn, kickoff=kickoff)
+    _insert_team_rush(conn, "cfbd:iu", indiana, 140.5, "2026-09-19T10:00:00+00:00", 20)
+    _insert_team_rush(conn, "cfbd:iu", indiana, 170.5, "2026-09-19T16:00:00+00:00", 3)
+    _insert_team_rush(conn, "cfbd:iu", indiana, 99.5, kickoff, 30)
+    _insert_team_rush(conn, "cfbd:iu", indiana, 80.5, "2026-09-19T22:00:00+00:00", 40)
+    conn.commit()
+
+    board = build_over_confidence_board(
+        conn,
+        "2026-09-19",
+        inputs_by_team={
+            indiana: default_team_props_inputs(
+                expected_rushing_attempts=48.0,
+                expected_pass_attempts=24.0,
+                data_quality_score=100.0,
+            ),
+            wku: default_team_props_inputs(data_quality_score=100.0),
+        },
+        as_of_utc="2026-09-20T00:00:00+00:00",
+    )
+    iu_rush = next(row for row in board if row.pick == "IU rush")
+    assert iu_rush.line == 170.5
+    assert "inferred_mark" not in iu_rush.flags
+
+
+def test_snapshot_posted_line_excludes_the_kickoff_capture(conn) -> None:
+    kickoff = "2026-09-19T20:00:00+00:00"
+    indiana, wku = _ranked_indiana(conn, kickoff=kickoff)
+    stamps = (
+        ("2026-09-19T16:00:00+00:00", 170.5, ("DK", "PINNACLE")),
+        (kickoff, 99.5, ("DK", "PINNACLE", "FD")),
+        ("2026-09-19T22:00:00+00:00", 80.5, ("DK", "PINNACLE", "FD", "MGM")),
+    )
+    for captured, line, books in stamps:
+        for book in books:
+            conn.execute(
+                """INSERT INTO team_prop_odds_snapshots
+                   (snapshot_id, game_id, team_id, market_id, book, captured_utc,
+                    market, side, line, price_american, price_decimal, is_primary, source)
+                   VALUES (?, 'cfbd:iu', ?, NULL, ?, ?,
+                           'team_rushing_yards', 'OVER', ?, -110, 1.91, 1, 'outlier')""",
+                (f"{book}-{captured}", indiana, book, captured, line),
+            )
+    conn.commit()
+
+    board = build_over_confidence_board(
+        conn,
+        "2026-09-19",
+        inputs_by_team={
+            indiana: default_team_props_inputs(
+                expected_rushing_attempts=48.0,
+                expected_pass_attempts=24.0,
+                data_quality_score=100.0,
+            ),
+            wku: default_team_props_inputs(data_quality_score=100.0),
+        },
+        as_of_utc="2026-09-20T00:00:00+00:00",
+    )
+    iu_rush = next(row for row in board if row.pick == "IU rush")
+    assert iu_rush.line == 170.5
+    assert "inferred_mark" not in iu_rush.flags
+
