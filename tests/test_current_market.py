@@ -95,6 +95,8 @@ class TestSupersededLineGroups:
             odds("A", "OVER", 120, EARLY, line=58.5), odds("A", "UNDER", -140, EARLY, line=58.5),
             # Later capture: the line moved to 56.5 and the 58.5 alternate was pulled.
             odds("A", "OVER", -110, LATE, line=56.5), odds("A", "UNDER", -110, LATE, line=56.5),
+            odds("B", "OVER", -115, LATE, line=56.5), odds("B", "UNDER", -105, LATE, line=56.5),
+            odds("C", "OVER", -110, LATE, line=56.5), odds("C", "UNDER", -110, LATE, line=56.5),
         ])
         summary = build_market_for_slate(seeded, SLATE)
         assert summary.stale_rows_skipped == 4
@@ -107,7 +109,10 @@ class TestSupersededLineGroups:
                        side="OVER", line=57.0, price_american=None, price_decimal=None,
                        is_primary=True, captured_utc=LATE, source="cfbd")
         store.insert_odds(seeded, [
-            odds("A", "OVER", -110, EARLY), odds("A", "UNDER", -110, EARLY), cfbd,
+            odds("A", "OVER", -110, EARLY), odds("A", "UNDER", -110, EARLY),
+            odds("B", "OVER", -115, EARLY), odds("B", "UNDER", -105, EARLY),
+            odds("C", "OVER", -110, EARLY), odds("C", "UNDER", -110, EARLY),
+            cfbd,
         ])
         build_market_for_slate(seeded, SLATE)
         lines = {r["line"] for r in seeded.execute(
@@ -120,7 +125,10 @@ class TestSupersededLineGroups:
                        side="OVER", line=55.5, price_american=None, price_decimal=None,
                        is_primary=True, captured_utc=LATE, source="cfbd")
         store.insert_odds(seeded, [
-            odds("A", "OVER", -110, EARLY), odds("A", "UNDER", -110, EARLY), cfbd,
+            odds("A", "OVER", -110, EARLY), odds("A", "UNDER", -110, EARLY),
+            odds("B", "OVER", -115, EARLY), odds("B", "UNDER", -105, EARLY),
+            odds("C", "OVER", -110, EARLY), odds("C", "UNDER", -110, EARLY),
+            cfbd,
         ])
         build_market_for_slate(seeded, SLATE)
         stamps = {r["as_of_utc"] for r in seeded.execute(
