@@ -18,11 +18,15 @@ class RankingsSummary:
     weeks: int
     rows: int
     unresolved: int
+    unresolved_names: tuple[str, ...] = ()
 
     def as_text(self) -> str:
+        unresolved = f"{self.unresolved} names did not resolve"
+        if self.unresolved_names:
+            unresolved += " (" + ", ".join(self.unresolved_names) + ")"
         return (
             f"CFBD rankings wrote {self.rows} poll ranks across {self.weeks} week(s); "
-            f"{self.unresolved} names did not resolve."
+            f"{unresolved}."
         )
 
 
@@ -79,16 +83,17 @@ def ingest_rankings(
     as_of = utc_now_iso()
     resolver = _team_name_index(conn)
     written = 0
-    unresolved = 0
+    unresolved_names: list[str] = []
     weeks: set[int] = set()
     with store.RunRecorder(conn, "backfill-rankings") as run:
         run.record_health("cfbd", "/rankings", ok=True, rows=len(payload))
         batch: list[dict[str, Any]] = []
         for raw in payload:
             for parsed in parse_rankings(raw, as_of_utc=as_of):
+                name = str(parsed.get("team_name") or "")
                 team_id = resolver.get(_name_key(parsed.pop("team_name")))
                 if team_id is None:
-                    unresolved += 1
+                    unresolved_names.append(name)
                     continue
                 weeks.add(int(parsed["week"]))
                 batch.append({**parsed, "team_id": team_id})
@@ -97,4 +102,9 @@ def ingest_rankings(
     if week is not None and payload and not weeks:
         raise SchemaError(f"CFBD rankings for {year} week {week} resolved zero teams")
     conn.commit()
-    return RankingsSummary(weeks=len(weeks), rows=written, unresolved=unresolved)
+    return RankingsSummary(
+        weeks=len(weeks),
+        rows=written,
+        unresolved=len(unresolved_names),
+        unresolved_names=tuple(unresolved_names),
+    )

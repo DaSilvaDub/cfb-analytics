@@ -62,6 +62,10 @@ MANDATORY_CFBD_SOURCES = frozenset(
 )
 # These publishes fail the run even when an ingest leg succeeded.
 REQUIRED_PUBLISH_STAGES = frozenset({"rankings", "over_board", "slate_report"})
+# Daniel: unresolved poll names above this count fail the rankings stage.
+# 0 fails the job on any unresolved name, which is what the 51-52 name
+# mornings need. Raise it only if one stray alias should stay green.
+RANKINGS_UNRESOLVED_NAMES_FAIL_ABOVE = 0
 
 
 @dataclass
@@ -87,6 +91,15 @@ class DailyReport:
             if outcome.status == "failed" and outcome.name in required
         ]
 
+    def skipped_required(self) -> list[SourceOutcome]:
+        """Required stages that did not run."""
+        required = MANDATORY_CFBD_SOURCES | REQUIRED_PUBLISH_STAGES
+        return [
+            outcome
+            for outcome in self.outcomes
+            if outcome.status == "skipped" and outcome.name in required
+        ]
+
     @property
     def ok(self) -> bool:
         """False when a required stage failed, or when nothing succeeded.
@@ -100,6 +113,8 @@ class DailyReport:
         slate report are red even when another leg succeeded.
         """
         if self.mandatory_failures():
+            return False
+        if self.skipped_required() and any(o.status == "ok" for o in self.outcomes):
             return False
         statuses = {outcome.status for outcome in self.outcomes}
         return "ok" in statuses or "failed" not in statuses
@@ -148,6 +163,10 @@ def daily_exit_code(report: DailyReport) -> int:
     for outcome in report.mandatory_failures():
         detail = " ".join(outcome.detail.split())
         print(f"::error::mandatory CFBD source {outcome.name} failed: {detail}")
+    if not report.ok:
+        for outcome in report.skipped_required():
+            detail = " ".join(outcome.detail.split())
+            print(f"::error::required stage {outcome.name} skipped: {detail}")
     return 0 if report.ok else 1
 
 
@@ -271,14 +290,18 @@ def _run_cfbd_rankings(
         from cfb_analytics.sources.cfbd import CFBDClient
 
         summary = ingest_rankings(conn, CFBDClient(), season, week=week)
+        names = tuple(summary.unresolved_names)
+        detail = (
+            f"{summary.rows} poll ranks, {summary.weeks} week(s), "
+            f"{summary.unresolved} unresolved names"
+        )
+        if names:
+            detail += ": " + ", ".join(names)
+        status = (
+            "failed" if summary.unresolved > RANKINGS_UNRESOLVED_NAMES_FAIL_ABOVE else "ok"
+        )
         report.outcomes.append(
-            SourceOutcome(
-                "rankings",
-                "ok",
-                f"{summary.rows} poll ranks, {summary.weeks} week(s), "
-                f"{summary.unresolved} unresolved names",
-                rows=summary.rows,
-            )
+            SourceOutcome("rankings", status, detail, rows=summary.rows)
         )
     except CfbAnalyticsError as exc:
         report.outcomes.append(SourceOutcome("rankings", "failed", str(exc)[:200]))
