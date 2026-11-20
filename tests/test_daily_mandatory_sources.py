@@ -150,6 +150,28 @@ def _run(conn, monkeypatch, *, failing: str | None):
     )
 
 
+def test_games_fetch_failure_fails_the_schedule_stage(conn, monkeypatch, capsys):
+    """A games-fetch exception must fail the schedule stage, not only game_scores.
+
+    ``_run_refresh_scores`` catches the error and used to record ``game_scores``
+    alone. The schedule outcome was never written, so the stage looked like it
+    had not run. The job still exits 1 because ``game_scores`` is mandatory.
+    """
+    report = _run(conn, monkeypatch, failing="game_scores")
+    code = daily.daily_exit_code(report)
+    captured = capsys.readouterr()
+
+    schedule = next(outcome for outcome in report.outcomes if outcome.name == "schedule")
+    scores = next(outcome for outcome in report.outcomes if outcome.name == "game_scores")
+    assert schedule.status == "failed"
+    assert "429" in schedule.detail
+    assert scores.status == "failed"
+    assert "429" in scores.detail
+    assert report.ok is False
+    assert code == 1
+    assert "::error::mandatory CFBD source game_scores failed" in captured.out
+
+
 @pytest.mark.parametrize("leg", ["cfbd", "game_scores", "team_boxes", "elo", "advanced"])
 def test_http_429_on_each_mandatory_leg_exits_nonzero(conn, monkeypatch, capsys, leg):
     report = _run(conn, monkeypatch, failing=leg)

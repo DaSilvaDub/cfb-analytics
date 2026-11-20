@@ -410,7 +410,9 @@ def _run_refresh_scores(
             )
         )
     except CfbAnalyticsError as exc:
-        report.outcomes.append(SourceOutcome("game_scores", "failed", str(exc)[:200]))
+        detail = str(exc)[:200]
+        report.outcomes.append(SourceOutcome("game_scores", "failed", detail))
+        report.outcomes.append(SourceOutcome("schedule", "failed", detail))
 
 
 def _run_outlier(
