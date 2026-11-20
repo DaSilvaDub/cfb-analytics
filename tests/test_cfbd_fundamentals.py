@@ -111,7 +111,7 @@ class TestInsertTeamRatingsWeeklyRow:
         assert stored["season_type"] is None
 
 
-def _seed_regular_season_game(conn, *, season, week, kickoff_utc):
+def _seed_regular_season_game(conn, *, season, week, kickoff_utc, game_id=None):
     """Team ids match the numeric CFBD ids ``_team_row`` produces (cfbd:1 /
     cfbd:2): in real usage every team_id comes from the same parse_team()
     function against a real CFBD numeric id, so the games table and the
@@ -123,7 +123,7 @@ def _seed_regular_season_game(conn, *, season, week, kickoff_utc):
     store.upsert_team(conn, {"team_id": "cfbd:2", "school": "Away U",
                               "alias": None, "market": None})
     store.upsert_cfbd_game(conn, {
-        "game_id": f"g-{season}-{week}", "season": season, "week": week,
+        "game_id": game_id or f"g-{season}-{week}", "season": season, "week": week,
         "season_type": "regular", "kickoff_utc": kickoff_utc,
         "football_date": kickoff_utc[:10], "neutral_site": 0, "conference_game": 0,
         "home_team_id": "cfbd:1", "away_team_id": "cfbd:2",
@@ -240,19 +240,21 @@ class TestEloWeeksSkipTheFuture:
         )
 
         scheduled = len(_SEASON_2026_WEEKS)
-        assert client.elo_weeks == list(range(1, 10))
+        # Week 9's only kickoff is still that evening, so the week is not
+        # finished and is not stamped or requested.
+        assert client.elo_weeks == list(range(1, 9))
         dropped = scheduled - len(client.elo_weeks)
-        assert dropped == 5
+        assert dropped == 6
         assert client.fbs_calls == 1
         # teams/fbs plus one Elo GET per stored week would have been 15 calls.
-        # The filter leaves 10. The drop is the five future weeks.
+        # The filter leaves 9. The drop is week 9 (not finished) and the five
+        # later weeks.
         assert client.fbs_calls + scheduled == 15
-        assert client.fbs_calls + len(client.elo_weeks) == 10
-        assert summary.endpoints == 10
-        assert {10, 11, 12, 13, 15}.isdisjoint(client.elo_weeks)
+        assert client.fbs_calls + len(client.elo_weeks) == 9
+        assert summary.endpoints == 9
+        assert {9, 10, 11, 12, 13, 15}.isdisjoint(client.elo_weeks)
 
-        # The as-of stamp is still latest kickoff + 1 day. The week filter
-        # must not move it.
+        # A finished week's as-of is still latest kickoff + 1 day.
         kickoff = datetime.fromisoformat("2026-08-29T23:00:00+00:00")
         stored = conn.execute(
             "SELECT as_of_utc FROM team_ratings WHERE source = 'elo_cfbd' AND week = 1"
@@ -288,10 +290,12 @@ class TestEloWeeksSkipTheFuture:
         assert summary.endpoints == 1
 
     def test_the_week_that_has_started_is_kept_and_the_next_week_is_not(self, conn):
-        """On 2026-10-27 Elo fetched week 10 and then 429'd on week 11.
+        """On 2026-10-27 Elo fetched a later week and then 429'd.
 
-        Week 9's first slate date in the published schedule is 2026-10-27, so
-        that week is current. Week 10 starts 2026-11-03 and must not be asked.
+        Week 9's kickoff is 2026-10-27 19:00 ET. Once that kickoff is in the
+        past the week is finished and kept. Week 10 starts 2026-11-07 and
+        must not be asked. Noon on the 27th, before the kickoff, is covered
+        by the unfinished-week test and is not stamped.
         """
         _seed_regular_season_game(
             conn, season=2026, week=9, kickoff_utc="2026-10-27T23:00:00+00:00"
@@ -303,10 +307,66 @@ class TestEloWeeksSkipTheFuture:
             conn, season=2026, week=11, kickoff_utc="2026-11-14T23:00:00+00:00"
         )
         client = _CountingEloClient()
-        now = datetime(2026, 10, 27, 12, tzinfo=FOOTBALL_TZ)
+        now = datetime(2026, 10, 28, 12, tzinfo=FOOTBALL_TZ)
 
         backfill_elo(conn, client, start_year=2026, end_year=2026, now=now)
 
         assert client.elo_weeks == [9]
         assert 10 not in client.elo_weeks
         assert 11 not in client.elo_weeks
+
+    def test_an_unfinished_week_is_not_stamped_complete(self, conn):
+        """A week with a kickoff still ahead must not look finished.
+
+        On master the as-of is the later kickoff plus one day. That stamp is
+        before week 12, so ``AsOfReader.latest`` serves the in-progress Elo
+        to the week-12 pregame read.
+        """
+        from cfb_analytics.features.elo_ratings import elo_rating_as_of
+
+        now = datetime(2026, 11, 13, 12, tzinfo=FOOTBALL_TZ)
+        _seed_regular_season_game(
+            conn, season=2026, week=10, kickoff_utc="2026-11-07T23:00:00+00:00"
+        )
+        _seed_regular_season_game(
+            conn,
+            season=2026,
+            week=11,
+            kickoff_utc="2026-11-12T00:00:00+00:00",
+            game_id="g-2026-11-early",
+        )
+        _seed_regular_season_game(
+            conn,
+            season=2026,
+            week=11,
+            kickoff_utc="2026-11-14T23:00:00+00:00",
+            game_id="g-2026-11-late",
+        )
+        _seed_regular_season_game(
+            conn, season=2026, week=12, kickoff_utc="2026-11-21T23:00:00+00:00"
+        )
+        client = FakeCfbdClient(
+            teams=[_team_row(1, "Home U"), _team_row(2, "Away U")],
+            elo_by_week={
+                10: [{"year": 2026, "team": "Home U", "elo": 1500}],
+                11: [{"year": 2026, "team": "Home U", "elo": 1800}],
+                12: [{"year": 2026, "team": "Home U", "elo": 1900}],
+            },
+        )
+
+        backfill_elo(conn, client, start_year=2026, end_year=2026, now=now)
+
+        late = datetime.fromisoformat("2026-11-14T23:00:00+00:00")
+        completion = (late + timedelta(days=1)).isoformat()
+        stored = conn.execute(
+            """SELECT week, as_of_utc, rating FROM team_ratings
+               WHERE source = 'elo_cfbd' ORDER BY week"""
+        ).fetchall()
+        assert [row["week"] for row in stored] == [10]
+        assert completion not in {row["as_of_utc"] for row in stored}
+        week10 = datetime.fromisoformat("2026-11-07T23:00:00+00:00")
+        assert stored[0]["as_of_utc"] == (week10 + timedelta(days=1)).isoformat()
+        assert stored[0]["rating"] == 1500
+
+        rating = elo_rating_as_of(conn, "cfbd:1", 2026, "2026-11-21T23:00:00+00:00")
+        assert rating == 1500.0

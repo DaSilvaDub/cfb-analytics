@@ -119,7 +119,15 @@ def _resolve_rows(
     return resolved, skipped
 
 
-def _cutoffs(conn: sqlite3.Connection, season: int) -> tuple[dict[int, str], str]:
+def _aware(moment: datetime) -> datetime:
+    if moment.tzinfo is None:
+        return moment.replace(tzinfo=FOOTBALL_TZ)
+    return moment
+
+
+def _cutoffs(
+    conn: sqlite3.Connection, season: int, *, now: datetime | None = None
+) -> tuple[dict[int, str], str]:
     rows = conn.execute(
         """SELECT week, kickoff_utc FROM games
            WHERE source = 'cfbd' AND season = ? AND season_type = 'regular'
@@ -134,9 +142,18 @@ def _cutoffs(conn: sqlite3.Connection, season: int) -> tuple[dict[int, str], str
     for row in rows:
         stamp = datetime.fromisoformat(str(row["kickoff_utc"]))
         by_week.setdefault(int(row["week"]), []).append(stamp)
-    weekly = {
-        week: (max(stamps) + timedelta(days=1)).isoformat() for week, stamps in by_week.items()
-    }
+    moment = None if now is None else _aware(now)
+    # A finished week's Elo is the rating after its last kickoff. The stamp is
+    # that kickoff plus one day, which is what keeps the row out of every game
+    # in the week and admissible for the next one. An unfinished week has no
+    # such stamp: max(kickoff)+1 day would mark it complete, and
+    # AsOfReader.latest would then serve it to every later pregame read.
+    weekly: dict[int, str] = {}
+    for week, stamps in by_week.items():
+        latest = max(stamps)
+        if moment is not None and latest > moment:
+            continue
+        weekly[week] = (latest + timedelta(days=1)).isoformat()
     all_games = conn.execute(
         """SELECT kickoff_utc FROM games
            WHERE source = 'cfbd' AND season = ? AND COALESCE(kickoff_tbd, 0) = 0""",
@@ -156,12 +173,13 @@ def elo_weeks_due(
     *,
     now: datetime | None = None,
 ) -> dict[int, str]:
-    """Weeks to request: those at or before the current Eastern slate week.
+    """Weeks to request: finished weeks at or before the current Eastern slate week.
 
-    ``weekly_cutoffs`` still supplies each week's as-of stamp (latest kickoff
-    that week, plus one day). This does not recompute that stamp. A week whose
-    games are all still after ``now`` on the US Eastern calendar is omitted, so
-    a daily Elo refresh does not walk the rest of the season.
+    ``weekly_cutoffs`` supplies each finished week's as-of (latest kickoff plus
+    one day). A week that still has a kickoff after ``now`` is absent from that
+    map, so it is not requested and is not stamped as complete. A week whose
+    games are all still after ``now`` on the US Eastern calendar is omitted
+    here as well.
     """
     moment = now or datetime.now(FOOTBALL_TZ)
     if moment.tzinfo is None:
@@ -231,7 +249,7 @@ def backfill_fundamentals(
 
     with store.RunRecorder(conn, command) as run:
         for year in range(start_year, end_year + 1):
-            weekly_cutoffs, season_final = _cutoffs(conn, year)
+            weekly_cutoffs, season_final = _cutoffs(conn, year, now=datetime.now(FOOTBALL_TZ))
             team_rows = _fetch(run, f"teams/fbs:{year}", partial(client.fetch_fbs_teams, year))
             endpoints += 1
             resolver = _team_resolver(team_rows)
@@ -371,23 +389,25 @@ def backfill_elo(
     endpoints again per season, just to pick up the Elo fix, would waste API
     calls and time for data that is already correct in the store.
 
-    Weeks whose games are still in the future on the US Eastern calendar are
-    not requested. The as-of stamp for a week that is requested is unchanged
-    (latest kickoff that week, plus one day).
+    A week is requested only once every stored kickoff is at or before
+    ``now``. Its as-of is that latest kickoff plus one day. An unfinished
+    week is not given that stamp: it would look complete, and a later game's
+    pregame read would treat it as the post-week rating.
     """
     if start_year > end_year:
         raise SchemaError("start_year must be less than or equal to end_year")
 
     rating_count = filtered = endpoints = 0
     command = f"backfill-elo --start-year {start_year} --end-year {end_year}"
+    moment = now or datetime.now(FOOTBALL_TZ)
 
     with store.RunRecorder(conn, command) as run:
         for year in range(start_year, end_year + 1):
-            weekly_cutoffs, _season_final = _cutoffs(conn, year)
+            weekly_cutoffs, _season_final = _cutoffs(conn, year, now=moment)
             team_rows = _fetch(run, f"teams/fbs:{year}", partial(client.fetch_fbs_teams, year))
             endpoints += 1
             resolver = _team_resolver(team_rows)
-            due = elo_weeks_due(conn, year, weekly_cutoffs, now=now)
+            due = elo_weeks_due(conn, year, weekly_cutoffs, now=moment)
 
             for week, as_of_utc in sorted(due.items()):
                 written, skipped = _backfill_elo_week(
