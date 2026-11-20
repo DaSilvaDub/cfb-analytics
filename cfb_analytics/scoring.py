@@ -12,6 +12,7 @@ team_total_points are supported).
 from __future__ import annotations
 
 import json
+import logging
 import math
 import sqlite3
 from collections.abc import Mapping, Sequence
@@ -37,6 +38,8 @@ from cfb_analytics.models.team_props import (
     project_team_production,
 )
 from cfb_analytics.utils import american_to_decimal, implied_probability, to_utc_iso, utc_now_iso
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -586,6 +589,31 @@ def _opponent_multiplier(allowed: Any, fbs_baseline: float) -> float:
     return max(_OPP_ADJ_MIN, min(_OPP_ADJ_MAX, value / fbs_baseline))
 
 
+def _games_played_before(
+    conn: sqlite3.Connection,
+    team_id: str,
+    cutoff: str,
+    season: int | None,
+) -> int:
+    """Games this team has on the schedule strictly before ``cutoff``.
+
+    Passing-box rows are one count. When those rows are missing, the schedule
+    is the count. The snapshot week is not a count.
+    """
+    query = """
+        SELECT COUNT(*) AS n FROM games
+        WHERE (home_team_id = ? OR away_team_id = ?)
+          AND kickoff_utc < ?
+          AND COALESCE(kickoff_tbd, 0) = 0
+    """
+    params: list[Any] = [team_id, team_id, cutoff]
+    if season is not None:
+        query += " AND season = ?"
+        params.append(season)
+    row = conn.execute(query, params).fetchone()
+    return int(row["n"]) if row and row["n"] else 0
+
+
 def build_team_props_inputs_from_db(
     conn: sqlite3.Connection,
     team_id: str,
@@ -713,8 +741,17 @@ def build_team_props_inputs_from_db(
 
     plays = int(row_adv["plays"]) if (row_adv and row_adv["plays"]) else 0
     drives = int(row_adv["drives"]) if (row_adv and row_adv["drives"]) else 0
-    snapshot_week = int(row_adv["week"]) if (row_adv and row_adv["week"]) else 0
-    observed_games = n_games or snapshot_week
+    if n_games > 0:
+        observed_games = n_games
+    else:
+        observed_games = _games_played_before(conn, team_id, cutoff, resolved_season)
+        if observed_games == 0 and plays > 0 and drives > 0:
+            logger.warning(
+                "No games-played count for team %s before %s; "
+                "pace stays at the FBS baseline instead of plays divided by the snapshot week",
+                team_id,
+                cutoff,
+            )
 
     if observed_games > 0 and drives > 0 and plays > 0:
         pace = round(max(50.0, min(95.0, plays / observed_games)), 1)
