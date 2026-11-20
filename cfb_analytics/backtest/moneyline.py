@@ -993,12 +993,12 @@ def _load_market_home_probs(
     *,
     min_books: int,
 ) -> dict[str, float]:
-    """Latest pre-kickoff ML HOME vig-free prob per game from market_consensus.
+    """Last ML HOME vig-free prob at or before kickoff, per game.
 
-    Prefers shin, falls back to multiplicative. Rows with n_books below
-    ``min_books`` are excluded (thin markets stay out of the promotion
-    compare unless the caller lowered the floor via
-    ``historical_cfbd_min_books``).
+    Prefers shin, falls back to multiplicative. A quote after kickoff is not
+    the close. Rows with n_books below ``min_books`` are excluded (thin
+    markets stay out of the promotion compare unless the caller lowered the
+    floor via ``historical_cfbd_min_books``).
     """
     if not game_ids:
         return {}
@@ -1006,9 +1006,11 @@ def _load_market_home_probs(
     rows = conn.execute(
         f"""SELECT c.game_id, c.prob_shin, c.prob_multiplicative, c.n_books, c.as_of_utc
             FROM market_consensus c
+            JOIN games g ON g.game_id = c.game_id
             WHERE c.market = 'ML' AND c.side = 'HOME'
               AND c.game_id IN ({placeholders})
               AND c.n_books >= ?
+              AND c.as_of_utc <= g.kickoff_utc
             ORDER BY c.game_id, c.as_of_utc DESC""",
         (*game_ids, int(min_books)),
     ).fetchall()
