@@ -191,7 +191,7 @@ def test_oct31_mix_of_429s_and_successes_exits_nonzero(capsys):
         assert f"::error::mandatory CFBD source {name} failed" in captured.out
 
 
-def test_missing_cfbd_key_still_exits_zero(conn, monkeypatch, capsys):
+def test_missing_cfbd_key_skips_required_stages_and_exits_nonzero(conn, monkeypatch, capsys):
     _seed_slate_game(conn)
     monkeypatch.setattr(daily.config, "has_cfbd_key", lambda: False)
     report = daily.run_daily(
@@ -205,9 +205,10 @@ def test_missing_cfbd_key_still_exits_zero(conn, monkeypatch, capsys):
     code = daily.daily_exit_code(report)
     captured = capsys.readouterr()
 
-    assert report.ok is True
-    assert code == 0
-    assert "::error::" not in captured.out
+    assert report.ok is False
+    assert code == 1
+    for name in ("cfbd", "rankings", "elo", "team_boxes"):
+        assert f"::error::required stage {name} skipped" in captured.out
 
 
 def test_cli_daily_returns_nonzero_and_annotates_a_mandatory_429(conn, monkeypatch, capsys):
