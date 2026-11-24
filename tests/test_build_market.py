@@ -39,6 +39,7 @@ class TestLeakageWiring:
         store.insert_odds(seeded, [
             odds("A", "HOME", -200, BEFORE), odds("A", "AWAY", 170, BEFORE),
             odds("B", "HOME", -210, BEFORE), odds("B", "AWAY", 175, BEFORE),
+            odds("C", "HOME", -205, BEFORE), odds("C", "AWAY", 172, BEFORE),
             # A closing line recorded after kickoff must never reach a feature.
             odds("A", "HOME", -400, AFTER), odds("A", "AWAY", 320, AFTER),
         ])
@@ -62,6 +63,7 @@ class TestConsensusPersistence:
         store.insert_odds(seeded, [
             odds("A", "HOME", -200, BEFORE), odds("A", "AWAY", 170, BEFORE),
             odds("B", "HOME", -210, BEFORE), odds("B", "AWAY", 175, BEFORE),
+            odds("C", "HOME", -205, BEFORE), odds("C", "AWAY", 172, BEFORE),
         ])
         summary = build_market_for_slate(seeded, SLATE)
         assert summary.consensus_rows == 2
@@ -72,6 +74,7 @@ class TestConsensusPersistence:
         store.insert_odds(seeded, [
             odds("A", "HOME", -200, BEFORE), odds("A", "AWAY", 170, BEFORE),
             odds("B", "HOME", -210, BEFORE), odds("B", "AWAY", 175, BEFORE),
+            odds("C", "HOME", -205, BEFORE), odds("C", "AWAY", 172, BEFORE),
         ])
         build_market_for_slate(seeded, SLATE)
         row = seeded.execute(
@@ -84,6 +87,7 @@ class TestConsensusPersistence:
         store.insert_odds(seeded, [
             odds("A", "HOME", -200, BEFORE), odds("A", "AWAY", 170, BEFORE),
             odds("B", "HOME", -210, BEFORE), odds("B", "AWAY", 175, BEFORE),
+            odds("C", "HOME", -205, BEFORE), odds("C", "AWAY", 172, BEFORE),
         ])
         build_market_for_slate(seeded, SLATE)
         build_market_for_slate(seeded, SLATE)
@@ -94,8 +98,16 @@ class TestConsensusPersistence:
         store.insert_odds(seeded, [
             odds("A", "OVER", -110, BEFORE, market="TOTAL", line=55.5),
             odds("A", "UNDER", -110, BEFORE, market="TOTAL", line=55.5),
+            odds("B", "OVER", -115, BEFORE, market="TOTAL", line=55.5),
+            odds("B", "UNDER", -105, BEFORE, market="TOTAL", line=55.5),
+            odds("C", "OVER", -110, BEFORE, market="TOTAL", line=55.5),
+            odds("C", "UNDER", -110, BEFORE, market="TOTAL", line=55.5),
             odds("A", "OVER", -130, BEFORE, market="TOTAL", line=52.5),
             odds("A", "UNDER", 110, BEFORE, market="TOTAL", line=52.5),
+            odds("B", "OVER", -125, BEFORE, market="TOTAL", line=52.5),
+            odds("B", "UNDER", 105, BEFORE, market="TOTAL", line=52.5),
+            odds("C", "OVER", -130, BEFORE, market="TOTAL", line=52.5),
+            odds("C", "UNDER", 110, BEFORE, market="TOTAL", line=52.5),
         ])
         build_market_for_slate(seeded, SLATE)
         lines = {r["line"] for r in seeded.execute(
@@ -136,6 +148,7 @@ class TestSummary:
         store.insert_odds(seeded, [
             odds("A", "HOME", -200, BEFORE), odds("A", "AWAY", 170, BEFORE),
             odds("B", "HOME", -210, BEFORE), odds("B", "AWAY", 175, BEFORE),
+            odds("C", "HOME", -205, BEFORE), odds("C", "AWAY", 172, BEFORE),
         ])
         summary = build_market_for_slate(seeded, SLATE)
         assert summary.anchors.get("all_books") == 1, "no sharp books in this fixture"

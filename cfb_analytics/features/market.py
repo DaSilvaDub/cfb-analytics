@@ -192,8 +192,6 @@ def build_consensus(
         by_side.setdefault(str(row["side"]).upper(), []).append(row)
 
     n_books = len({str(r["book"]).upper() for r in selected})
-    if n_books < min_books_for_consensus:
-        flags.append(FLAG_THIN_MARKET)
     if n_books == 1:
         flags.append(FLAG_SINGLE_BOOK)
 
@@ -236,6 +234,22 @@ def build_consensus(
         )
     if len(two_sided) < len(per_book):
         flags.append(FLAG_PARTIAL_BOOKS)
+    # The floor counts books that quote every side. A one-sided quote is not
+    # a book the market can be devigged from, and fewer than min_books
+    # two-sided books is unpriced (no consensus price, no fair probability).
+    if len(two_sided) < min_books_for_consensus:
+        flags.append(FLAG_THIN_MARKET)
+        return MarketConsensus(
+            game_id=game_id,
+            market=market,
+            line=_first_line(selected),
+            as_of_utc=as_of_utc,
+            n_books=len(two_sided),
+            hold=None,
+            sides=(),
+            anchor="none",
+            flags=tuple(dict.fromkeys(flags)),
+        )
 
     fair_by_method: dict[str, dict[str, list[float]]] = {m: {} for m in methods}
     holds: list[float] = []
