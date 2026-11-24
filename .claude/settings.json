@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "deny": [
+      "Read(./.env)",
+      "Read(./**/*.env)",
+      "Read(~/Dev/GitHub/outlier/config/.outlier_session/**)"
+    ],
+    "ask": [
+      "Edit(./config/promotion.json)",
+      "Write(./config/promotion.json)"
+    ]
+  }
+}
