@@ -126,7 +126,7 @@ def preseason_rating(
 def expected_score(rating_a: float, rating_b: float, *, hfa: float = 0.0) -> float:
     """P(a beats b). ``hfa`` is added to ``rating_a``'s side; pass 0 for a
     neutral site, or when computing from a team that is not the home side."""
-    return 1.0 / (1.0 + 10.0 ** (-(rating_a - rating_b + hfa) / 400.0))
+    return float(1.0 / (1.0 + 10.0 ** (-(rating_a - rating_b + hfa) / 400.0)))
 
 
 def margin_of_victory_multiplier(k: float, margin: float, winner_rating: float,

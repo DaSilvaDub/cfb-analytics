@@ -57,6 +57,7 @@ select = ["E", "F", "I", "UP", "B", "SIM"]
 
 [tool.mypy]
 python_version = "3.11"
+strict = true
 ignore_missing_imports = true
 warn_unused_configs = true
 check_untyped_defs = true

@@ -134,7 +134,7 @@ class HttpClient:
         tmp.replace(path)
 
     def _backoff(self, attempt: int) -> float:
-        return min(8.0, 0.5 * (2 ** (attempt - 1))) * (0.5 + random.random() / 2)
+        return float(min(8.0, 0.5 * (2 ** (attempt - 1))) * (0.5 + random.random() / 2))
 
     def _retry_delay(self, attempt: int, exc: urllib.error.HTTPError | None) -> float:
         """Wait at least ``Retry-After`` on HTTP 429, and never longer than the cap.

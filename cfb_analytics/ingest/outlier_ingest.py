@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import sqlite3
 from dataclasses import dataclass, field
+from typing import Any
 
 from cfb_analytics.errors import SchemaError, SourceError
 from cfb_analytics.features.team_props import build_team_prop_consensus
@@ -124,7 +125,7 @@ def ingest_slate(
             parsed = parsed[:limit]
 
         resolver = CanonicalResolver(conn)
-        resolved: list[tuple[dict, EventResolution]] = []
+        resolved: list[tuple[dict[str, Any], EventResolution]] = []
         for record in parsed:
             resolution = resolver.event(record)
             if not resolution.ok:
@@ -156,9 +157,17 @@ def ingest_slate(
     return summary
 
 
-def _ingest_odds(conn, client, resolved, captured_utc, summary, run) -> None:
+def _ingest_odds(
+    conn: sqlite3.Connection,
+    client: OutlierClient,
+    resolved: list[tuple[dict[str, Any], EventResolution]],
+    captured_utc: str,
+    summary: IngestSummary,
+    run: store.RunRecorder,
+) -> None:
     for record, resolution in resolved:
         event_id = record["game_id"]  # Outlier's id: what the API wants.
+        assert resolution.game_id is not None  # only ok resolutions reach here
         canonical_id = resolution.game_id  # cfbd:<id>: what the store wants.
         try:
             markets = client.fetch_event_markets(event_id, "GAMELINE")
@@ -174,14 +183,23 @@ def _ingest_odds(conn, client, resolved, captured_utc, summary, run) -> None:
     conn.commit()
 
 
-def _ingest_injuries(conn, client, resolved, captured_utc, summary, run) -> None:
+def _ingest_injuries(
+    conn: sqlite3.Connection,
+    client: OutlierClient,
+    resolved: list[tuple[dict[str, Any], EventResolution]],
+    captured_utc: str,
+    summary: IngestSummary,
+    run: store.RunRecorder,
+) -> None:
     for record, resolution in resolved:
+        assert resolution.game_id is not None  # only ok resolutions reach here
         canonical_game = resolution.game_id
         sides = (
             ("home", resolution.home_team_id),
             ("away", resolution.away_team_id),
         )
         for side, canonical_team in sides:
+            assert canonical_team is not None  # ok resolutions carry both team ids
             feed_team_id = record[side]["team_id"]  # Outlier's id: for the API.
             try:
                 players = client.fetch_team_injuries(feed_team_id)
@@ -195,12 +213,24 @@ def _ingest_injuries(conn, client, resolved, captured_utc, summary, run) -> None
     conn.commit()
 
 
-def _ingest_team_props(conn, client, resolved, captured_utc, summary, run) -> None:
+def _ingest_team_props(
+    conn: sqlite3.Connection,
+    client: OutlierClient,
+    resolved: list[tuple[dict[str, Any], EventResolution]],
+    captured_utc: str,
+    summary: IngestSummary,
+    run: store.RunRecorder,
+) -> None:
     canonical_games: list[str] = []
     for record, resolution in resolved:
         event_id = record["game_id"]
+        assert (
+            resolution.game_id is not None
+            and resolution.home_team_id is not None
+            and resolution.away_team_id is not None
+        )  # only ok resolutions reach here
         canonical_game = resolution.game_id
-        team_id_map = {
+        team_id_map: dict[str, str] = {
             record["home"]["team_id"]: resolution.home_team_id,
             record["away"]["team_id"]: resolution.away_team_id,
         }
@@ -223,7 +253,7 @@ def _ingest_team_props(conn, client, resolved, captured_utc, summary, run) -> No
     conn.commit()
 
 
-def _alias_rows(record: dict, resolution: EventResolution) -> list[dict[str, str]]:
+def _alias_rows(record: dict[str, Any], resolution: EventResolution) -> list[dict[str, str]]:
     """Keep Outlier's naming as aliases on the canonical team.
 
     This ingest no longer writes ``teams`` rows, so without this the feed's

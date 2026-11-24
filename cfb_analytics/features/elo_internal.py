@@ -75,7 +75,7 @@ def _pool_non_fbs_teams(
     return pooled
 
 
-def _season_games(conn: sqlite3.Connection, season: int) -> list[dict]:
+def _season_games(conn: sqlite3.Connection, season: int) -> list[dict[str, Any]]:
     rows = conn.execute(
         """SELECT game_id, home_team_id, away_team_id, home_points, away_points,
                   neutral_site, kickoff_utc
