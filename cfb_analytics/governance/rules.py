@@ -49,8 +49,8 @@ class CandidateWager:
     line: float  # Market line (e.g. -28.0, 58.5, +3.5)
     odds_american: int = -110  # Actionable American odds (e.g. -110, +135)
     confidence: float = 7.0  # Original confidence score (0.0 to 10.0 scale)
-    edge_pct: float = 0.05  # Edge percentage
-    fair_prob: float = 0.50  # Vig-free fair probability
+    edge_pct: float | None = None  # Edge percentage; None when the source has no edge
+    fair_prob: float | None = None  # Vig-free fair probability; None when unknown
     target_team: str = ""  # Specific team backed, or empty string
 
     @classmethod
@@ -70,8 +70,8 @@ class CandidateWager:
             line=getattr(opp, "line", 0.0),
             odds_american=getattr(opp, "posted_price_american", -110),
             confidence=conf,
-            edge_pct=getattr(opp, "edge_pct", 0.0),
-            fair_prob=getattr(opp, "consensus_fair_prob", 0.50),
+            edge_pct=getattr(opp, "edge_pct", None),
+            fair_prob=getattr(opp, "consensus_fair_prob", None),
             target_team=target_team or getattr(opp, "team", ""),
         )
 
@@ -88,8 +88,8 @@ class CandidateWager:
             line=card.line or 0.0,
             odds_american=card.price_american or -110,
             confidence=card.confidence,
-            edge_pct=0.05,
-            fair_prob=0.50,
+            edge_pct=getattr(card, "edge_pct", None),
+            fair_prob=getattr(card, "fair_prob", None),
             target_team=card.side,
         )
 
