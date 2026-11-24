@@ -27,4 +27,4 @@ def elo_win_probability(
     hfa: float = HFA_ELO_POINTS,
 ) -> float:
     bonus = 0.0 if neutral_site else hfa
-    return 1.0 / (1.0 + 10.0 ** (-(rating_home - rating_away + bonus) / 400.0))
+    return float(1.0 / (1.0 + 10.0 ** (-(rating_home - rating_away + bonus) / 400.0)))

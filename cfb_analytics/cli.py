@@ -827,9 +827,9 @@ def _cmd_board(args: argparse.Namespace) -> int:
 
 def _print_reasoning_cards(
     date: str,
-    rows: list,
-    cards: dict | None = None,
-    verdicts: dict | None = None,
+    rows: list[Any],
+    cards: dict[str, Any] | None = None,
+    verdicts: dict[str, Any] | None = None,
 ) -> None:
     """Print reasoning cards for each moneyline board entry."""
     from cfb_analytics.reporting.terminal import render_reasoning_card

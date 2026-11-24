@@ -14,6 +14,8 @@ the same formula so evidence matches live scoring.
 
 from __future__ import annotations
 
+from typing import Any
+
 _PROB_EPS = 1e-12
 DEFAULT_MARKET_WEIGHT_FLOOR = 0.75
 
@@ -41,7 +43,7 @@ def blend_with_market(
     return clip_prob(weight * clip_prob(p_market) + (1.0 - weight) * clip_prob(p_model))
 
 
-def market_weight_floor_from_settings(settings: dict | None) -> float:
+def market_weight_floor_from_settings(settings: dict[str, Any] | None) -> float:
     """Read ``blend.market_weight_floor`` from a settings dict (default 0.75)."""
     if not settings:
         return DEFAULT_MARKET_WEIGHT_FLOOR

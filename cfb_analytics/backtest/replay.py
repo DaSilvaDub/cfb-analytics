@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import sqlite3
 from dataclasses import dataclass
+from typing import Any
 
 from cfb_analytics.features.live import (
     QUARTER_SECONDS,
@@ -78,7 +79,7 @@ def _map_cfbd_result(result: str | None) -> DriveOutcome:
     return CFBD_RESULT_MAP.get(normalized, DriveOutcome.DOWNS)
 
 
-def _is_scrimmage_play(play_row: dict) -> bool:
+def _is_scrimmage_play(play_row: dict[str, Any]) -> bool:
     """Filter out non-scrimmage plays (kickoffs, PATs, etc.)."""
     down = play_row["down"]
     play_type = (play_row["play_type"] or "").lower()
@@ -153,7 +154,7 @@ def replay_game(
         (game_id,),
     ).fetchall()
 
-    plays_by_drive: dict[str, list[dict]] = {}
+    plays_by_drive: dict[str, list[dict[str, Any]]] = {}
     for play in all_plays:
         did = str(play["drive_id"])
         plays_by_drive.setdefault(did, []).append(dict(play))

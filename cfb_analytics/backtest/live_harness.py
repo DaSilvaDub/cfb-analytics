@@ -10,6 +10,7 @@ from __future__ import annotations
 import sqlite3
 from dataclasses import dataclass, field
 from datetime import datetime
+from typing import Any
 
 from cfb_analytics.backtest.replay import (
     CheckpointLabel,
@@ -83,7 +84,7 @@ def _regular_season_weeks(conn: sqlite3.Connection, season: int) -> list[int]:
     return [int(row["week"]) for row in rows]
 
 
-def _row_to_history_game(row: dict) -> dict:
+def _row_to_history_game(row: dict[str, Any]) -> dict[str, Any]:
     return {
         "home_team_id": row["home_team_id"],
         "away_team_id": row["away_team_id"],

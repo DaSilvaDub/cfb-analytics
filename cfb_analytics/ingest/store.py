@@ -42,7 +42,7 @@ class RunRecorder:
         self.conn.commit()
         return self
 
-    def __exit__(self, exc_type, exc, tb) -> Literal[False]:
+    def __exit__(self, exc_type: Any, exc: Any, tb: Any) -> Literal[False]:
         status = "ok" if exc_type is None else "failed"
         error_name = exc_type.__name__ if exc_type is not None else "Exception"
         detail = None if exc is None else f"{error_name}: {exc}"[:500]

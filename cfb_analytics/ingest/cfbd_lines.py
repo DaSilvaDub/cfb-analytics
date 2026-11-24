@@ -176,7 +176,9 @@ def parse_movement_rows(
 
     out: list[dict[str, Any]] = []
 
-    def movement(market: str, side: str, open_line: float | None, current_line: float | None):
+    def movement(
+        market: str, side: str, open_line: float | None, current_line: float | None
+    ) -> None:
         if open_line is None or current_line is None:
             return
         magnitude = current_line - open_line
