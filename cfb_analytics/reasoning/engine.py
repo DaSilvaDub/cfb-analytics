@@ -157,10 +157,14 @@ class MultiFactorReasoningEngine:
                 f"Elevation: {context.venue_elevation_m:.0f}m."
             )
 
-        temp_f = (w.temperature_c * 9.0 / 5.0) + 32.0
+        if w.temperature_c is None:
+            temp_txt = "temperature unknown"
+        else:
+            temp_f = (w.temperature_c * 9.0 / 5.0) + 32.0
+            temp_txt = f"{temp_f:.1f}°F ({w.temperature_c:.1f}°C)"
         eff_wind = w.effective_wind_kph if w.effective_wind_kph > 0 else w.wind_kph
         return (
-            f"Venue & Weather: Kickoff {temp_f:.1f}°F ({w.temperature_c:.1f}°C), outdoor. "
+            f"Venue & Weather: Kickoff {temp_txt}, outdoor. "
             f"Wind: {w.wind_kph:.1f} kph sustained (gusts {w.gust_kph:.1f} kph, effective "
             f"{eff_wind:.1f} kph). "
             f"Precipitation: {w.precip_mm:.1f} mm. Multipliers: pass {w.pass_vol_mult:.2f}x, "

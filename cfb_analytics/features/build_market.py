@@ -55,7 +55,7 @@ class MarketBuildSummary:
 
 def _games_for_slate(conn: sqlite3.Connection, slate_date: str) -> list[dict[str, Any]]:
     rows = conn.execute(
-        """SELECT game_id, kickoff_utc, season, football_date
+        """SELECT game_id, kickoff_utc, season, football_date, kickoff_tbd
            FROM games WHERE football_date = ? ORDER BY kickoff_utc""",
         (slate_date,),
     ).fetchall()

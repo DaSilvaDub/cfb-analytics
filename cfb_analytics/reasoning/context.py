@@ -10,6 +10,7 @@ from __future__ import annotations
 import logging
 import sqlite3
 
+from cfb_analytics.features.current_market import primary_lines
 from cfb_analytics.features.over_confidence import format_kickoff_et
 from cfb_analytics.features.qb import presumptive_starter_as_of
 from cfb_analytics.features.rest import RestLookup
@@ -44,13 +45,20 @@ _QB_UNCONFIRMED_DESIGNATIONS = frozenset(
 )
 
 
-def _load_weather(conn: sqlite3.Connection, game_id: str, venue_id: str | None) -> WeatherProfile:
-    """Load latest pre-kickoff weather or fallback to venue indoor/neutral default."""
+def _load_weather(
+    conn: sqlite3.Connection,
+    game_id: str,
+    venue_id: str | None,
+    kickoff_utc: str,
+) -> WeatherProfile:
+    """Newest row strictly before kickoff."""
     try:
         w_row = conn.execute(
             """SELECT temp_c, wind_kph, wind_gust_kph, precip_mm, precip_prob, humidity, is_indoor
-               FROM weather WHERE game_id = ? ORDER BY as_of_utc DESC LIMIT 1""",
-            (game_id,),
+               FROM weather
+               WHERE game_id = ? AND as_of_utc < ?
+               ORDER BY as_of_utc DESC LIMIT 1""",
+            (game_id, kickoff_utc),
         ).fetchone()
     except sqlite3.OperationalError:
         w_row = None
@@ -70,7 +78,7 @@ def _load_weather(conn: sqlite3.Connection, game_id: str, venue_id: str | None) 
         is_indoor = True
 
     if w_row:
-        temp_c = w_row["temp_c"] if w_row["temp_c"] is not None else 20.0
+        temp_c = w_row["temp_c"]
         wind_kph = w_row["wind_kph"] if w_row["wind_kph"] is not None else 0.0
         gust_kph = w_row["wind_gust_kph"] if w_row["wind_gust_kph"] is not None else wind_kph
         precip_mm = w_row["precip_mm"] if w_row["precip_mm"] is not None else 0.0
@@ -366,20 +374,28 @@ def _load_travel_tax(
 def _load_market_lines(
     conn: sqlite3.Connection,
     game_id: str,
+    kickoff_utc: str,
 ) -> tuple[float | None, float | None, int | None, int | None]:
-    """Query consensus spread, total, and moneyline prices."""
+    """Primary line of the newest capture strictly before kickoff."""
     spread_home = None
     total = None
     ml_home = None
     ml_away = None
     try:
         rows = conn.execute(
-            """SELECT market, side, line, consensus_price FROM market_consensus
-               WHERE game_id = ?
-               ORDER BY as_of_utc DESC""",
-            (game_id,),
+            """SELECT c.game_id, c.market, c.side, c.line, c.consensus_price,
+                      c.n_books, c.hold, c.prob_shin, c.prob_multiplicative
+               FROM market_consensus c
+               WHERE c.game_id = ?
+                 AND c.as_of_utc < ?
+                 AND c.as_of_utc = (
+                     SELECT MAX(m.as_of_utc) FROM market_consensus m
+                     WHERE m.game_id = c.game_id AND m.market = c.market
+                       AND m.as_of_utc < ?
+                 )""",
+            (game_id, kickoff_utc, kickoff_utc),
         ).fetchall()
-        for r in rows:
+        for r in primary_lines(dict(row) for row in rows):
             m = r["market"]
             s = r["side"]
             if m == "SPREAD" and s == "HOME" and spread_home is None:
@@ -450,7 +466,7 @@ def load_situational_context_for_game(
     home_team = g["home_alias"] or g["home_school"] or "HOME"
     away_team = g["away_alias"] or g["away_school"] or "AWAY"
 
-    weather = _load_weather(conn, game_id, g["venue_id"])
+    weather = _load_weather(conn, game_id, g["venue_id"], kickoff_utc)
     tape_home = _load_tape_profile(conn, home_id, home_team, kickoff_utc)
     tape_away = _load_tape_profile(conn, away_id, away_team, kickoff_utc)
 
@@ -476,7 +492,7 @@ def load_situational_context_for_game(
         rest_away = 7.0
 
     travel_tax = _load_travel_tax(conn, g["venue_id"], away_id, kickoff_et)
-    mkt_spread, mkt_total, ml_home, ml_away = _load_market_lines(conn, game_id)
+    mkt_spread, mkt_total, ml_home, ml_away = _load_market_lines(conn, game_id, kickoff_utc)
 
     return SituationalContext(
         game_id=game_id,
