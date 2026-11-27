@@ -2,14 +2,17 @@
 
 from __future__ import annotations
 
+import logging
 import sqlite3
 from dataclasses import dataclass
 from typing import Any
 
-from cfb_analytics.errors import SchemaError
+from cfb_analytics.errors import SchemaError, SourceError
 from cfb_analytics.ingest import store
 from cfb_analytics.ingest.cfbd_fundamentals import _name_key
 from cfb_analytics.sources.cfbd import CFBDClient
+
+logger = logging.getLogger(__name__)
 
 
 def parse_team_boxes(raw: dict[str, Any]) -> list[dict[str, Any]]:
@@ -37,11 +40,7 @@ def parse_team_boxes(raw: dict[str, Any]) -> list[dict[str, Any]]:
                 "game_id": game_id,
                 "team_name": school,
                 "rushing_yards": _stat_float(cats.get("rushingYards")),
-                "net_passing_yards": _stat_float(
-                    cats["netPassingYards"]
-                    if "netPassingYards" in cats
-                    else cats.get("passingYards")
-                ),
+                "net_passing_yards": _stat_float(cats.get("netPassingYards")),
                 "total_yards": _stat_float(cats.get("totalYards")),
                 "points": team.get("points"),
             }
@@ -128,13 +127,22 @@ def ingest_team_boxes(
 def ingest_completed_boxes(conn: sqlite3.Connection, client: CFBDClient, season: int) -> BoxSummary:
     weeks = conn.execute(
         """SELECT DISTINCT week FROM games
-           WHERE season = ? AND completed = 1 AND week IS NOT NULL
+           WHERE source = 'cfbd' AND season = ? AND completed = 1 AND week IS NOT NULL
+             AND game_id NOT IN (SELECT game_id FROM team_game_box)
            ORDER BY week""",
         (season,),
     ).fetchall()
     total_games = total_rows = total_unresolved = 0
     for row in weeks:
-        summary = ingest_team_boxes(conn, client, season, int(row["week"]), completed_only=True)
+        week = int(row["week"])
+        try:
+            summary = ingest_team_boxes(conn, client, season, week, completed_only=True)
+        except SourceError as exc:
+            # The HTTP client already retried. Stopping here drops every later week.
+            if "HTTP 429" not in str(exc):
+                raise
+            logger.warning("CFBD team boxes week %s: %s", week, exc)
+            continue
         total_games += summary.games
         total_rows += summary.rows
         total_unresolved += summary.unresolved

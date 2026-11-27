@@ -98,6 +98,8 @@ def build_game_index(conn: sqlite3.Connection) -> dict[tuple[str, str, str], str
     CFBD and Outlier name teams differently ("Ohio State" vs "OSU"), so the
     join goes through school name, alias and market, all upper-cased. A game
     that cannot be matched is counted and skipped, never guessed at.
+    Only CFBD games are indexed. The scan is unordered, so a later non-CFBD
+    row with the same key would replace ``cfbd:<id>``.
     """
     index: dict[tuple[str, str, str], str] = {}
     rows = conn.execute(
@@ -106,7 +108,8 @@ def build_game_index(conn: sqlite3.Connection) -> dict[tuple[str, str, str], str
                   at.school AS a_school, at.alias AS a_alias, at.market AS a_market
            FROM games g
            JOIN teams ht ON ht.team_id = g.home_team_id
-           JOIN teams at ON at.team_id = g.away_team_id"""
+           JOIN teams at ON at.team_id = g.away_team_id
+           WHERE g.source = 'cfbd'"""
     ).fetchall()
     for row in rows:
         home_names = {_team_key(row[k]) for k in ("h_school", "h_alias", "h_market") if row[k]}

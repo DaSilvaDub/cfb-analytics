@@ -114,11 +114,12 @@ def seeded(conn):
     store.upsert_team(conn, {"team_id": "h", "school": "Tulsa", "alias": "TLSA", "market": "Tulsa"})
     store.upsert_team(
         conn, {"team_id": "a", "school": "Oklahoma State", "alias": "OKST", "market": "Okla St"})
-    store.upsert_game(conn, {
-        "game_id": "g1", "season": 2026, "kickoff_utc": "2026-09-05T23:30:00+00:00",
-        "football_date": "2026-09-05", "day_of_week": 5,
+    store.upsert_cfbd_game(conn, {
+        "game_id": "g1", "season": 2026, "week": 2, "season_type": "regular",
+        "kickoff_utc": "2026-09-05T23:30:00+00:00",
+        "football_date": "2026-09-05",
         "home_team_id": "h", "away_team_id": "a",
-        "venue_name": None, "network": None, "status": "pregame",
+        "status": "pregame",
     })
     return conn
 
@@ -179,6 +180,50 @@ class TestIngestLines:
         index = build_game_index(seeded)
         assert ("2026-09-05", "TULSA", "OKLAHOMA STATE") in index
         assert ("2026-09-05", "TLSA", "OKST") in index
+
+    def test_game_index_keeps_the_cfbd_id_when_a_later_row_shares_the_key(self, conn):
+        store.upsert_team(
+            conn, {"team_id": "cfbd:202", "school": "Tulsa", "alias": "TLSA", "market": "Tulsa"}
+        )
+        store.upsert_team(
+            conn,
+            {
+                "team_id": "cfbd:197",
+                "school": "Oklahoma State",
+                "alias": "OKST",
+                "market": "Oklahoma State",
+            },
+        )
+        store.upsert_cfbd_game(
+            conn,
+            {
+                "game_id": "cfbd:401",
+                "season": 2026,
+                "week": 2,
+                "kickoff_utc": "2026-09-05T23:30:00+00:00",
+                "football_date": "2026-09-05",
+                "home_team_id": "cfbd:202",
+                "away_team_id": "cfbd:197",
+                "status": "scheduled",
+            },
+        )
+        store.upsert_game(
+            conn,
+            {
+                "game_id": "outlier-dup",
+                "season": 2026,
+                "kickoff_utc": "2026-09-05T23:30:00+00:00",
+                "football_date": "2026-09-05",
+                "day_of_week": 5,
+                "home_team_id": "cfbd:202",
+                "away_team_id": "cfbd:197",
+                "venue_name": None,
+                "network": None,
+                "status": "pregame",
+            },
+        )
+        index = build_game_index(conn)
+        assert index[("2026-09-05", "TULSA", "OKLAHOMA STATE")] == "cfbd:401"
 
 
 class TestSlateWindow:

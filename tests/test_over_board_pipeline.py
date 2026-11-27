@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import logging
+
+from cfb_analytics.errors import SourceError
 from cfb_analytics.features.over_confidence import (
     classify_family,
     load_published_board,
@@ -52,6 +55,25 @@ def test_parse_team_boxes_reads_rush_and_pass() -> None:
     assert by_name["Alabama"]["rushing_yards"] == 249
     assert by_name["Alabama"]["net_passing_yards"] == 320
     assert by_name["Florida State"]["game_id"] == "cfbd:401856685"
+
+
+def test_passing_yards_without_net_passing_yards_is_null() -> None:
+    rows = parse_team_boxes(
+        {
+            "id": 1,
+            "teams": [
+                {
+                    "team": "Alabama",
+                    "stats": [
+                        {"category": "rushingYards", "stat": "100"},
+                        {"category": "passingYards", "stat": "250"},
+                    ],
+                }
+            ],
+        }
+    )
+    assert rows[0]["rushing_yards"] == 100
+    assert rows[0]["net_passing_yards"] is None
 
 
 def test_snapshot_is_source_of_truth_for_settle(conn) -> None:
@@ -285,3 +307,121 @@ def test_ingest_completed_boxes_stores_rush_and_pass(conn) -> None:
     ).fetchone()
     assert ala["rushing_yards"] == 249
     assert ala["net_passing_yards"] == 320
+
+
+def _seed_completed_weeks(conn):
+    alabama = seed_canonical_team(conn, 333, "Alabama", "ALA")
+    fsu = seed_canonical_team(conn, 52, "Florida State", "FSU")
+    seed_canonical_game(
+        conn,
+        "cfbd:1",
+        alabama,
+        fsu,
+        football_date="2026-09-05",
+        kickoff="2026-09-05T23:00:00+00:00",
+        week=1,
+    )
+    seed_canonical_game(
+        conn,
+        "cfbd:12",
+        alabama,
+        fsu,
+        football_date="2026-11-21",
+        kickoff="2026-11-21T23:00:00+00:00",
+        week=12,
+    )
+    conn.execute("UPDATE games SET completed = 1")
+    conn.commit()
+    return alabama, fsu
+
+
+def _week_payload(raw_id: int) -> list[dict]:
+    return [
+        {
+            "id": raw_id,
+            "teams": [
+                {
+                    "team": "Alabama",
+                    "points": 30,
+                    "stats": [
+                        {"category": "rushingYards", "stat": "180"},
+                        {"category": "netPassingYards", "stat": "210"},
+                    ],
+                },
+                {
+                    "team": "Florida State",
+                    "points": 10,
+                    "stats": [
+                        {"category": "rushingYards", "stat": "40"},
+                        {"category": "netPassingYards", "stat": "90"},
+                    ],
+                },
+            ],
+        }
+    ]
+
+
+def test_weeks_with_stored_boxes_are_not_refetched(conn) -> None:
+    alabama, fsu = _seed_completed_weeks(conn)
+    insert_team_game_boxes(
+        conn,
+        [
+            {
+                "game_id": "cfbd:1",
+                "team_id": alabama,
+                "rushing_yards": 10.0,
+                "net_passing_yards": 20.0,
+                "total_yards": 30.0,
+                "points": 7,
+            },
+            {
+                "game_id": "cfbd:1",
+                "team_id": fsu,
+                "rushing_yards": 5.0,
+                "net_passing_yards": 15.0,
+                "total_yards": 20.0,
+                "points": 3,
+            },
+        ],
+    )
+
+    calls: list[int] = []
+
+    class Client:
+        def fetch_game_teams(self, year, week, *, season_type="regular"):
+            calls.append(week)
+            return _week_payload(1 if week == 1 else 12)
+
+    from cfb_analytics.ingest.cfbd_boxes import ingest_completed_boxes
+
+    summary = ingest_completed_boxes(conn, Client(), 2026)
+    assert calls == [12]
+    assert summary.rows == 2
+    stored = conn.execute(
+        "SELECT rushing_yards FROM team_game_box WHERE game_id = 'cfbd:1' AND team_id = ?",
+        (alabama,),
+    ).fetchone()
+    assert stored["rushing_yards"] == 10.0
+
+
+def test_a_week_429_does_not_block_a_later_week(conn, caplog) -> None:
+    _seed_completed_weeks(conn)
+
+    class Client:
+        def fetch_game_teams(self, year, week, *, season_type="regular"):
+            if week == 1:
+                raise SourceError(
+                    "[cfbd] HTTP 429 for https://api.collegefootballdata.com/games/teams"
+                )
+            return _week_payload(12)
+
+    from cfb_analytics.ingest.cfbd_boxes import ingest_completed_boxes
+
+    with caplog.at_level(logging.WARNING, logger="cfb_analytics.ingest.cfbd_boxes"):
+        summary = ingest_completed_boxes(conn, Client(), 2026)
+    assert summary.rows == 2
+    assert any("429" in record.getMessage() for record in caplog.records)
+    landed = conn.execute(
+        "SELECT COUNT(*) AS n FROM team_game_box WHERE game_id = 'cfbd:12'"
+    ).fetchone()
+    assert landed["n"] == 2
