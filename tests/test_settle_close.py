@@ -171,3 +171,84 @@ def test_total_grades_the_closing_line_not_the_widest(conn: sqlite3.Connection) 
     assert settlement.totals_overs == 0
     assert settlement.totals_unders == 1
     assert settlement.totals_pushes == 0
+
+
+def test_total_grades_the_primary_line_of_the_newest_capture(conn: sqlite3.Connection) -> None:
+    """Score 41. The newest capture's 1-book 40.5 alt is an over; its 12-book 47.5 is an under.
+
+    Timestamp ties used to keep the first row per side and ignore n_books.
+    An older 20-book line and a 30-book quote at kickoff are not the grade.
+    """
+    now = "2026-10-01T00:00:00+00:00"
+    for tid, school, alias in (("cfbd:1", "Home St", "HOM"), ("cfbd:2", "Away St", "AWY")):
+        conn.execute(
+            """INSERT INTO teams (team_id, school, alias, first_seen_utc, last_seen_utc)
+               VALUES (?, ?, ?, ?, ?)""",
+            (tid, school, alias, now, now),
+        )
+    store.upsert_cfbd_game(
+        conn,
+        {
+            "game_id": "g-close",
+            "season": 2026,
+            "football_date": "2026-10-03",
+            "kickoff_utc": KICKOFF,
+            "home_team_id": "cfbd:1",
+            "away_team_id": "cfbd:2",
+            "home_points": 24,
+            "away_points": 17,
+            "completed": 1,
+            "status": "completed",
+        },
+    )
+    for side in ("OVER", "UNDER"):
+        _consensus(
+            conn,
+            market="TOTAL",
+            side=side,
+            line=30.5,
+            as_of=OPEN,
+            price=-110,
+            prob=0.5,
+            n_books=20,
+        )
+    for side in ("OVER", "UNDER"):
+        _consensus(
+            conn,
+            market="TOTAL",
+            side=side,
+            line=40.5,
+            as_of=CLOSE,
+            price=-110,
+            prob=0.5,
+            n_books=1,
+        )
+    for side in ("OVER", "UNDER"):
+        _consensus(
+            conn,
+            market="TOTAL",
+            side=side,
+            line=47.5,
+            as_of=CLOSE,
+            price=-110,
+            prob=0.5,
+            n_books=12,
+        )
+    for side in ("OVER", "UNDER"):
+        _consensus(
+            conn,
+            market="TOTAL",
+            side=side,
+            line=35.5,
+            as_of=AT_KICK,
+            price=-110,
+            prob=0.5,
+            n_books=30,
+        )
+    conn.commit()
+
+    settlement = settle_slate(conn, "2026-10-03")
+
+    assert settlement.totals_overs == 0
+    assert settlement.totals_unders == 1
+    assert settlement.totals_pushes == 0
