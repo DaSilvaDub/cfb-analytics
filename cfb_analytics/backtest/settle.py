@@ -16,6 +16,7 @@ from datetime import datetime, timedelta
 from typing import Any
 
 from cfb_analytics import config
+from cfb_analytics.features.current_market import primary_lines
 from cfb_analytics.utils import FOOTBALL_TZ, football_date, utc_now_iso
 
 
@@ -214,8 +215,9 @@ def _compute_calibration_metrics(
 def _is_newer_capture(candidate: str | None, kept: str | None) -> bool:
     """True when ``candidate`` is strictly later than the capture already kept.
 
-    Moneyline and game totals keep, per side, the newest ``as_of_utc`` strictly
-    before kickoff. Nothing kept yet is older. An empty stamp sorts first.
+    Nothing kept yet is older. An empty stamp sorts first. Moneyline and team
+    totals keep, per side, the newest stamp strictly before kickoff. Game
+    totals use that stamp, then the primary line of the capture.
     """
     return kept is None or (candidate or "") > (kept or "")
 
@@ -377,33 +379,40 @@ def settle_slate(
     # 2. Game Totals Evaluation
     total_query = """
         SELECT g.game_id, g.home_points, g.away_points,
-               c.side, c.line, c.as_of_utc
+               c.market, c.side, c.line, c.as_of_utc, c.n_books,
+               c.prob_shin, c.prob_multiplicative, c.hold
         FROM market_consensus c
         JOIN games g ON g.game_id = c.game_id
         WHERE g.football_date = ? AND c.market = 'TOTAL'
           AND c.as_of_utc < g.kickoff_utc
         ORDER BY g.game_id, c.as_of_utc DESC
     """
-    totals_by_game: dict[str, dict[str, Any]] = defaultdict(
-        lambda: {"sides": {}, "home_score": None, "away_score": None}
-    )
+    totals_by_game: dict[str, dict[str, Any]] = {}
     for row in conn.execute(total_query, (slate_date,)):
         gid = row["game_id"]
-        entry = totals_by_game[gid]
-        entry["home_score"] = row["home_points"]
-        entry["away_score"] = row["away_points"]
-        side = row["side"]
-        existing = entry["sides"].get(side)
-        kept = None if existing is None else existing["as_of_utc"]
-        if _is_newer_capture(row["as_of_utc"], kept):
-            entry["sides"][side] = row
+        entry = totals_by_game.get(gid)
+        if entry is None:
+            entry = {
+                "rows": [],
+                "as_of_utc": None,
+                "home_score": row["home_points"],
+                "away_score": row["away_points"],
+            }
+            totals_by_game[gid] = entry
+        stamp = row["as_of_utc"]
+        if _is_newer_capture(stamp, entry["as_of_utc"]):
+            entry["as_of_utc"] = stamp
+            entry["rows"] = [dict(row)]
+        elif stamp == entry["as_of_utc"]:
+            entry["rows"].append(dict(row))
 
     overs = unders = pushes = 0
-    for _gid, data in totals_by_game.items():
+    for data in totals_by_game.values():
         if data["home_score"] is None or data["away_score"] is None:
             continue
-        over = data["sides"].get("OVER")
-        under = data["sides"].get("UNDER")
+        sides = {str(row["side"]): row for row in primary_lines(data["rows"])}
+        over = sides.get("OVER")
+        under = sides.get("UNDER")
         if over is None or under is None or over["line"] != under["line"]:
             continue
         actual = data["home_score"] + data["away_score"]

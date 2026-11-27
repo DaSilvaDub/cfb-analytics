@@ -978,11 +978,6 @@ def settle_over_board(conn: sqlite3.Connection, slate_date: str) -> OverBoardSet
             hit = 0
         else:
             result.push += 1
-            tiers.setdefault(pick.tier, [0, 0])
-            tiers[pick.tier][1] += 1
-            family = pick.family or classify_family(pick.market, None)
-            families.setdefault(family, [0, 0])
-            families[family][1] += 1
             continue
         if inferred:
             result.inferred_n += 1

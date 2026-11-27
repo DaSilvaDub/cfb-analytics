@@ -2,8 +2,9 @@
 
 Game markets already keep the newest capture strictly before kickoff (#32).
 Team props did not: there was no kickoff filter and no ORDER BY, so the row
-sqlite happened to return last was the grade. A push was dropped from the
-team-prop record and from the OVER board's tier and family records.
+sqlite happened to return last was the grade. A team-total push stays in the
+push count. An OVER-board push stays in the push count and out of the tier
+and family hit rates.
 """
 
 from __future__ import annotations
@@ -83,7 +84,8 @@ def test_team_prop_push_stays_in_the_record(conn: sqlite3.Connection) -> None:
     assert "Pushes: 1" in settlement.as_text()
 
 
-def test_over_board_push_stays_in_the_tier_and_family(conn: sqlite3.Connection) -> None:
+def test_over_board_push_stays_out_of_tier_and_family(conn: sqlite3.Connection) -> None:
+    """An exact landing is a push. It must not enter the tier or family denominator."""
     home = seed_canonical_team(conn, 1, "Home U", "HOM")
     away = seed_canonical_team(conn, 2, "Away U", "AWY")
     seed_canonical_game(
@@ -135,8 +137,10 @@ def test_over_board_push_stays_in_the_tier_and_family(conn: sqlite3.Connection) 
     assert report.push == 1
     assert report.cash == 0
     assert report.miss == 0
-    assert report.by_tier["HIGH"] == (0, 1)
-    assert report.by_family["favorite_team_rush"] == (0, 1)
+    assert report.evaluated == 1
+    assert report.by_tier["HIGH"] == (0, 0)
+    assert "favorite_team_rush" not in (report.by_family or {})
     text = report.as_text()
-    assert "HIGH   0/1" in text
-    assert "favorite_team_rush   0/1" in text
+    assert "push 1" in text
+    assert "HIGH" not in text
+    assert "favorite_team_rush" not in text
