@@ -49,6 +49,21 @@ def to_utc_iso(value: Any) -> str | None:
     return parsed.astimezone(UTC).isoformat(timespec="seconds")
 
 
+def football_season(moment: datetime) -> int:
+    """Season year for a US Eastern moment.
+
+    The season starts in August. January through July, including bowls and
+    the CFP, belong to the season that opened the previous August.
+    """
+    if moment.tzinfo is None:
+        eastern = moment.replace(tzinfo=FOOTBALL_TZ)
+    else:
+        eastern = moment.astimezone(FOOTBALL_TZ)
+    if eastern.month < 8:
+        return eastern.year - 1
+    return eastern.year
+
+
 def football_date(kickoff_utc: str) -> str:
     """The slate a kickoff belongs to: its **US Eastern** calendar date.
 
