@@ -83,19 +83,19 @@ def seeded(conn):
             "classification": "fbs",
         },
     )
-    store.upsert_game(
+    store.upsert_cfbd_game(
         conn,
         {
             "game_id": "g2024",
             "season": 2024,
+            "week": 2,
+            "season_type": "regular",
             "kickoff_utc": KICKOFF,
             "football_date": "2024-09-07",
-            "day_of_week": 5,
             "home_team_id": "h",
             "away_team_id": "a",
-            "venue_name": None,
-            "network": None,
             "status": "final",
+            "completed": 1,
         },
     )
     return conn
@@ -224,18 +224,17 @@ class TestA2StampInvariant:
 class TestA3SeasonIsolation:
     def test_historical_ingest_does_not_mutate_live_cfbd_rows(self, seeded):
         # Seed a live-path row for a 2026 game on the same teams.
-        store.upsert_game(
+        store.upsert_cfbd_game(
             seeded,
             {
                 "game_id": "g2026",
                 "season": 2026,
+                "week": 2,
+                "season_type": "regular",
                 "kickoff_utc": "2026-09-05T23:30:00+00:00",
                 "football_date": "2026-09-05",
-                "day_of_week": 5,
                 "home_team_id": "h",
                 "away_team_id": "a",
-                "venue_name": None,
-                "network": None,
                 "status": "pregame",
             },
         )
