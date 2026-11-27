@@ -26,7 +26,7 @@ from typing import TYPE_CHECKING, Any, Literal
 
 from cfb_analytics import config, paths
 from cfb_analytics.errors import CfbAnalyticsError
-from cfb_analytics.utils import FOOTBALL_TZ, football_date, utc_now_iso
+from cfb_analytics.utils import FOOTBALL_TZ, football_date, football_season, utc_now_iso
 
 if TYPE_CHECKING:
     from cfb_analytics.models.team_props import GameTotalsProjection
@@ -854,17 +854,18 @@ def run_daily(
 ) -> DailyReport:
     report = DailyReport(started_utc=utc_now_iso())
     moment = now or datetime.now(FOOTBALL_TZ)
-    year = season or moment.year
+    year = season or football_season(moment)
 
     if bootstrap:
         # Must precede the lines ingest: lines attach to stored games, so
         # an empty store would silently price nothing.
         _bootstrap_if_empty(conn, report, year)
 
-    _run_cfbd_lines(conn, report, year)
     _run_cfbd_rankings(conn, report, year, now=moment)
     _run_cfbd_elo(conn, report, year, now=moment)
     _run_refresh_scores(conn, report, year, now=moment)
+    # Lines join on the stored Eastern date, so a kickoff refresh has to land first.
+    _run_cfbd_lines(conn, report, year)
 
     slates = slates_in_window(conn, now=moment)
     if with_outlier and slates:
