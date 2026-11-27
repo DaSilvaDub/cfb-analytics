@@ -158,7 +158,7 @@ class PositionUnitGrades:
 class WeatherProfile:
     """Localized atmospheric impact curves and play volume redistribution."""
 
-    temperature_c: float
+    temperature_c: float | None
     wind_kph: float
     gust_kph: float
     precip_mm: float

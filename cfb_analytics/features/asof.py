@@ -60,6 +60,8 @@ class AsOfReader:
     game_id: str
     kickoff_utc: str
     season: int | None = None
+    # A TBD clock is a placeholder, not a start. Do not use it as a cutoff.
+    kickoff_tbd: bool = False
 
     @property
     def kickoff(self) -> datetime:
@@ -68,7 +70,7 @@ class AsOfReader:
     def check(self, as_of: Any, *, what: str) -> datetime:
         """Assert a single timestamp precedes kickoff. Returns it parsed."""
         stamp = _parse(as_of, field=f"{what}.as_of_utc")
-        if stamp >= self.kickoff:
+        if not self.kickoff_tbd and stamp >= self.kickoff:
             raise LeakageError(
                 f"Leak in {what} for game {self.game_id}: row is stamped "
                 f"{stamp.isoformat()}, at or after kickoff {self.kickoff.isoformat()}. "
@@ -99,7 +101,8 @@ class AsOfReader:
                     f"Row in {what} for game {self.game_id} has no {as_of_field}; "
                     "a row without a timestamp cannot be proven pre-kickoff."
                 )
-            if _parse(raw, field=f"{what}.{as_of_field}") < kickoff:
+            stamp = _parse(raw, field=f"{what}.{as_of_field}")
+            if self.kickoff_tbd or stamp < kickoff:
                 kept.append(row)
         return kept
 
@@ -165,4 +168,5 @@ def reader_for_game(game: Mapping[str, Any]) -> AsOfReader:
         game_id=str(game["game_id"]),
         kickoff_utc=str(game["kickoff_utc"]),
         season=game.get("season"),
+        kickoff_tbd=int(game.get("kickoff_tbd") or 0) == 1,
     )

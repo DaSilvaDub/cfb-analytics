@@ -448,7 +448,8 @@ def _load_model_margins(
 ) -> dict[str, float]:
     """Load Elo-projected home margin for each game on the slate.
 
-    Falls back to internal Ridge ratings if Elo not available.
+    Uses the latest Elo fit strictly before that game's kickoff. Falls back
+    to internal Ridge ratings when no such fit exists.
     Returns {game_id: home_margin} where positive = home favored.
     """
     from cfb_analytics.models.futures import (
@@ -456,29 +457,34 @@ def _load_model_margins(
         project_game_win_probability,
     )
 
-    # Try Elo ratings first
-    elo_ratings = _load_latest_elo(conn)
-    if elo_ratings:
-        # The futures projection consumes scoring-point ratings, whereas
-        # internal Elo is stored in Elo units. Use its existing scale.
-        point_ratings = {
-            team_id: rating / POINTS_TO_ELO_SCALE for team_id, rating in elo_ratings.items()
-        }
-    else:
-        point_ratings = _load_latest_ridge(conn)
-
-    if not point_ratings:
-        return {}
-
     games = conn.execute(
-        """SELECT game_id, home_team_id, away_team_id, neutral_site
+        """SELECT game_id, home_team_id, away_team_id, neutral_site, kickoff_utc
            FROM games
            WHERE football_date = ?""",
         (date,),
     ).fetchall()
 
     margins: dict[str, float] = {}
+    ridge: dict[str, float] | None = None
+    elo_by_kickoff: dict[str, dict[str, float]] = {}
     for g in games:
+        kickoff = str(g["kickoff_utc"] or "")
+        if kickoff not in elo_by_kickoff:
+            elo_by_kickoff[kickoff] = _load_latest_elo(conn, kickoff)
+        elo_ratings = elo_by_kickoff[kickoff]
+        if elo_ratings:
+            # The futures projection consumes scoring-point ratings, whereas
+            # internal Elo is stored in Elo units. Use its existing scale.
+            point_ratings = {
+                team_id: rating / POINTS_TO_ELO_SCALE for team_id, rating in elo_ratings.items()
+            }
+        else:
+            if ridge is None:
+                ridge = _load_latest_ridge(conn)
+            point_ratings = ridge
+        if not point_ratings:
+            continue
+
         home_r = point_ratings.get(g["home_team_id"])
         away_r = point_ratings.get(g["away_team_id"])
         if home_r is None or away_r is None:
@@ -544,14 +550,16 @@ def _load_model_totals(
     return totals
 
 
-def _load_latest_elo(conn: sqlite3.Connection) -> dict[str, float]:
-    """Load the most recent Elo rating for each team."""
+def _load_latest_elo(conn: sqlite3.Connection, before_utc: str) -> dict[str, float]:
+    """Latest Elo fit with as_of_utc strictly before kickoff."""
     rows = conn.execute(
         """SELECT team_id, rating
            FROM internal_elo_ratings
            WHERE as_of_utc = (
                SELECT MAX(as_of_utc) FROM internal_elo_ratings
-           )"""
+               WHERE as_of_utc < ?
+           )""",
+        (before_utc,),
     ).fetchall()
     return {r["team_id"]: r["rating"] for r in rows}
 

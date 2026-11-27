@@ -23,7 +23,7 @@ from cfb_analytics.reasoning.models import (
 
 def calculate_weather_multipliers(
     *,
-    temp_c: float,
+    temp_c: float | None,
     wind_kph: float,
     gust_kph: float,
     precip_mm: float,
@@ -75,25 +75,33 @@ def calculate_weather_multipliers(
     m_precip_ypc = max(0.85, 1.0 - 0.020 * excess_precip)
     m_precip_pts = max(0.80, 1.0 - 0.025 * excess_precip)
 
-    # 3. Temperature Extremes (Cold Deficit < 5.0C, Heat Excess > 30.0C)
-    cold_deficit = min(25.0, max(0.0, 5.0 - temp_c))
-    heat_excess = min(15.0, max(0.0, temp_c - 30.0))
-
-    if cold_deficit > 0.0:
-        m_temp_pass_vol = max(0.80, 1.0 - 0.008 * cold_deficit)
-        m_temp_comp_prob = max(0.75, 1.0 - 0.010 * cold_deficit)
-        m_temp_ypc = max(0.80, 1.0 - 0.008 * cold_deficit)
-        m_temp_pts = max(0.75, 1.0 - 0.010 * cold_deficit)
-    elif heat_excess > 0.0:
-        m_temp_pass_vol = max(0.95, 1.0 - 0.003 * heat_excess)
-        m_temp_comp_prob = max(0.95, 1.0 - 0.003 * heat_excess)
-        m_temp_ypc = 1.0
-        m_temp_pts = max(0.92, 1.0 - 0.006 * heat_excess)
-    else:
+    # 3. Temperature Extremes (Cold Deficit < 5.0C, Heat Excess > 30.0C).
+    # A missing temperature is unknown: no cold or heat curve.
+    if temp_c is None:
+        cold_deficit = 0.0
+        heat_excess = 0.0
         m_temp_pass_vol = 1.0
         m_temp_comp_prob = 1.0
         m_temp_ypc = 1.0
         m_temp_pts = 1.0
+    else:
+        cold_deficit = min(25.0, max(0.0, 5.0 - temp_c))
+        heat_excess = min(15.0, max(0.0, temp_c - 30.0))
+        if cold_deficit > 0.0:
+            m_temp_pass_vol = max(0.80, 1.0 - 0.008 * cold_deficit)
+            m_temp_comp_prob = max(0.75, 1.0 - 0.010 * cold_deficit)
+            m_temp_ypc = max(0.80, 1.0 - 0.008 * cold_deficit)
+            m_temp_pts = max(0.75, 1.0 - 0.010 * cold_deficit)
+        elif heat_excess > 0.0:
+            m_temp_pass_vol = max(0.95, 1.0 - 0.003 * heat_excess)
+            m_temp_comp_prob = max(0.95, 1.0 - 0.003 * heat_excess)
+            m_temp_ypc = 1.0
+            m_temp_pts = max(0.92, 1.0 - 0.006 * heat_excess)
+        else:
+            m_temp_pass_vol = 1.0
+            m_temp_comp_prob = 1.0
+            m_temp_ypc = 1.0
+            m_temp_pts = 1.0
 
     # 4. Composite Multipliers
     pass_vol_mult = round(
@@ -109,10 +117,16 @@ def calculate_weather_multipliers(
     # 5. Run/Pass volume shift: lost pass volume converted 0.85x into rushing volume
     rush_vol_mult = round(1.0 + (1.0 - pass_vol_mult) * 0.85, 4)
 
-    is_extreme = bool(wind_kph >= 35.0 or gust_kph >= 48.0 or precip_mm >= 5.0 or temp_c < 0.0)
+    is_extreme = bool(
+        wind_kph >= 35.0
+        or gust_kph >= 48.0
+        or precip_mm >= 5.0
+        or (temp_c is not None and temp_c < 0.0)
+    )
 
+    temp_txt = "temperature unknown" if temp_c is None else f"{temp_c:.1f}°C"
     summary = (
-        f"Outdoor weather: {temp_c:.1f}°C, wind {wind_kph:.1f} kph (gusts {gust_kph:.1f} kph), "
+        f"Outdoor weather: {temp_txt}, wind {wind_kph:.1f} kph (gusts {gust_kph:.1f} kph), "
         f"precip {precip_mm:.1f} mm. Multipliers: pass {pass_vol_mult:.2f}x, "
         f"rush {rush_vol_mult:.2f}x, scoring {scoring_mult:.2f}x."
     )
